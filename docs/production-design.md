@@ -59,7 +59,7 @@ Synthesized from [auto-agent-design.md §4](auto-agent-design.md) and refined ag
 
 **Stage 1 — Assessment.** Per-language router classifies the candidate as Category 1 (clean migration), 2 (migration with caveats), or 3 (blocker — cannot proceed). **Hierarchical Planner routes; LLM used inside each language-specific assessor subgraph.** Inputs: `CandidateRepo`. Outputs: `AssessmentResult` with category, confidence, blockers found, evidence bundle.
 
-**Stage 2 — Deep Scan.** The gather layer from [localv2.md](localv2.md) runs in service mode against the candidate. Produces the structured `RepoContext` artifact and the human-facing `CONTEXT_REPORT.md`. **Fully deterministic; no LLM.** Inputs: cloned repo, task type. Outputs: `RepoContext` resource served via MCP for downstream stages.
+**Stage 2 — Deep Scan.** The gather layer is **continuously running against every watched repo** (see §3.2). Stage 2 in the per-workflow pipeline confirms `RepoContext` is fresh for the candidate and serves it via MCP — typically a cache-hit in steady state, completing in seconds rather than the 3–6 minutes a cold gather takes. Produces the structured `RepoContext` artifact and the human-facing `CONTEXT_REPORT.md`. **Fully deterministic; no LLM.** Inputs: cloned repo, task type. Outputs: `RepoContext` resource served via MCP for downstream stages.
 
 **Stage 3 — Planning.** Given `RepoContext`, emit an ordered list of step files with red/green TDD assertions plus a validation plan. **SHERPA subgraph: recipe-match → solved-example-RAG → LLM-fallback → emit-steps.** Recipes (OpenRewrite, internal rulesets) are tried first. Solved-example RAG queries the knowledge graph next. Only if both miss does the LLM plan from scratch with the context packet as few-shot. LLM appears at one node only, gated by Trust-Aware.
 
@@ -70,6 +70,117 @@ Synthesized from [auto-agent-design.md §4](auto-agent-design.md) and refined ag
 **Stage 6 — Handoff.** Open a PR with full evidence: migration summary, step-by-step changelog, CVE delta table, validator evidence bundle, solved-example references, local re-verification command. Request review from CODEOWNERS. Temporal pauses on a `pull_request.closed` webhook signal. **No LLM.**
 
 **Stage 7 — Learning.** On successful merge, extract the diff, fingerprint, signals matched, and any error-triage events. Write to the solution store (vector DB) for future Stage-3 retrieval. Emit telemetry. Open a PR against the central kit if novel patterns surfaced. **No LLM.**
+
+### 3.1 Agent personas across the pipeline
+
+A "persona" here is a named, single-responsibility actor in the system. Some are LLM-driven; most are deterministic. Some are persistent across the workflow (Supervisor); most are one-shot per stage. The table below is the consolidated reference; §8.6 visualizes the same information as a swimlane for quick scanning.
+
+The discipline this table enforces: **every LLM-using persona is a leaf in the SHERPA state graph, not an orchestrator.** Orchestration is deterministic; reasoning is what the LLM is for. Adding a new persona is additive (commitment §2.5) — drop in a new subgraph node and register it. The Supervisor's routing logic doesn't change.
+
+| Stage | Persona | LLM | Spawned by | Lifecycle | Responsibility |
+|---|---|---|---|---|---|
+| Cross-cutting | **Supervisor (Hierarchical Planner)** | optional† | Temporal workflow start | Persistent for the workflow | Reads intent; routes into the right subgraph; coordinates fan-out across parallel workers |
+| Cross-cutting | **Trust-Aware Gate** | no | LangGraph `conditional_edge` | Per state-transition | Runs objective checks; advances, routes back with error context, or `interrupt()`s |
+| Cross-cutting | **Policy Engine (Agent RuleZ pattern)** | no | Tool-call hook | Per tool invocation | Sub-10ms deterministic allow / block / inject-context on every action |
+| Cross-cutting | **Continuous Gather Dispatcher** | no | Cron + repo / CVE webhooks | Always-on | Dispatches Probe Coordinator runs on push, PR, CVE feed, or schedule (§3.2) |
+| 0 Discovery | Discovery Scanner | no | Temporal cron | Scheduled, one-shot per scan | Lists candidate repos; parses Dockerfiles; runs Syft baseline; emits `CandidateRepo` events |
+| 1 Assessment | Language Router | no | Supervisor | One-shot | Deterministic classifier (manifests, file extensions) selecting the assessor |
+| 1 Assessment | **Node Assessor Agent** | yes | Language Router via `conditional_edge` | One-shot per workflow | Classifies the repo as Cat 1/2/3 with cited evidence; emits `AssessmentResult` |
+| 1 Assessment | **Python Assessor Agent** | yes | Language Router via `conditional_edge` | One-shot per workflow | Same shape, Python-scoped |
+| 1 Assessment | *(future Java / Go / Rust Assessors)* | yes | Language Router | One-shot per workflow | Added by addition (§2.5); existing assessors untouched |
+| 2 Deep Scan | Probe Coordinator | no | Stage 2 Activity *and* Continuous Gather Dispatcher (§3.2) | One-shot per gather; gathers fire continuously on change events | Dispatches probes in parallel; merges outputs; validates schema |
+| 2 Deep Scan | Probes A–G | no | Probe Coordinator | Per-probe, parallel; incremental re-runs only when `declared_inputs` change | Each owns one disjoint slice of `RepoContext`; runs deterministically |
+| 3 Planning | Recipe Matcher | no | Planning subgraph entry node | One-shot | OpenRewrite / internal-ruleset lookup against the context packet |
+| 3 Planning | Solved-Example RAG Retriever | no | Planning subgraph (on recipe miss) | One-shot | Vector search against the Knowledge Graph for prior solutions |
+| 3 Planning | **LLM Planner** | yes | Planning subgraph (fallback) | One-shot, retry-bounded | Plans from scratch with `RepoContext` + matched skill as few-shot |
+| 3 Planning | Step Emitter | no | Planning subgraph (final node) | One-shot | Emits step files with red/green TDD assertions and validators |
+| 4 Execution | Human Executor | no | PR creation (Phase 1 default) | External | Engineer executes the plan locally; pushes commits; marks PR ready |
+| 4 Execution | **Autonomous Executor Agent** | yes | Execution subgraph (Phase 2+ for narrow fingerprints) | One-shot per migration | Applies each step inside a microVM; commits atomically per step |
+| 4 Execution | **Error Triage Specialist** | yes | Trust gate on retry | One-shot per failure | Analyzes sandbox error logs; proposes step-level adjustment |
+| 5 Validation | Sandbox Runner (Environment Agent) | no | Trust-Aware gate | Per-transition | Builds the candidate image; runs the container in microVM |
+| 5 Validation | SAST/DAST Runner | no | Trust-Aware gate | Per-transition | Static + dynamic security analysis on the patched code |
+| 5 Validation | CVE Delta Comparator | no | Trust-Aware gate | Per-transition | Diffs pre/post SBOMs and CVE counts; asserts non-positive direction |
+| 5 Validation | Prove-It Asserter | no | Trust-Aware gate | Per-transition | Asserts no shell in final image, non-root user, mandatory labels |
+| 5 Validation | **LLM Judge (Functional-Equivalence Critic)** | yes | Trust-Aware gate on disagreement | One-shot per ambiguous failure | Adjudicates only when objective signals conflict (e.g., scanner disagreement) |
+| 6 Handoff | PR Opener | no | Stage 6 Temporal Activity | One-shot | Creates the GitHub PR with full evidence bundle |
+| 6 Handoff | CODEOWNERS Notifier | no | PR creation | One-shot | Tags reviewers; fires Slack / webhook notifications |
+| 6 Handoff | Webhook Listener | no | Temporal signal handler | Passive until signal fires | Pauses the workflow until `pull_request.closed` arrives |
+| 7 Learning | Solved-Example Recorder | no | Post-merge webhook | One-shot | Writes diff + fingerprint + matched skill to the Knowledge Graph |
+| 7 Learning | Knowledge Graph Updater | no | Post-merge webhook | One-shot | Updates the markdown vault and derived index |
+| 7 Learning | Retro PR Author | optional† | Post-merge if novel pattern detected | One-shot | Opens PR against the central kit when a novel signal/error/fingerprint surfaced |
+| 7 Learning | Telemetry Emitter | no | Post-merge webhook | One-shot | Pushes per-stage timings, token spend, and merge-outcome metrics |
+
+† **Optional LLM** means the persona can ship as deterministic routing/templating in Phase 1 and upgrade to LLM-driven later without changing its contract. Decision deferred (§7).
+
+**Bold names** mark LLM-using personas. Note how few there are: across 28 personas the pipeline runs, only seven (Supervisor optional + Node/Python Assessors + LLM Planner + Autonomous Executor + Error Triage + LLM Judge + Retro PR Author optional) ever invoke an LLM. The remaining twenty-one are deterministic. This is commitment §2.4 rendered as a roster.
+
+### 3.2 Continuous context gathering: deterministic, automatic, incremental
+
+The gather layer is not invoked once per workflow. It runs continuously against every watched repo and re-derives `RepoContext` whenever something changes. By the time a migration workflow fires or a CVE event arrives, the up-to-date context is already cached and the agent has zero-latency access to it. This is the freshness model from [context.md §"Caching, freshness, and incremental gathers"](context.md).
+
+**Trigger sources** — any of these initiates a gather against the affected repo:
+
+- **Cron** — nightly scan across the watched repos
+- **Repo push webhook** — every push to the default branch (or any watched branch)
+- **PR opened / synchronized webhook** — fresh gather against the PR's HEAD before any planning runs
+- **CVE feed event** — a new vulnerability published against any package in a watched repo's SBOM
+- **Manual CLI** — engineer invocation for local development (the `codegenie gather` entry point from the POC)
+
+```mermaid
+flowchart LR
+    subgraph TRIG["🔔 Triggers"]
+      direction TB
+      CR["Cron<br/>(nightly)"]
+      PW["Push webhook"]
+      PRW["PR opened /<br/>synchronized webhook"]
+      CV["CVE feed event"]
+      MN["Manual CLI"]
+    end
+
+    DSP["Continuous Gather<br/>Dispatcher"]
+    COORD["Probe<br/>Coordinator"]
+    CACHE[("Content-addressed<br/>cache")]
+    CTX["RepoContext<br/>(MCP-served)"]
+    VIEWS["Pre-rendered agent views<br/>(Redis hot cache):<br/>available_skills, entrypoint,<br/>risk_flags, confidence_summary"]
+
+    subgraph CONS["📥 Consumers"]
+      direction TB
+      WF["Per-repo workflows<br/>(Stage 2 reads)"]
+      AG["Planning agents<br/>(LLM context at Stage 3)"]
+    end
+
+    CR --> DSP
+    PW --> DSP
+    PRW --> DSP
+    CV --> DSP
+    MN --> DSP
+    DSP -- "incremental:<br/>only probes with<br/>changed declared_inputs" --> COORD
+    COORD --> CACHE
+    CACHE --> CTX
+    CTX -- "after every gather" --> VIEWS
+    CTX --> WF
+    VIEWS --> AG
+```
+
+**Freshness modes** (CLI flag / API parameter; default depends on trigger source):
+
+- **`fresh-on-trigger`** *(default for cron, webhooks, CVE events)* — re-runs only probes whose `declared_inputs` changed since the last gather
+- **`cached-only`** — errors on cache miss; used for replay, debugging, or running multiple tasks back-to-back against the same repo
+- **`force-refresh`** — ignores cache; used when a probe's own logic has changed
+
+**Incremental gathers.** The Coordinator diffs the current repo state against the last cached gather. Probes whose `declared_inputs` are unchanged hit the cache and reuse persisted output; only the affected probes re-run. Per [context.md](context.md), Cursor's published cache-reuse rate for this pattern is >90% in production. The implication: most "fresh-on-trigger" gathers complete in seconds, not minutes, because most of the work is cache hits.
+
+**Pre-rendered agent views.** A small set of slices (`available_skills`, `entrypoint`, `risk_flags`, `confidence_summary`) is pre-rendered into Redis after every successful gather, keyed by repo. These are the slices the Planning agent hits frequently during Stage 3; serving them from a hot cache keeps MCP roundtrip latency in single-digit milliseconds. The pre-render task fires automatically as the final step of every gather.
+
+**Why this matters architecturally.** The continuous gather is what makes commitment §2.1 ("no LLM in the gather pipeline") operationally tractable at portfolio scale. Because the gather is deterministic, it can run continuously, cached, and incrementally — and the agent never waits for it. If the gather involved LLM calls, this pattern would be cost-prohibitive on every push to every watched repo. The deterministic constraint and the always-fresh property are two sides of the same coin.
+
+**Cold vs. warm vs. incremental run times** (figures from [context.md §"What runs the gatherer"](context.md)):
+
+- **Cold gather** (first time a repo enters the system): 3–6 minutes, dominated by SCIP indexing and runtime tracing
+- **Warm gather** (most caches valid, one or two probes need refresh): 20–40 seconds
+- **Incremental gather** (only the Dockerfile changed since last run): under 10 seconds
+
+These figures are what make the always-fresh property viable as a default behavior rather than an expensive option.
 
 ---
 
@@ -337,7 +448,7 @@ The POC ([localv2.md](localv2.md)) is not a throwaway. Its components lift uncha
 | Skills directory (`~/.codegenie/skills/`) | Service-level config repo, MCP-served, versioned |
 | Conventions / policies / exceptions YAML | Service-level config repo, MCP-served |
 | `CONTEXT_REPORT.md` | Generated as a Stage 2 output, attached to the PR in Stage 6 as evidence |
-| CLI entry point (`codegenie gather`) | Triggered from Stage 0 Discovery as a Temporal Activity |
+| CLI entry point (`codegenie gather`) | Triggered continuously by push / PR / CVE webhooks and nightly cron via the Continuous Gather Dispatcher (§3.2); CLI invocation remains for manual local-dev |
 | `.codegenie/notes/` (RepoNotesProbe) | Per-repo directory, walked the same way at service time |
 | External docs (D8/D9) | Same probes; production fetches go through approved API clients with audit logging |
 
@@ -770,6 +881,67 @@ sequenceDiagram
 ```
 
 **What this proves.** The migration scenario shows portfolio-scale fan-out with cross-worker learning. Worker #45 benefits from Worker #2's earlier success without coordination overhead — the Knowledge Graph mediates. Token spend on Worker #45 drops dramatically because the LLM is doing few-shot pattern matching against a proven solution, not exploring the space cold. Failures in any one worker do not affect the others (parallel isolation guaranteed by Temporal).
+
+### 8.6 Persona view — who fires when (supplementary)
+
+A swimlane visualization of the table in §3.1. The horizontal axis is the 7-stage pipeline progression (left to right); each bar shows when that persona is active. Bars rendered as `crit` (red/amber in most Mermaid renderers) mark **LLM-using personas** so the LLM touchpoints stand out at a glance.
+
+```mermaid
+gantt
+    title Persona activity across the 7-stage pipeline (red = LLM-using)
+    dateFormat X
+    axisFormat S%s
+
+    section Cross-cutting
+    Supervisor (Hierarchical Planner)    :crit, 0, 8
+    Trust-Aware Gate                     :1, 6
+    Policy Engine (RuleZ pattern)        :0, 8
+
+    section S0 Discovery
+    Discovery Scanner                    :0, 1
+
+    section S1 Assessment
+    Language Router                      :1, 2
+    Node Assessor                        :crit, 1, 2
+    Python Assessor                      :crit, 1, 2
+
+    section S2 Deep Scan
+    Probe Coordinator                    :2, 3
+    Probes A–G (parallel)                :2, 3
+
+    section S3 Planning
+    Recipe Matcher                       :3, 4
+    Solved-Example RAG Retriever         :3, 4
+    LLM Planner (fallback)               :crit, 3, 4
+    Step Emitter                         :3, 4
+
+    section S4 Execution
+    Human Executor (Phase 1)             :4, 5
+    Autonomous Executor (Phase 2+)       :crit, 4, 5
+    Error Triage Specialist              :crit, 4, 5
+
+    section S5 Validation
+    Sandbox Runner (Env Agent)           :5, 6
+    SAST/DAST Runner                     :5, 6
+    CVE Delta Comparator                 :5, 6
+    Prove-It Asserter                    :5, 6
+    LLM Judge (rare)                     :crit, 5, 6
+
+    section S6 Handoff
+    PR Opener                            :6, 7
+    CODEOWNERS Notifier                  :6, 7
+    Webhook Listener (passive)           :6, 7
+
+    section S7 Learning
+    Solved-Example Recorder              :7, 8
+    Knowledge Graph Updater              :7, 8
+    Retro PR Author                      :7, 8
+    Telemetry Emitter                    :7, 8
+```
+
+**Reading guide.** The Supervisor and Policy Engine span the full workflow. The Trust-Aware Gate fires across Stages 1–5 wherever a SHERPA subgraph has state transitions (it is dormant in the purely deterministic Stages 0, 6, 7). LLM-using personas (red bars) cluster in three places: assessment (Stage 1), planning fallback + autonomous execution (Stages 3–4), and the rare functional-equivalence adjudication (Stage 5). Everything else is deterministic — visible at a glance as the non-red majority.
+
+This view is the cleanest way to answer "is this stage LLM-touching?" or "which personas need their context window budgeted?" — both are common operational questions that don't map cleanly to any of the canonical 4+1 views.
 
 ---
 
