@@ -21,7 +21,7 @@ This document sequences the work from a local bullet tracer through to a multi-t
 | 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | ✅ [02-context-gather-layers-b-g](phases/02-context-gather-layers-b-g/) |
 | 3 | **Vuln remediation — deterministic recipe path** | vuln | First end-to-end transform; OpenRewrite / AST; writes a real diff | ✅ [03-vuln-deterministic-recipe](phases/03-vuln-deterministic-recipe/) |
 | 4 | Vuln remediation — LLM fallback + solved-example RAG | vuln | Leaf LLM agents, local vector DB, recipe → RAG → LLM-fallback decision chain | ✅ [04-vuln-llm-fallback-rag](phases/04-vuln-llm-fallback-rag/) |
-| 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default |
+| 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default | ✅ [05-sandbox-trust-gates](phases/05-sandbox-trust-gates/) |
 | 6 | SHERPA-style state machine for the vuln loop | vuln | LangGraph runtime, Pydantic state ledger, `interrupt()` + SQLite checkpointer |
 | 7 | **Add migration task class (Chainguard distroless)** | vuln + migration | Extension by addition — proves contracts extend without edits |
 | 8 | Hierarchical Planner + pre-rendered hot views | vuln + migration | Planning supervisor, Redis hot views, MCP-style stdio Skills server |
