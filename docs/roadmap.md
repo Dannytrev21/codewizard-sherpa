@@ -12,11 +12,13 @@ This document sequences the work from a local bullet tracer through to a multi-t
 
 ## Phase summary
 
-| # | Title | Task classes | First-time introduction of |
-|---|---|---|---|
-| 0 | Bullet tracer + project foundations | — | CLI shell, `pyproject.toml`, CI, docs site, mypy, ruff, pytest, pre-commit |
-| 1 | Context gathering — Layer A (Node.js) | — | Probe contract, coordinator, content-addressed cache, schema validation |
-| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader |
+**Design pipeline status legend:** ✅ = full design pipeline complete (`final-design.md` + `phase-arch-design.md` + per-phase ADRs + `High-level-impl.md` + stories backlog under `docs/phases/NN-<slug>/`). Empty = not yet designed.
+
+| # | Title | Task classes | First-time introduction of | Design |
+|---|---|---|---|---|
+| 0 | Bullet tracer + project foundations | — | CLI shell, `pyproject.toml`, CI, docs site, mypy, ruff, pytest, pre-commit | ✅ [00-bullet-tracer-foundations](phases/00-bullet-tracer-foundations/) |
+| 1 | Context gathering — Layer A (Node.js) | — | Probe contract, coordinator, content-addressed cache, schema validation | ✅ [01-context-gather-layer-a-node](phases/01-context-gather-layer-a-node/) |
+| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | |
 | 3 | **Vuln remediation — deterministic recipe path** | vuln | First end-to-end transform; OpenRewrite / AST; writes a real diff |
 | 4 | Vuln remediation — LLM fallback + solved-example RAG | vuln | Leaf LLM agents, local vector DB, recipe → RAG → LLM-fallback decision chain |
 | 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default |
