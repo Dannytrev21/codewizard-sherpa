@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is **design-only**. No code, no build, no tests yet. All substantive content lives in `docs/`. The first implementation milestone is the Week 1 skeleton described in [docs/localv2.md](docs/localv2.md) §12.
+This repo is **design-only**. No code, no build, no tests yet. All substantive content lives in `docs/`. The phased plan from local POC to production lives in [docs/roadmap.md](docs/roadmap.md); the first implementation milestone is Phase 0 of that roadmap, which corresponds to the Week 1 skeleton in [docs/localv2.md](docs/localv2.md) §12.
 
 ## What this project is
 
-**codewizard-sherpa** is an autonomous agentic system that opens PRs to modify code across repos at portfolio scale. Phase 1 target: **Chainguard distroless container migrations** for Node.js services. Phase 2+: vulnerability remediation and major language/dependency upgrades. The full service is a 7-stage Temporal-orchestrated pipeline (Discovery → Assessment → Deep Scan → Planning → Execution → Validation → Handoff → Learning); the immediate work is a local Python CLI POC implementing only the context-gathering layer.
+**codewizard-sherpa** is an autonomous agentic system that opens PRs to modify code across repos at portfolio scale. Task classes are introduced one at a time (see [docs/roadmap.md](docs/roadmap.md)): **vulnerability remediation** first (roadmap Phase 3), then **Chainguard distroless container migrations** (Phase 7), then **agentic recipe authoring** itself (Phase 15) — each new task class extending the system by *addition*, never by editing existing components. The full service is a 7-stage Temporal-orchestrated pipeline (Discovery → Assessment → Deep Scan → Planning → Execution → Validation → Handoff → Learning); the immediate work is a local Python CLI POC implementing only the context-gathering layer.
 
 ## Reading order for the design docs
 
 Not all docs are equal. Read in this order and skip the redundant ones:
 
-1. **[docs/production-design.md](docs/production-design.md)** — **canonical production-target reference**. Defines the Layered Hybrid Architecture (Temporal envelope → Hierarchical Planner → SHERPA-style state machine → Trust-Aware gates → leaf LLM calls), the 7-stage pipeline, the orchestration comparison matrix, AgentOps shape, and the POC-to-service mapping. Synthesizes the three service-shaped docs (context.md, auto-agent-design.md, gemini-auto-agent-design.md) — read this first; consult the others as background.
+1. **[docs/production/](docs/production/)** — **canonical production-target reference folder**. Start at [docs/production/README.md](docs/production/README.md) for the entry point. Inside: [`design.md`](docs/production/design.md) defines the Layered Hybrid Architecture (Temporal envelope → Hierarchical Planner → SHERPA-style state machine → Trust-Aware gates → leaf LLM calls), the 7-stage pipeline, agent personas, the continuous-gather model, and the 4+1 architectural views; [`adrs/`](docs/production/adrs/) holds one Architecture Decision Record per major design choice (numbered, Nygard-style) capturing the *why* behind every decision. Synthesizes the three service-shaped docs (context.md, auto-agent-design.md, gemini-auto-agent-design.md) — read this folder first; consult the others as background.
 2. **[docs/localv2.md](docs/localv2.md)** — **canonical local POC spec**. Supersedes `local.md`. Defines the Python CLI (`codegenie gather`), probe contract, probe inventory (Layers A–G), `RepoContext` schema, caching, output format, 6-week implementation plan (§12), tool dependencies (§6), and config (§13). The probe contract is forward-compatible with the service; bugs here propagate.
 3. **[docs/context.md](docs/context.md)** — service-shaped design for the gather layer specifically. Read for the MCP query interface and cross-repo SCIP detail.
 4. **[docs/auto-agent-design.md](docs/auto-agent-design.md)** — the original 7-stage service pipeline writeup. Read for stage-by-stage detail (Konveyor Kai prior art, recipe-first/LLM-fallback planning, Temporal rationale).
