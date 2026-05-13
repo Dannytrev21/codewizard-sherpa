@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codewizard-sherpa"
+description = "codewizard-sherpa — autonomous agentic system that opens PRs to modify code across repos at portfolio scale (local POC)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "codewizard-sherpa contributors" }]
+keywords = ["codegenie", "codewizard-sherpa", "agent", "gather"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: POSIX",
+  "Topic :: Software Development",
+]
+dynamic = ["version"]
+
+# Gather-pipeline runtime closure — what the `fence` CI job (ADR-0002) guards.
+# Adding an LLM SDK here is a violation of production ADR-0005 / phase ADR-0002
+# / CLAUDE.md §"No LLM anywhere in the gather pipeline".
+dependencies = [
+  "click",
+  "pyyaml",
+  "jsonschema>=4.21",
+  "pydantic>=2",
+  "blake3",
+  "structlog",
+]
+
+[project.optional-dependencies]
+# Intentionally empty — its existence marks the slot semantically; the runtime
+# closure is `[project.dependencies]` itself (ADR-0006 §Decision).
+gather = []
+
+# Harness extras. AC-7 of S1-01 invokes ruff/mypy/pytest; S1-04 needs
+# pre-commit; S1-04's `mkdocs build --strict` needs mkdocs-material.
+# Additional entries (import-linter, pip-audit, osv-scanner, bandit) are owned
+# by S1-04 / S1-05; the floor below is the minimum to keep Phase 0 boots green.
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "mypy",
+  "ruff",
+  "pre-commit",
+  "mkdocs-material",
+]
+
+# Phase 9+ slot — Temporal, Postgres clients land here.
+service = []
+
+# Phase 4+ slot — LLM SDKs (anthropic, langgraph, ...) land here, NOT in
+# `[project.dependencies]`. This is the load-bearing structural separation
+# the fence (ADR-0002) enforces.
+agents = []
+
+[project.scripts]
+codegenie = "codegenie.__main__:main"
+
+[tool.hatch.version]
+path = "src/codegenie/version.py"
+# Default regex doesn't tolerate the PEP 526 annotation
+# (`__version__: str = "..."`); broaden it to accept an optional `: <type>`.
+pattern = "^__version__(?:\\s*:\\s*[^=]+)?\\s*=\\s*['\"](?P<version>[^'\"]+)['\"]"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codegenie"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/codegenie",
+  "README.md",
+  "pyproject.toml",
+]

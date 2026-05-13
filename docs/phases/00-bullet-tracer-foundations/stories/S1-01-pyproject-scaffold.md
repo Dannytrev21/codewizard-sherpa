@@ -1,10 +1,33 @@
 # Story S1-01 — Pyproject scaffold + extras shape
 
 **Step:** Step 1 — Establish project skeleton, tooling, and the `fence` CI job
-**Status:** Ready (validated 2026-05-12 — HARDENED)
+**Status:** Done (executed 2026-05-12)
 **Effort:** M
 **Depends on:** —
 **ADRs honored:** ADR-0006, ADR-0002, ADR-0010
+
+## Execution evidence
+
+- Red-phase commit (test exists, `src/codegenie/` does not): `6b67775` — `test(phase-0): S1-01 red — pin pyproject closure + four-slot extras shape`
+- Green-phase commit: see follow-up `S1-01 green` commit in the same push.
+- Attempt log: [`_attempts/S1-01.md`](_attempts/S1-01.md)
+- Tests: `tests/unit/test_packaging.py` — 8 passed in 0.07s
+- Lint: `ruff check src/ tests/` — clean; `ruff format --check` — clean
+- Types: `mypy --strict src/codegenie/` — Success: no issues found in 3 source files
+- Smoke: `python -m codegenie --help` → exit 0, non-empty stdout (`Usage: codegenie [OPTIONS]`).
+- Version coherence: `importlib.metadata.distribution("codewizard-sherpa").metadata["Version"] == codegenie.__version__ == "0.0.1"`.
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC-1 | ✅ | `pyproject.toml` — `[build-system]` hatchling; `name = "codewizard-sherpa"`; `requires-python = ">=3.11"`; `dynamic = ["version"]`; `[tool.hatch.version] path = "src/codegenie/version.py"`. |
+| AC-2 | ✅ | `tests/unit/test_packaging.py::test_runtime_dependencies_are_exactly_adr_0006_closure` + `…carry_required_version_specifiers` PASS. |
+| AC-3 | ✅ | `tests/unit/test_packaging.py::test_optional_dependencies_declare_four_slots_and_empties_are_empty` + `…dev_extra_contains_ac_7_toolchain_floor` PASS. |
+| AC-4 | ✅ | `src/codegenie/{version,__init__,__main__}.py` all created; `version.py` is a top-level `__version__: str = "0.0.1"` assignment. |
+| AC-5 | ✅ | Red commit `6b67775` — `git ls-tree -r 6b67775 -- src/` empty; `tests/unit/test_packaging.py` present. |
+| AC-6 | ✅ | `test_runtime_dependencies_are_exactly_adr_0006_closure` asserts `names & LLM_SDKS == set()`. |
+| AC-7 | ✅ | `ruff check`, `ruff format --check`, `mypy --strict`, `pytest tests/unit/test_packaging.py` all exit 0. |
+| AC-8 | ✅ | `test_python_dash_m_codegenie_help_returns_zero` PASS; direct invocation: `Usage: codegenie [OPTIONS]`, exit 0. |
+| AC-9 | ✅ | `test_distribution_version_matches_package_version` PASS; both = `0.0.1`. |
 
 ## Validation notes
 
