@@ -1,10 +1,32 @@
 # Story S1-02 — Quality toolchain config (ruff + mypy + pytest + coverage)
 
 **Step:** Step 1 — Establish project skeleton, tooling, and the `fence` CI job
-**Status:** Ready
+**Status:** Ready (validated 2026-05-12 — HARDENED)
 **Effort:** S
 **Depends on:** S1-01
 **ADRs honored:** ADR-0007
+
+## Validation notes
+
+Validated: 2026-05-12
+Verdict: HARDENED
+Findings addressed: 12 total — 0 blocks, 7 hardens, 5 nits
+
+Changes applied:
+- AC-1 strengthened — now explicitly closes the "T20 selected but T201 stripped by `ignore`/`extend-ignore`/`per-file-ignores`" loophole; Test 1 verifies `line-length`, the absence of T201-stripping config keys, and the `[tool.ruff.format]` table — Coverage F1, F2, F8, Test-Quality F1.
+- AC-2 strengthened — Test 2 now verifies `warn_unreachable=true` (which `--strict` does *not* enable by default) and asserts the tests override actually sets `disallow_untyped_defs=false` AND `disallow_untyped_decorators=false`, not just that *some* override exists — Coverage F3, F4, Test-Quality F2.
+- AC-4 strengthened — Test 4 tightened to exact-equality on the `omit` list (a lazy impl exempting `probes/*` would have inflated coverage and silently weakened Phase 1's contract) — Test-Quality F5.
+- AC-5 relaxed — dropped "was committed at the red phase" (a process AC unverifiable from the working tree); replaced with "exists and is green" — Coverage F7.
+- AC-8 added — new structural AC: `[tool.coverage.run]` shape (`branch = true`, `source = ["src/codegenie"]`) is verified, closing the gap where `--cov-branch` in `addopts` could be a no-op — Coverage F5.
+- AC-9 added — new behavioral AC: `ruff check` actually rejects `print()` in `src/` with a T201 diagnostic. This is the only test that bridges from "config shape is right" to "tool actually enforces the load-bearing logging-strategy invariant" — Coverage F6, Test-Quality F4.
+- TDD plan rewritten to match the hardened ACs (Tests 1, 2, 4 expanded; Tests 5 and 6 added).
+
+Conflict resolutions:
+- Consistency F1 (`T20` family vs arch-named `T201`): both expressions are behavior-equivalent for the print ban; Test 1 now accepts either `"T20"` or `"T201"` in `select` *and* enforces no downstream weakening. This honors both the story's existing AC wording and `phase-arch-design.md §Harness engineering`'s explicit naming of T201.
+- Consistency F2 (goal "pytest -q exits 0" vs Refactor §3 "coverage may fail"): not a contradiction — the goal asserts the configured shape; the carve-out is the CI-side `--cov-fail-under=0` override documented in High-level-impl §Step 1 Done-criteria and already called out in this story's Implementer notes. No edit.
+- Deferred-enforceability gap (Consistency F3, observational): `pytest-cov` does not expose a separate `--cov-fail-under-branch=75` flag, so the 75% branch floor (`phase-arch-design.md §Tradeoffs`) is collected (via `--cov-branch`) but not gate-enforced from `addopts`. This is a phase-arch-level limitation, not a story-level fix; surface but do not edit.
+
+Full audit log: [`_validation/S1-02-quality-toolchain-config.md`](_validation/S1-02-quality-toolchain-config.md)
 
 ## Context
 
@@ -34,13 +56,15 @@ Running `ruff check .`, `ruff format --check .`, `mypy --strict src/`, and `pyte
 
 ## Acceptance criteria
 
-- [ ] `pyproject.toml` contains `[tool.ruff]` with `target-version = "py311"`, `line-length = 100`, and `[tool.ruff.lint]` selecting at minimum `E`, `F`, `I` (imports), `B` (bugbear), `UP` (pyupgrade), `T20` (no-`print`); and `[tool.ruff.format]` enabled.
-- [ ] `pyproject.toml` contains `[tool.mypy]` with `python_version = "3.11"`, `strict = true`, `warn_unreachable = true`, plus a `[[tool.mypy.overrides]]` block targeting `tests/*` that relaxes `disallow_untyped_defs` and `disallow_untyped_decorators`.
-- [ ] `pyproject.toml` contains `[tool.pytest.ini_options]` declaring `asyncio_mode = "auto"`, `testpaths = ["tests"]`, and `addopts = "-q --cov=src/codegenie --cov-branch --cov-fail-under=85"`.
-- [ ] `pyproject.toml` contains `[tool.coverage.run]` with `branch = true` and `source = ["src/codegenie"]`; and `[tool.coverage.report]` with `omit = ["src/codegenie/cli.py"]` (the architectural exemption).
-- [ ] The TDD red test at `tests/unit/test_toolchain_config.py` exists, was committed at the red phase, and is green.
-- [ ] `ruff check .` and `ruff format --check .` exit 0 on the current tree (no source code regresses against the new config).
-- [ ] `mypy --strict src/` exits 0 on the current tree.
+- [ ] AC-1: `pyproject.toml` contains `[tool.ruff]` with `target-version = "py311"`, `line-length = 100`, and `[tool.ruff.lint]` selecting at minimum `E`, `F`, `I` (imports), `B` (bugbear), `UP` (pyupgrade), and `T20` *or* `T201` (no-`print` — either expression is acceptable; `T20` is the family that includes `T201`); and `[tool.ruff.format]` table is declared. The T201 rule must remain *effective for `src/`* — neither `[tool.ruff.lint.ignore]`, `[tool.ruff.lint.extend-ignore]`, nor `[tool.ruff.lint.per-file-ignores]` may strip `T201` (or its family `T20`) from any `src/` pattern. (validator: hardened from original — original test used `issubset` against the family `T20` and never checked `ignore`/`extend-ignore`/`per-file-ignores`; `line-length` and `[tool.ruff.format]` were named in the AC but not asserted.)
+- [ ] AC-2: `pyproject.toml` contains `[tool.mypy]` with `python_version = "3.11"`, `strict = true`, **`warn_unreachable = true`** (this is *not* enabled by `strict`; it must be set explicitly), plus a `[[tool.mypy.overrides]]` block whose `module` field matches a `tests`-rooted pattern (`"tests"`, `"tests.*"`, or a list containing one of those) and which sets **both** `disallow_untyped_defs = false` AND `disallow_untyped_decorators = false`. A bare override block with no flags is *not* sufficient. (validator: hardened — original test asserted only that *some* override block existed and that its `module` string contained `"tests"` as a substring; mutations like `module = "src/foo/contests.py"` with no flags would have passed.)
+- [ ] AC-3: `pyproject.toml` contains `[tool.pytest.ini_options]` declaring `asyncio_mode = "auto"`, `testpaths = ["tests"]`, and `addopts` containing the tokens `--cov=src/codegenie`, `--cov-branch`, and `--cov-fail-under=85`.
+- [ ] AC-4: `[tool.coverage.report]` declares `omit == ["src/codegenie/cli.py"]` **exactly** (no other entries — `cli.py` is the only architecturally-permitted exemption per `phase-arch-design.md §Testing strategy / Test pyramid`). (validator: hardened — original test used `in omit`; a lazy impl exempting `probes/*` would have inflated coverage and silently weakened Phase 1's contract.)
+- [ ] AC-5: The TDD test file `tests/unit/test_toolchain_config.py` exists, and `pytest -q tests/unit/test_toolchain_config.py` exits 0. (validator: relaxed — removed unverifiable "was committed at the red phase" process clause; the executor's TDD workflow already enforces red→green order via its own attempt log.)
+- [ ] AC-6: `ruff check .` and `ruff format --check .` exit 0 on the current tree (no source code regresses against the new config).
+- [ ] AC-7: `mypy --strict src/` exits 0 on the current tree.
+- [ ] AC-8: `[tool.coverage.run]` declares `branch = true` AND `source = ["src/codegenie"]`. Without these, the `--cov-branch` token in `addopts` is a no-op and the 75% branch floor (`phase-arch-design.md §Tradeoffs`) becomes unenforceable for every subsequent phase. (validator: added — load-bearing for the 85/75 coverage floor; no original AC covered the `[tool.coverage.run]` table.)
+- [ ] AC-9: Running `ruff check` (with this story's `pyproject.toml` config applied) against a Python file under `src/codegenie/` containing the literal text `print('canary')` exits **non-zero** and emits a diagnostic referencing rule code `T201`. This is the *behavioral* contract for the load-bearing "no `print()` in `src/`" invariant from `phase-arch-design.md §Harness engineering / Logging strategy`. (validator: added — without this, any combination of `ignore`, `extend-ignore`, or `per-file-ignores` weakening that the introspection tests don't enumerate would still ship; the behavioral test catches unknown-unknown weakenings.)
 
 ## Implementation outline
 
@@ -58,6 +82,8 @@ Test file path: `tests/unit/test_toolchain_config.py`
 
 ```python
 # tests/unit/test_toolchain_config.py
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -65,62 +91,167 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 
+# Distribution-of-tasks for ruff's "print is banned" invariant: either the
+# T20 family OR the specific T201 rule satisfies AC-1 (T20 ⊇ T201).
+PRINT_BAN_TOKENS = {"T20", "T201"}
+
 
 def _load() -> dict:
     return tomllib.loads(PYPROJECT.read_text())
 
 
-def test_ruff_targets_py311_and_selects_required_rules() -> None:
-    # arrange: load pyproject.toml
+def test_ruff_targets_py311_with_line_length_and_effective_print_ban() -> None:
+    # AC-1: target, line-length, format-table, and an *effective* print ban.
     cfg = _load()
-    # act: read the [tool.ruff] table
     ruff = cfg["tool"]["ruff"]
-    # assert: 3.11 target so we can use the union "X | Y" syntax everywhere
     assert ruff["target-version"] == "py311"
-    selected = set(ruff["lint"]["select"])
-    # T20 bans `print(` in src/; required by phase-arch §Harness engineering "Logging strategy"
-    assert {"E", "F", "I", "B", "UP", "T20"}.issubset(selected)
+    # line-length is contract: pre-commit hooks in S1-04 reformat to this width.
+    assert ruff["line-length"] == 100
+    # [tool.ruff.format] table must be declared (signals format-config opt-in;
+    # ruff format applies even with an empty sub-table, but the declaration is
+    # the AC-named opt-in).
+    assert "format" in ruff, "[tool.ruff.format] table must be declared"
+
+    lint = ruff["lint"]
+    selected = set(lint["select"])
+    assert {"E", "F", "I", "B", "UP"}.issubset(selected)
+    # Accept either the family token "T20" or the specific rule "T201". The
+    # arch (phase-arch-design.md §Harness engineering) names T201; either is
+    # behavior-equivalent.
+    assert PRINT_BAN_TOKENS & selected, (
+        f"AC-1: ruff must select T20 or T201 to ban print() in src/; "
+        f"got select = {sorted(selected)}"
+    )
+
+    # Defense-in-depth: even if T20/T201 is selected, downstream weakening
+    # would silently disable it. Reject all known weakening surfaces.
+    ignored = set(lint.get("ignore", []))
+    extend_ignored = set(lint.get("extend-ignore", []))
+    for bucket_name, bucket in (("ignore", ignored), ("extend-ignore", extend_ignored)):
+        assert not (PRINT_BAN_TOKENS & bucket), (
+            f"AC-1: [tool.ruff.lint.{bucket_name}] must not strip T201/T20; "
+            f"got {bucket_name} = {sorted(bucket)}"
+        )
+    per_file = lint.get("per-file-ignores", {}) or {}
+    for pattern, rules in per_file.items():
+        # Heuristic: any pattern targeting src/ (positively or via a glob) must
+        # not weaken the print ban.
+        if pattern.startswith("src/") or pattern == "src" or pattern == "**/src/**":
+            rule_set = set(rules) if not isinstance(rules, str) else {rules}
+            assert not (PRINT_BAN_TOKENS & rule_set), (
+                f"AC-1: per-file-ignores must not disable T201/T20 for src/ "
+                f"(violation: {pattern!r} -> {rules!r})"
+            )
 
 
-def test_mypy_strict_on_src_relaxed_on_tests() -> None:
+def test_mypy_strict_with_warn_unreachable_and_tests_override_relaxed() -> None:
+    # AC-2: strict + warn_unreachable + a tests override that actually relaxes
+    # the two named flags (not just a bare override block).
     cfg = _load()
     mypy = cfg["tool"]["mypy"]
-    # assert: strict-everywhere on src
     assert mypy["strict"] is True
     assert mypy["python_version"] == "3.11"
-    # assert: a tests-relaxation override exists (otherwise pytest fixtures hit
-    # disallow_untyped_defs and the test surface gets noisy for no value)
+    # warn_unreachable is NOT enabled by --strict (it's a strict-extra); without
+    # explicit `true`, dead-code-after-narrowing slips through silently.
+    assert mypy["warn_unreachable"] is True, (
+        "AC-2: warn_unreachable must be explicitly true (not enabled by strict)"
+    )
+
     overrides = mypy["overrides"]
-    test_overrides = [o for o in overrides if o["module"].startswith("tests")
-                      or "tests" in str(o.get("module", ""))]
-    assert test_overrides, "must declare a tests override block"
+    tests_override = None
+    for o in overrides:
+        module = o.get("module", "")
+        modules = module if isinstance(module, list) else [module]
+        if any(m == "tests" or m == "tests.*" or m.startswith("tests.")
+               for m in modules):
+            tests_override = o
+            break
+    assert tests_override is not None, (
+        "AC-2: must declare a [[tool.mypy.overrides]] block targeting tests"
+    )
+    # A bare override with no flags is a no-op; AC-2 demands both relaxations.
+    assert tests_override.get("disallow_untyped_defs") is False, (
+        "AC-2: tests override must set disallow_untyped_defs = false"
+    )
+    assert tests_override.get("disallow_untyped_decorators") is False, (
+        "AC-2: tests override must set disallow_untyped_decorators = false"
+    )
 
 
 def test_pytest_runs_under_asyncio_auto_with_coverage_gate() -> None:
+    # AC-3 unchanged.
     cfg = _load()
     pt = cfg["tool"]["pytest"]["ini_options"]
-    # assert: asyncio_mode=auto so coordinator tests (S3-05) don't need decorators
+    # asyncio_mode=auto so coordinator tests (S3-05) don't need decorators
     assert pt["asyncio_mode"] == "auto"
-    # assert: testpaths anchored to tests/ (no accidental src/ scanning)
+    # testpaths anchored to tests/ (no accidental src/ scanning)
     assert pt["testpaths"] == ["tests"]
-    # assert: the coverage gate is wired (even though it goes live in S4-04)
+    # the coverage gate is wired (even though it goes live in S4-04)
     addopts = pt["addopts"]
     assert "--cov=src/codegenie" in addopts
     assert "--cov-branch" in addopts
     assert "--cov-fail-under=85" in addopts
 
 
-def test_coverage_excludes_cli_py_per_phase_arch_design() -> None:
-    # arrange: phase-arch §Testing strategy / Test pyramid explicitly exempts cli.py
-    # because the smoke test covers it (S4-04) and unit-testing click is low-value.
+def test_coverage_excludes_only_cli_py_per_phase_arch_design() -> None:
+    # AC-4: exact-equality on omit. phase-arch §Testing strategy / Test pyramid
+    # exempts ONLY cli.py. A lazy impl exempting probes/* would inflate coverage
+    # and silently weaken Phase 1's contract.
     cfg = _load()
     omit = cfg["tool"]["coverage"]["report"]["omit"]
-    # act+assert: cli.py is excluded — this is a deliberate architectural choice,
-    # not a way to inflate coverage. Document the exemption inline in pyproject.toml.
-    assert "src/codegenie/cli.py" in omit
+    assert omit == ["src/codegenie/cli.py"], (
+        "AC-4: only cli.py may be omitted; "
+        f"got omit = {omit}"
+    )
+
+
+def test_coverage_run_collects_branch_and_sources_only_src_codegenie() -> None:
+    # AC-8: [tool.coverage.run] shape. Without branch=true, --cov-branch in
+    # addopts is a no-op; without source pinned to src/codegenie, coverage
+    # measurement drifts onto incidental working-dir files.
+    cfg = _load()
+    run = cfg["tool"]["coverage"]["run"]
+    assert run["branch"] is True, "AC-8: [tool.coverage.run].branch must be true"
+    assert run["source"] == ["src/codegenie"], (
+        f"AC-8: source must be exactly ['src/codegenie']; got {run['source']}"
+    )
+
+
+def test_ruff_check_rejects_print_in_src_per_phase_arch_logging_strategy() -> None:
+    # AC-9: behavioral test — proves the WIRED configuration enforces the
+    # "no print() in src/" invariant from phase-arch-design.md §Harness
+    # engineering / Logging strategy. This is the only test in the plan that
+    # actually invokes ruff; it catches any unknown-unknown weakening of the
+    # rule selection (e.g., a future ruff config key that strips T201) that
+    # the introspection tests above can't enumerate.
+    canary = PROJECT_ROOT / "src" / "codegenie" / "_validator_canary_for_test.py"
+    canary.write_text("print('canary')\n", encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--no-cache",
+             "--config", str(PYPROJECT), str(canary)],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        canary.unlink(missing_ok=True)
+    # Non-zero exit ⇒ ruff found at least one violation.
+    assert result.returncode != 0, (
+        f"AC-9: ruff must reject print() in src/; "
+        f"exit={result.returncode}, stdout={result.stdout!r}, "
+        f"stderr={result.stderr!r}"
+    )
+    # The diagnostic must cite T201 explicitly (so the failure is attributable
+    # to the print ban, not e.g. an unrelated E501 line-length hit).
+    combined = result.stdout + result.stderr
+    assert "T201" in combined, (
+        f"AC-9: expected T201 in diagnostic output; got: {combined}"
+    )
 ```
 
-The test fails initially because no `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, or `[tool.coverage]` blocks exist in S1-01's `pyproject.toml`. Run it, confirm `KeyError`, commit as the red marker.
+The six tests fail initially because no `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, or `[tool.coverage]` blocks exist in S1-01's `pyproject.toml`. Tests 1–5 fail with `KeyError`; Test 6 fails because (a) without `[tool.ruff.lint].select` containing `T20`/`T201`, the canary file's `print('canary')` is not flagged. Run them, confirm the expected failures, commit as the red marker.
 
 ### Green — make it pass
 
