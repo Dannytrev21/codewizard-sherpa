@@ -215,3 +215,55 @@ would have benefited from knowing.
   patchable from outside. Lesson: every wrappable surface a downstream test
   may want to introspect should be a `_underscored` top-level function. Has
   no runtime cost; preserves test-time hookability. Discovered in **S3-04**.
+
+## Coordinator + structlog + asyncio (S3-05)
+
+- **Pytest 9 intercepts `raise KeyboardInterrupt()` regardless of
+  `pytest.raises` / in-test `try` context.** It treats KeyboardInterrupt as
+  Ctrl-C abort and short-circuits the test before the except clause runs.
+  For AC-style "BaseException carve-out" coverage (`except Exception` must
+  not trap a true `BaseException`), use a project-local `BaseException`
+  subclass — the failure-isolation logic under test is identical, and
+  pytest doesn't intercept arbitrary BaseException subclasses. Discovered
+  in **S3-05**.
+- **`structlog.contextvars.bind_contextvars` MUST be paired with
+  `structlog.contextvars.clear_contextvars()` in a `finally` block.**
+  Without the finally clause, the binding (here `run_id`) leaks into
+  subsequent tests sharing the process — per-test event-stream isolation
+  silently breaks. Discovered in **S3-05** while wiring `run_id` for AC-23.
+- **`dataclasses.replace(snap)` does NOT isolate mutable fields.** It
+  produces a fresh outer dataclass instance, but `detected_languages` and
+  `config` (dicts) remain shared references. If a probe mutates one of
+  those in-place (AC-18), the mutation leaks to sibling probes' views.
+  Shallow-copy the mutable fields explicitly: `dataclasses.replace(snap,
+  detected_languages=dict(snap.detected_languages))`. Discovered in
+  **S3-05**.
+- **`mypy --strict` + `warn_unreachable` flags `sys.platform == "darwin"`-gated
+  early-return branches as dead code on the dev platform.** The compiler narrows
+  `sys.platform` to a literal string on the dev machine. Use a single ternary
+  to compute the platform-dependent value instead of branching with `return`
+  statements. Same problem with `if TYPE_CHECKING:`-only blocks that
+  return early. Discovered in **S3-05** while normalizing `ru_maxrss` units.
+- **`Probe.run` signature types `ctx: ProbeContext` but Python doesn't enforce
+  it.** The coordinator passes a `BudgetingContext` (duck-typed surface with
+  `workspace`, `report_bytes`) rather than constructing a full `ProbeContext`.
+  Works because Phase 0's only real probe (`LanguageDetectionProbe`, S4-01)
+  needs nothing beyond `workspace`. Phase 1+ probe-authoring guide MUST
+  codify which `ProbeContext` attributes are MANDATORY vs OPTIONAL so a
+  probe author can rely on the contract without inspecting the coordinator
+  internals. Discovered in **S3-05**.
+- **Adding a new `CodegenieError` subclass requires three touches.** (a)
+  Declare the class in `src/codegenie/errors.py` with a docstring containing
+  one of the slugs in `DOCUMENTED_MODULE_SLUGS` ({exec, cache, sanitizer,
+  validator, writer, coordinator, config, tool_check, schema}); (b) add it
+  to `__all__`; (c) add the string to `EXPECTED_SUBCLASSES` in
+  `tests/unit/test_errors.py`. The public-surface-closure test
+  (S2-01 AC-1) pins this triple — a typo in any of them fails CI loudly.
+  Discovered in **S3-05** while adding `ProbeBudgetExceeded`.
+- **Tests pass instances, AC text often says `list[type[Probe]]`.** When the
+  AC's typed signature contradicts the concrete test code in the same
+  story, follow the tests — AC text is doc-lag; concrete-runnable tests
+  are the runtime contract. Document the divergence in the attempt log as
+  a follow-up doc-amendment. Discovered in **S3-05**: the gather signature
+  takes `Sequence[Probe]` (instances) because the tests use per-instance
+  hooks (`_run`, `_seen_snapshots`, `probe.run = AsyncMock(...)`).

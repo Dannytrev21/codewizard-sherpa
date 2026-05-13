@@ -1,7 +1,7 @@
 # Story S3-05 — Coordinator + prelude pass + resource budget
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Ready (Hardened)
+**Status:** Done
 **Effort:** L
 **Depends on:** S3-01, S3-02, S3-03, S3-04
 **See also:** S4-01 (`LanguageDetectionProbe` — first real `tier="base"` probe); S3-06 (audit-writer reads `executions[name].key` on cache hits)

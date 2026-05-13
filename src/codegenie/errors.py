@@ -23,6 +23,7 @@ __all__ = [
     "ToolMissingError",
     "ProbeError",
     "ProbeTimeoutError",
+    "ProbeBudgetExceeded",
     "CacheError",
     "SchemaValidationError",
     "SecretLikelyFieldNameError",
@@ -49,6 +50,12 @@ class ProbeError(CodegenieError):
 
 class ProbeTimeoutError(CodegenieError):
     """Raised by the coordinator when a probe exceeds its per-probe wall-clock budget."""
+
+
+class ProbeBudgetExceeded(CodegenieError):
+    """Raised by the coordinator's ``BudgetingContext.report_bytes`` when a
+    probe's cumulative raw-artifact write exceeds its declared
+    ``raw_artifact_mb`` budget (S3-05 / Gap 3)."""
 
 
 class CacheError(CodegenieError):

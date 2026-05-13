@@ -18,6 +18,7 @@ EXPECTED_SUBCLASSES = {
     "ToolMissingError",
     "ProbeError",
     "ProbeTimeoutError",
+    "ProbeBudgetExceeded",
     "CacheError",
     "SchemaValidationError",
     "SecretLikelyFieldNameError",
