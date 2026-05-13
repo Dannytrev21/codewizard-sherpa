@@ -1,7 +1,22 @@
 # Story S3-06 — Audit writer + `audit verify` re-verification
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Ready (Hardened)
+**Status:** Done — 2026-05-13 (phase-story-executor attempt 1, GREEN). Evidence:
+[`src/codegenie/audit.py`](../../../../src/codegenie/audit.py),
+[`src/codegenie/cache/store.py`](../../../../src/codegenie/cache/store.py)
+(`serialize_output`, `CacheStore.get_index_record`),
+[`src/codegenie/coordinator/coordinator.py`](../../../../src/codegenie/coordinator/coordinator.py)
+(`Ran(output, key)`, errored-Ran cache gate),
+[`src/codegenie/cli.py`](../../../../src/codegenie/cli.py)
+(`cli audit verify` exit-slot 4),
+[`tests/unit/test_audit_anchors.py`](../../../../tests/unit/test_audit_anchors.py)
+(28 tests, all green),
+[`tests/unit/test_coordinator.py`](../../../../tests/unit/test_coordinator.py)
+(`test_dispatch_does_not_cache_errored_ran`, `test_ran_carries_cache_key`),
+[`tests/snapshots/audit_event_names.json`](../../../../tests/snapshots/audit_event_names.json).
+Full suite 486 passed (92.92% coverage); `ruff check` / `ruff format --check` /
+`mypy --strict src/` / `pre-commit run --all-files` / `lint-imports` all clean.
+Attempt log: [`_attempts/S3-06.md`](_attempts/S3-06.md).
 **Effort:** S
 **Depends on:** S3-05
 **See also:** S4-01 (`LanguageDetectionProbe` — first real probe whose output the verifier walks); S4-02 (CLI exit-code table — this story stubs the `audit verify` subcommand at slot `4`)

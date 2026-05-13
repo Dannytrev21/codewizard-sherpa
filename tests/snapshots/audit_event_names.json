@@ -1,0 +1,8 @@
+[
+  "audit.verify.mismatch",
+  "audit.verify.missing_blob",
+  "audit.verify.ok",
+  "audit.verify.yaml_mismatch",
+  "audit.write.failed",
+  "audit.write.ok"
+]

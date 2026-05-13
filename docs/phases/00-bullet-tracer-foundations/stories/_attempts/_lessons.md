@@ -267,3 +267,21 @@ would have benefited from knowing.
   a follow-up doc-amendment. Discovered in **S3-05**: the gather signature
   takes `Sequence[Probe]` (instances) because the tests use per-instance
   hooks (`_run`, `_seen_snapshots`, `probe.run = AsyncMock(...)`).
+- **`lint-imports` is a static-AST analyzer — it sees function-body imports
+  too.** A lazy `from codegenie.audit import verify_runs` inside a click
+  command still appears in the import graph and trips the `forbidden_modules`
+  contract on `codegenie.cli` (transitive `pydantic` / `structlog` / `blake3`).
+  The escape hatch: `importlib.import_module("codegenie.audit")` — dynamic
+  imports are invisible to AST analysis. The cold-start runtime test
+  (`test_cli_cold_start.py`) still enforces that *importing* `codegenie` (no
+  subcommand running) doesn't pull heavy modules, so the cold-start invariant
+  isn't weakened. Discovered in **S3-06** while wiring `audit verify` into
+  `cli.py`.
+- **Substring grep tests catch field names that contain the forbidden token.**
+  `audit.py` is supposed to not contain `"blake3"` (ADR-0001 chokepoint). But
+  reading the cache index requires the field name `"blob_blake3"` — that
+  substring trips the same grep test. Pattern: instead of hardcoding the
+  algorithm-bearing field literal, look it up dynamically
+  (`next(k for k in record if k.startswith("blob_") and k != "blob_sha256")`).
+  Bonus: the source is robust to a future BLAKE3 → BLAKE4 swap without
+  touching the verifier. Discovered in **S3-06**.

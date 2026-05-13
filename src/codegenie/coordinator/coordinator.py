@@ -94,9 +94,18 @@ _TIMEOUT_GRACE_S: float = 0.1
 
 @dataclass(frozen=True)
 class Ran:
-    """Probe ran (success OR failure-isolated). Carries the post-sanitize output."""
+    """Probe ran (success OR failure-isolated). Carries the post-sanitize output
+    and the SHA-256 cache key ``CacheStore.key_for`` returned for this dispatch.
+
+    The ``key`` field is the **audit anchor** S3-06's ``AuditWriter`` reads
+    directly — re-deriving the key at audit-write time is forbidden because
+    that would record *what we'd ask for now*, not *what the coordinator
+    actually asked* (which may differ if upstream probe metadata drifted
+    between dispatch and audit-record write). ADR-0004 §Consequences.
+    """
 
     output: SanitizedProbeOutput
+    key: str
 
 
 @dataclass(frozen=True)
@@ -356,7 +365,7 @@ async def _dispatch_one(
         if not sanitized.errors:
             cache.put(key, cast(ProbeOutput, sanitized))
 
-        return name, sanitized, Ran(output=sanitized)
+        return name, sanitized, Ran(output=sanitized, key=key)
 
 
 def _is_pydantic_validation_error(exc: BaseException) -> bool:

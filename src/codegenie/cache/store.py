@@ -53,10 +53,11 @@ from codegenie.errors import CacheError
 from codegenie.hashing import content_hash_bytes, identity_hash_bytes
 
 if TYPE_CHECKING:
+    from codegenie.output.sanitizer import SanitizedProbeOutput
     from codegenie.probes.base import ProbeOutput, RepoSnapshot, Task
 
 
-__all__ = ["CacheStore"]
+__all__ = ["CacheStore", "serialize_output"]
 
 _MAX_RECORD_BYTES = 4096  # PIPE_BUF on Linux/macOS; concurrent O_APPEND atomicity bound
 _DIR_MODE = 0o700
@@ -65,14 +66,21 @@ _FILE_MODE = 0o600
 _log = structlog.get_logger(__name__)
 
 
-def _serialize_output(output: ProbeOutput) -> bytes:
-    """Serialize a :class:`ProbeOutput` to deterministic JSON bytes.
+def serialize_output(output: ProbeOutput | SanitizedProbeOutput) -> bytes:
+    """Serialize a probe output to deterministic JSON bytes.
 
-    ``sort_keys=True`` + ``separators=(",", ":")`` makes the byte stream
-    byte-identical for byte-identical content — required so the BLAKE3
-    filename and the SHA-256 tamper-check are reproducible on second run.
-    ``raw_artifacts`` is serialized as a list of stringified paths;
-    deserialization restores them as :class:`pathlib.Path` instances.
+    Single source of truth for blob canonicalization — used by both
+    :meth:`CacheStore.put` (writes the blob) and
+    :class:`codegenie.audit.AuditWriter` (computes the audit anchor over the
+    *same* bytes). ``sort_keys=True`` + ``separators=(",", ":")`` produces
+    byte-identical output for byte-identical content, so the BLAKE3 filename
+    and SHA-256 audit anchor are both reproducible on a second run.
+
+    The signature accepts both :class:`ProbeOutput` and
+    :class:`SanitizedProbeOutput` — they share the same six fields by
+    construction (``output/sanitizer.py:50``), and the audit writer hashes
+    the *sanitized* form (ADR-0004 §Consequences) while the cache stores
+    the same sanitized bytes.
     """
     payload: dict[str, Any] = {
         "schema_slice": output.schema_slice,
@@ -83,6 +91,13 @@ def _serialize_output(output: ProbeOutput) -> bytes:
         "errors": list(output.errors),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+# Backward-compatible alias for the pre-S3-06 private name. The S3-01 test
+# ``test_serialized_blob_is_deterministic`` imports ``_serialize_output``;
+# keeping the alias avoids a churn-only test edit. New call sites use the
+# public ``serialize_output``.
+_serialize_output = serialize_output
 
 
 def _deserialize_output(blob_bytes: bytes) -> ProbeOutput:
@@ -191,7 +206,7 @@ class CacheStore:
             _log.info("cache.miss", key=key)
             return None
 
-        record = self._latest_record_for(key)
+        record = self.get_index_record(key)
         if record is None:
             _log.info("cache.miss", key=key)
             return None
@@ -219,13 +234,22 @@ class CacheStore:
             _log.info("cache.blob.invalid", key=key, reason="json_decode")
             return None
 
-    def _latest_record_for(self, key: str) -> dict[str, Any] | None:
-        """Linear scan; return the LAST record whose ``"key"`` equals ``key``.
+    def get_index_record(self, key: str) -> dict[str, Any] | None:
+        """Linear scan; return the LAST index record whose ``"key"`` equals ``key``.
 
-        Last-write-wins is the story's contract (AC-11): two ``put`` calls
-        with the same key result in two index records; ``get`` returns the
-        most recent. A mutant returning the first match regresses.
+        Last-write-wins is the cache's contract: two ``put`` calls with the
+        same key result in two index records; this returns the most recent.
+        A mutant returning the first match regresses.
+
+        Public for the S3-06 audit verifier — promoted from the previous
+        private ``_latest_record_for`` so ``codegenie.audit.verify_runs`` can
+        resolve a ``cache_key`` to its on-disk blob path without going
+        through :meth:`get` (which would re-deserialize and mask byte-level
+        tampering). Returns ``None`` if no record matches or the index file
+        does not exist.
         """
+        if not self._index_path.exists():
+            return None
         latest: dict[str, Any] | None = None
         with self._index_path.open("r", encoding="utf-8") as fh:
             for line in fh:
@@ -264,7 +288,7 @@ class CacheStore:
                 "CacheStore.key_for(probe, snapshot, task) before storing the output."
             ) from exc
 
-        blob_bytes = _serialize_output(output)
+        blob_bytes = serialize_output(output)
         blob_blake3 = content_hash_bytes(blob_bytes)
         blob_sha256 = identity_hash_bytes(blob_bytes)
 

@@ -514,3 +514,48 @@ def test_build_snapshot_falls_back_when_not_a_git_repo(tmp_path):
     assert snap.root == tmp_path.resolve()
     assert snap.root.is_absolute()
     assert snap.detected_languages == {}
+
+
+# ─────────── S3-06 amendment — errored Ran is not cached (AC-6) ──────────
+
+
+async def test_dispatch_does_not_cache_errored_ran(
+    tmp_path, fresh_cache, fresh_sanitizer, fresh_config
+):
+    """S3-06 AC-6: errored probe outputs must NOT be persisted to the cache.
+
+    Errored outputs are not replayable — caching them would mean the *next*
+    gather quietly returns the failure from disk instead of re-running the
+    probe. The coordinator's ``_dispatch_one`` gates ``cache.put`` on
+    ``not sanitized.errors``.
+    """
+
+    async def boom(_s, _c):
+        raise RuntimeError("kaboom")
+
+    probe = FakeProbe(name="bad", _run=boom)
+    snap, task = make_snapshot(tmp_path), make_task()
+
+    await gather(snap, task, [probe], fresh_config, fresh_cache, fresh_sanitizer)
+
+    key = fresh_cache.key_for(probe, snap, task)
+    assert fresh_cache.get_index_record(key) is None
+    assert fresh_cache.get(key) is None
+
+
+async def test_ran_carries_cache_key(tmp_path, fresh_cache, fresh_sanitizer, fresh_config):
+    """S3-06 AC-5: ``Ran`` carries the cache key the dispatch used.
+
+    The audit writer reads ``Ran.key`` directly — re-deriving via
+    ``cache.key_for`` at audit-write time would record what we'd ask for
+    *now* rather than what the coordinator actually asked.
+    """
+    probe = FakeProbe(name="p")
+    snap, task = make_snapshot(tmp_path), make_task()
+
+    result = await gather(snap, task, [probe], fresh_config, fresh_cache, fresh_sanitizer)
+
+    execution = result.executions["p"]
+    assert isinstance(execution, Ran)
+    expected_key = fresh_cache.key_for(probe, snap, task)
+    assert execution.key == expected_key
