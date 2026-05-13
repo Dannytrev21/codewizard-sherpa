@@ -1,7 +1,7 @@
 # Story S2-02 — Probe ABC + snapshot regen script
 
 **Step:** Step 2 — Plant the frozen contracts (probe ABC, hashing, exec allowlist, schema, error hierarchy)
-**Status:** Ready (Validated 2026-05-13 — HARDENED)
+**Status:** Done (Implemented 2026-05-13 — GREEN)
 **Effort:** M
 **Depends on:** S1-05
 **ADRs honored:** ADR-0007

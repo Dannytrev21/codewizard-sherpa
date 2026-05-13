@@ -1,0 +1,198 @@
+{
+  "snapshot_schema_version": 1,
+  "doc_fingerprint": "570b035fe305d0f20ab425a14fca7f1eb0fe60c9b8bdd40c2ab0b06652613580",
+  "structural_signature": {
+    "Probe": {
+      "bases": [
+        "ABC"
+      ],
+      "decorators": [],
+      "fields": [],
+      "methods": [
+        "applies",
+        "cache_key",
+        "run"
+      ],
+      "class_attributes": [
+        {
+          "name": "name",
+          "type": "<class 'str'>",
+          "default": null
+        },
+        {
+          "name": "layer",
+          "type": "typing.Literal['A', 'B', 'C', 'D', 'E', 'F', 'G']",
+          "default": null
+        },
+        {
+          "name": "tier",
+          "type": "typing.Literal['base', 'task_specific']",
+          "default": null
+        },
+        {
+          "name": "applies_to_tasks",
+          "type": "list[str]",
+          "default": null
+        },
+        {
+          "name": "applies_to_languages",
+          "type": "list[str]",
+          "default": null
+        },
+        {
+          "name": "requires",
+          "type": "list[str]",
+          "default": null
+        },
+        {
+          "name": "declared_inputs",
+          "type": "list[str]",
+          "default": null
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "<class 'int'>",
+          "default": "300"
+        },
+        {
+          "name": "cache_strategy",
+          "type": "typing.Literal['content', 'none']",
+          "default": "'content'"
+        }
+      ]
+    },
+    "ProbeContext": {
+      "bases": [
+        "object"
+      ],
+      "decorators": [
+        "dataclass"
+      ],
+      "fields": [
+        {
+          "name": "cache_dir",
+          "type": "<class 'pathlib.Path'>",
+          "default": null
+        },
+        {
+          "name": "output_dir",
+          "type": "<class 'pathlib.Path'>",
+          "default": null
+        },
+        {
+          "name": "workspace",
+          "type": "<class 'pathlib.Path'>",
+          "default": null
+        },
+        {
+          "name": "logger",
+          "type": "<class 'logging.Logger'>",
+          "default": null
+        },
+        {
+          "name": "config",
+          "type": "dict[str, typing.Any]",
+          "default": null
+        }
+      ],
+      "methods": [],
+      "class_attributes": []
+    },
+    "ProbeOutput": {
+      "bases": [
+        "object"
+      ],
+      "decorators": [
+        "dataclass"
+      ],
+      "fields": [
+        {
+          "name": "schema_slice",
+          "type": "dict[str, typing.Any]",
+          "default": null
+        },
+        {
+          "name": "raw_artifacts",
+          "type": "list[pathlib.Path]",
+          "default": null
+        },
+        {
+          "name": "confidence",
+          "type": "typing.Literal['high', 'medium', 'low']",
+          "default": null
+        },
+        {
+          "name": "duration_ms",
+          "type": "<class 'int'>",
+          "default": null
+        },
+        {
+          "name": "warnings",
+          "type": "list[str]",
+          "default": null
+        },
+        {
+          "name": "errors",
+          "type": "list[str]",
+          "default": null
+        }
+      ],
+      "methods": [],
+      "class_attributes": []
+    },
+    "RepoSnapshot": {
+      "bases": [
+        "object"
+      ],
+      "decorators": [
+        "dataclass"
+      ],
+      "fields": [
+        {
+          "name": "root",
+          "type": "<class 'pathlib.Path'>",
+          "default": null
+        },
+        {
+          "name": "git_commit",
+          "type": "str | None",
+          "default": null
+        },
+        {
+          "name": "detected_languages",
+          "type": "dict[str, int]",
+          "default": null
+        },
+        {
+          "name": "config",
+          "type": "dict[str, typing.Any]",
+          "default": null
+        }
+      ],
+      "methods": [],
+      "class_attributes": []
+    },
+    "Task": {
+      "bases": [
+        "object"
+      ],
+      "decorators": [
+        "dataclass"
+      ],
+      "fields": [
+        {
+          "name": "type",
+          "type": "<class 'str'>",
+          "default": null
+        },
+        {
+          "name": "options",
+          "type": "dict[str, typing.Any]",
+          "default": null
+        }
+      ],
+      "methods": [],
+      "class_attributes": []
+    }
+  }
+}

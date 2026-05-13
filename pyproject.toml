@@ -102,8 +102,19 @@ line-length = 100
 # T201 (print) is load-bearing: all logging goes through structlog.
 select = ["E", "F", "I", "B", "UP", "T201"]
 
+[tool.ruff.lint.per-file-ignores]
+# `codegenie.probes.base` is byte-for-byte `localv2.md §4` (ADR-0007). The
+# §4 source has aligned trailing comments (E501) and a declarative empty
+# `cache_key` method (B027) — both deliberate by the doc and not editable
+# code-side. Adding a third entry here requires updating ADR-0007.
+"src/codegenie/probes/base.py" = ["E501", "B027"]
+
 [tool.ruff.format]
-# Empty sub-table is the AC-named opt-in marker for ruff format.
+# `codegenie.probes.base` is excluded from ruff format because the doc
+# (`localv2.md §4`) is the source of truth and uses aligned trailing
+# comments + no blank line between successive `@dataclass` declarations.
+# Letting ruff reformat the file would silently drift it away from §4.
+exclude = ["src/codegenie/probes/base.py"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -120,11 +131,25 @@ module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_decorators = false
 
+[[tool.mypy.overrides]]
+# `codegenie.probes.base` is the frozen contract surface (ADR-0007). Its
+# methods are declared with ellipsis bodies (`...`) verbatim from
+# `localv2.md §4` — per ADR-0007 the doc is the source of truth and code
+# may not deviate. mypy's `empty-body` check is silenced here ONLY so the
+# contract surface can match §4 byte-for-byte; everything else under
+# `codegenie.*` stays under `--strict`.
+module = "codegenie.probes.base"
+disable_error_code = ["empty-body"]
+
 [tool.pytest.ini_options]
 # asyncio_mode = "auto" lets coroutine tests run without @pytest.mark.asyncio
 # — S3-05's coordinator tests depend on this.
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# `pythonpath = ["."]` so `tests/unit/test_probe_contract.py` (S2-02) can
+# import the regen helpers from the bare `scripts/regen_probe_contract_snapshot.py`
+# script without promoting `scripts/` to a package.
+pythonpath = ["."]
 # --cov-fail-under=85 is WIRED here; it goes live as a merge gate in S4-04
 # once the vertical slice produces enough real code to clear the floor.
 addopts = "-ra --strict-markers --cov=src/codegenie --cov-branch --cov-fail-under=85"

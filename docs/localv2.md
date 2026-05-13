@@ -285,6 +285,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Literal, Any
 from pathlib import Path
+from logging import Logger
 
 @dataclass
 class RepoSnapshot:
