@@ -1,10 +1,22 @@
 # Story S2-04 — Subprocess allowlist chokepoint
 
 **Step:** Step 2 — Plant the frozen contracts (probe ABC, hashing, exec allowlist, schema, error hierarchy)
-**Status:** Ready
+**Status:** Ready (HARDENED 2026-05-13)
 **Effort:** M
 **Depends on:** S2-01
 **ADRs honored:** ADR-0012
+
+## Validation notes
+
+**Validated:** 2026-05-13
+**Verdict:** HARDENED (phase-story-validator v1)
+**Findings addressed:** 25 total — 6 blocks, 13 hardens, 6 nits/informational
+
+**Surfaced for follow-up (does NOT block executor):**
+- ADR-0012 §Decision bullet 5 + `phase-arch-design.md §Component design` line 537 + arch §Edge cases row 4 all say the wrapper enforces "`cwd` resolved + must be under the analyzed-repo root." This story narrows the contract to "wrapper enforces exists + is-a-directory; under-repo-root is caller responsibility" (no `analyzed_repo_root` parameter is added in Phase 0). Reasoning: Phase 0's single callsite already resolves the repo root in the CLI (`Path.resolve(strict=True)`); adding a wrapper parameter for one callsite is YAGNI. **Action item:** amend ADR-0012 §Decision bullet 5 and arch line 537 to read "wrapper enforces existence + directory-ness; the *caller* enforces under-repo-root." Tracked here so the deviation is not silent.
+- Arch line 534 + ADR-0012 line 26 show the signature with `env_extra: dict[str, str] = {}` (the Python mutable-default footgun). This story corrects to `env_extra: dict[str, str] | None = None` per AC-3. **Action item:** amend ADR-0012 §Decision and arch §Component design to show the `| None = None` form. Since the signature is a "stable contract" per arch line 271, the deviation must land in writing.
+
+**Changes applied:** new ACs AC-10 through AC-14; strengthened ACs AC-1, AC-4(a), AC-4(b), AC-4(c)+(d), AC-4(f), AC-5, AC-6, AC-7; replaced flaky network-based timeout test with a deterministic mock-based escalation test; added explicit child-env spy pattern in env-strip test; added kwargs-spy test for `stdin=DEVNULL`; pinned `ProcessResult` immutability; pinned the signature default sentinel via `inspect.signature`. Full audit log: [`_validation/S2-04-exec-allowlist.md`](_validation/S2-04-exec-allowlist.md).
 
 ## Context
 
@@ -37,17 +49,21 @@ Foundational: S3-05's coordinator constructs `RepoSnapshot` via this wrapper, S4
 
 - [ ] `src/codegenie/exec.py` exports `ALLOWED_BINARIES: frozenset[str] = frozenset({"git"})` at module scope (Phase 0 set is exactly `{"git"}`; future binaries are deliberate-PR additions per ADR-0012).
 - [ ] `src/codegenie/exec.py` exports `ProcessResult` as a `@dataclass(frozen=True)` with fields `returncode: int`, `stdout: bytes`, `stderr: bytes`.
-- [ ] `src/codegenie/exec.py` exports `async def run_allowlisted(argv: list[str], *, cwd: Path, timeout_s: float, env_extra: dict[str, str] | None = None) -> ProcessResult`. **Default for `env_extra` is `None`** then normalized inside the body — never `{}` as a literal default (mutable-default footgun).
-- [ ] The wrapper enforces, in order: (a) `argv[0] not in ALLOWED_BINARIES` → `DisallowedSubprocessError` raised **before** any process spawn; (b) `cwd` resolved via `Path.resolve(strict=True)`, must be a directory, must not be a symlink that escapes the analyzed-repo root (caller responsibility to pass a vetted root; the wrapper rejects non-existent or non-directory `cwd`); (c) `shell=False` explicit; (d) `stdin=DEVNULL`; (e) env constructed as `{"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""), "LANG": os.environ.get("LANG", "C"), "LC_ALL": os.environ.get("LC_ALL", "C")} | env_extra`; (f) `SSH_AUTH_SOCK`, any `AWS_*`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` are **never** present in the child env (verified by the test).
-- [ ] Timeout discipline: `asyncio.wait_for(process.communicate(), timeout=timeout_s)`; on `asyncio.TimeoutError`, send `SIGTERM`, give 100 ms grace, then `SIGKILL` at `1.5 × timeout_s` cumulative; raise `ProbeTimeoutError` with elapsed-ms in the message.
-- [ ] If the binary is missing on `$PATH` (`FileNotFoundError` from `asyncio.create_subprocess_exec`), raise `ToolMissingError("git")` with an install hint in the message; the wrapper does **not** silently swallow this.
-- [ ] A weakref process-tracking table (`weakref.WeakValueDictionary[int, Process]`) registers running children so a coordinator-cancel path can SIGKILL stragglers (`phase-arch-design.md §Component design — Subprocess allowlist`); module-level constant, not per-instance.
-- [ ] `tests/unit/test_exec.py` covers: allowlist rejection (`["bash", ...]` raises *before* spawn), env-strip (`OPENAI_API_KEY` in parent env never reaches child), `cwd` rejection for a non-existent path, timeout → `ProbeTimeoutError`, `ToolMissingError` when the binary isn't on `$PATH`, and a `git rev-parse HEAD` happy path against a real git fixture.
+- [ ] `src/codegenie/exec.py` exports `async def run_allowlisted(argv: list[str], *, cwd: Path, timeout_s: float, env_extra: dict[str, str] | None = None) -> ProcessResult`. **Default for `env_extra` is `None`** then normalized inside the body — never `{}` as a literal default (mutable-default footgun). *(Note: this signature differs from arch line 534 / ADR-0012 line 26 which both show the literal `{}` mutable default. The deviation is the safer Python form; see Validation notes for the ADR-amendment action item.)*
+- [ ] The wrapper enforces, in order: (a) `argv[0] not in ALLOWED_BINARIES` → `DisallowedSubprocessError` raised **before** any process spawn — pinned in the test by patching `asyncio.create_subprocess_exec` with a spy whose `side_effect` is `AssertionError("must not spawn")`; the test asserts the spy was **never awaited** when the call raises `DisallowedSubprocessError` (validator: hardened — original test would pass under a spawn-then-kill mutant); (b) `cwd` resolved via `Path.resolve(strict=True)`, must be a directory; the wrapper rejects non-existent or non-directory `cwd` with `FileNotFoundError` / `NotADirectoryError`. **Under-repo-root enforcement is the caller's responsibility**, not the wrapper's, in Phase 0 — see Validation notes for the ADR-amendment action item that reconciles this with ADR-0012 §Decision bullet 5 and arch line 537; (c) `shell=False` is the implicit behavior of `asyncio.create_subprocess_exec`; this is pinned by a test that spies `asyncio.create_subprocess_exec`, runs the happy path, and asserts the captured `kwargs` contains **no** `shell` key (defense against a refactor that switches to `subprocess.run(..., shell=True)`); (d) `stdin=asyncio.subprocess.DEVNULL` is passed explicitly and pinned by the same spy asserting `captured_kwargs["stdin"] is asyncio.subprocess.DEVNULL` (validator: added — original ACs were unpinned and a mutant passing `stdin=PIPE` would have slipped through); (e) env constructed by **omission** (never `os.environ.copy()`) as `{"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""), "LANG": os.environ.get("LANG", "C"), "LC_ALL": os.environ.get("LC_ALL", "C")} | env_extra`; (f) The test spies `asyncio.create_subprocess_exec` and asserts the captured `env=` kwarg's **keyset is a subset of** `{"PATH", "HOME", "LANG", "LC_ALL"} ∪ env_extra.keys()` — this single structural assertion subsumes "the five sensitive keys are absent" because env-by-omission means **any** unlisted key is structurally absent (validator: hardened — original test only inspected the private `_filter_env` helper and would not catch a mutant that called `create_subprocess_exec(env=os.environ.copy())` while leaving the helper correct).
+- [ ] Timeout discipline: `asyncio.wait_for(process.communicate(), timeout=timeout_s)`; on `asyncio.TimeoutError`, send `SIGTERM`, give 100 ms grace, then `SIGKILL` at `1.5 × timeout_s` cumulative; raise `ProbeTimeoutError` whose `str(exc)` contains the substring `"elapsed_ms="` followed by at least one digit (pinned via `re.search(r"elapsed_ms=\d+", str(exc))`). The escalation order — SIGTERM first, then SIGKILL — is pinned in the test via a fake `Process` whose `terminate`/`kill`/`wait` methods are spies; assertions: (i) `terminate` called exactly once, (ii) `kill` called after `terminate` and within `[timeout_s, 1.5·timeout_s + 0.2s]` wall-time, (iii) the call to `kill` happens after at least ~100 ms of grace following `terminate`. The fake `Process.communicate()` awaits an `asyncio.Event` that the test never sets, guaranteeing the timeout fires deterministically (no network dependency; validator: replaced flaky `ls-remote https://10.255.255.1/` pattern). After the wrapper returns/raises, `_RUNNING_PROCS` must contain no entry for the fake pid (cleanup-on-timeout).
+- [ ] If the binary is missing on `$PATH` (`FileNotFoundError` from `asyncio.create_subprocess_exec`), raise `ToolMissingError` whose `str(exc)` matches the regex `r"git.*(install|PATH)"` (binary name plus an install/PATH hint); the wrapper does **not** silently swallow `FileNotFoundError`. The test asserts via `pytest.raises(ToolMissingError, match=r"git.*(install|PATH)")` (validator: hardened — original AC said "with an install hint in the message" but no test inspected the message; a mutant raising bare `ToolMissingError()` would have passed).
+- [ ] A weakref process-tracking table (`weakref.WeakValueDictionary[int, Process]`) registers running children so a coordinator-cancel path can SIGKILL stragglers (`phase-arch-design.md §Component design — Subprocess allowlist`); module-level constant, not per-instance. **Observable invariants** pinned in the test (validator: hardened — original AC was unpinned and the table could be silently removed without any test failing, leaving Phase 7's coordinator-cancel a no-op): (i) **register-during-run** — while a fake `Process` is mid-`communicate()` (event-gated), `proc.pid in _RUNNING_PROCS` evaluates `True`; (ii) **clear-after-success** — after happy-path return, `_RUNNING_PROCS.get(proc.pid)` is `None`; (iii) **clear-after-timeout** — after a `ProbeTimeoutError` raise, the table contains no entry for that pid; (iv) **clear-after-tool-missing** — after a `ToolMissingError` raise (binary missing), no orphan entry exists. Implementation must `pop(pid, None)` in a `finally:` block (not rely on GC).
+- [ ] `ProcessResult` is immutable and typed: `with pytest.raises(dataclasses.FrozenInstanceError): result.returncode = 1`; `assert ProcessResult.__dataclass_params__.frozen is True`; `assert isinstance(result.stdout, bytes) and isinstance(result.stderr, bytes) and isinstance(result.returncode, int)` (validator: added AC-10 — original happy-path test only checked `returncode == 0` and `len(stdout.strip()) == 40`; a mutant typing `stderr: str` or omitting `frozen=True` would have passed).
+- [ ] **Signature default sentinel pin** (mutation-proof guard against the mutable-default footgun regressing): `import inspect; sig = inspect.signature(run_allowlisted); assert sig.parameters["env_extra"].default is None` (validator: added AC-11 — implementer-note prose is not a test; this one-liner makes the footgun a build-breaker if a future refactor reverts to `= {}`).
+- [ ] **Argv shape validation** (validator: added AC-12 — original spec was silent on these; the wrapper is forever, the cost of pinning now is one extra test): (a) `argv=[]` raises `DisallowedSubprocessError` (matched first, before any other check; pin with a test); (b) `argv[0]` is matched against `ALLOWED_BINARIES` **as-is** (no `os.path.basename`); `argv=["/usr/bin/git", ...]` and `argv=["./git", ...]` both raise `DisallowedSubprocessError`. Callers MUST pass bare binary names; PATH resolution is the OS's job. This is the safer default — basename-stripping can be added later via an ADR amendment if needed.
+- [ ] **Env-extra hygiene** (validator: added AC-13 — original spec left `env_extra` as a free passthrough, defeating the omission discipline if a future caller passes `{"OPENAI_API_KEY": "..."}` or overrides `PATH`): (a) keys in `env_extra` whose **uppercased** form matches any of `{"SSH_AUTH_SOCK", "GITHUB_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}` or starts with `"AWS_"` are **silently dropped** (omitted from the child env) and a structlog `subproc.env_extra.sensitive_key_dropped` event is emitted at WARNING level naming the offending key; (b) `PATH` in `env_extra` overrides the baseline `PATH` (intentional — supports test fixtures monkeypatching PATH); pin with a test. The intent: `env_extra` is a *narrow* passthrough for legitimate extras (`GIT_SSH_COMMAND`, `LANG`), not a backdoor for re-introducing what the baseline filtered out.
+- [ ] `tests/unit/test_exec.py` covers (validator: expanded — every AC above must have ≥1 mutation-resistant test): (1) allowlist rejection with **spy assertion that `asyncio.create_subprocess_exec` was never awaited** for `["bash", ...]`, `["/usr/bin/git", ...]`, `["./git", ...]`, and `[]`; (2) env-strip via **kwarg-spy on `asyncio.create_subprocess_exec`** asserting `captured.kwargs["env"]`'s keyset is a subset of the four-baseline keys ∪ `env_extra.keys()` minus sensitive keys; (3) `cwd` rejection for non-existent path (`FileNotFoundError`) and for a regular file (`NotADirectoryError`); (4) timeout via fake `Process` with event-gated `communicate`, asserting SIGTERM-then-SIGKILL escalation order, wall-time bound, `elapsed_ms=` in the error message, and `_RUNNING_PROCS` cleanup; (5) `ToolMissingError` with `match=r"git.*(install|PATH)"`; (6) `git rev-parse HEAD` happy path against a real git fixture, asserting `ProcessResult` immutability and field types; (7) signature-default-sentinel one-liner via `inspect.signature`; (8) `stdin=DEVNULL` and absence of `shell=` kwarg via kwarg-spy; (9) `env_extra` sensitive-key drop with structlog event capture; (10) weakref-table register-during-run and clear-after for the four exit paths.
 - [ ] `ruff check`, `ruff format --check`, `mypy --strict src/codegenie/exec.py`, and `pytest tests/unit/test_exec.py -q` are clean.
 
 ## Implementation outline
 
-1. Write `tests/unit/test_exec.py` first — six anchoring tests as described above. Use `pytest.mark.asyncio` for the async tests; the fixture `dev` extra (S1-02) already includes `pytest-asyncio`. Confirm `ImportError`.
+1. Write `tests/unit/test_exec.py` first — ten anchoring tests as described in the TDD plan. Use `pytest.mark.asyncio` for the async tests; the fixture `dev` extra (S1-02) already includes `pytest-asyncio` (`asyncio_mode = "auto"`). Confirm `ImportError`.
 2. Author `src/codegenie/exec.py`. Module docstring naming ADR-0012; `from __future__ import annotations`; `import asyncio`, `import os`, `import signal`, `import weakref`; `from dataclasses import dataclass`; `from pathlib import Path`; `from codegenie.errors import DisallowedSubprocessError, ProbeTimeoutError, ToolMissingError`.
 3. Define `ALLOWED_BINARIES: frozenset[str] = frozenset({"git"})` and `ProcessResult` dataclass. Define module-level `_RUNNING_PROCS: weakref.WeakValueDictionary[int, asyncio.subprocess.Process] = weakref.WeakValueDictionary()`.
 4. Implement `_filter_env(env_extra)`: build the four-key safe baseline, merge `env_extra`, return a new dict. Never mutate `os.environ`.
@@ -61,102 +77,246 @@ Foundational: S3-05's coordinator constructs `RepoSnapshot` via this wrapper, S4
 
 Test file path: `tests/unit/test_exec.py`.
 
-Six behaviors anchor this story. Pin them one per test; each should fail before the implementation exists.
+Ten mutation-resistant behaviors anchor this story (validator: expanded from 6 to 10). Each pins one chokepoint invariant. Each should fail before the implementation exists. The unifying pattern: tests **spy `asyncio.create_subprocess_exec`** to observe what the chokepoint actually passes to the OS — that's the boundary every AC lives on. Helper-introspection (`_filter_env(...)`) is rejected as the primary test surface because it doesn't catch a mutant that bypasses the helper.
 
 ```python
 # tests/unit/test_exec.py
-import os
+import asyncio
+import dataclasses
+import inspect
+import re
+import subprocess
 from pathlib import Path
+from unittest import mock
 import pytest
 
-@pytest.mark.asyncio
-async def test_disallowed_binary_rejected_before_spawn(tmp_path: Path, monkeypatch):
-    # arrange: ensure bash exists on PATH so a real spawn would succeed
+# ───────────────────────────────────────────────────────────────────────────
+# Test 1 — Allowlist rejection happens BEFORE any spawn
+# ───────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("argv", [
+    ["bash", "-c", "echo hi"],
+    ["/usr/bin/git", "rev-parse", "HEAD"],   # absolute path is NOT in the set
+    ["./git", "rev-parse", "HEAD"],          # relative path is NOT in the set
+    [],                                       # empty argv
+])
+async def test_disallowed_binary_rejected_before_spawn(tmp_path: Path, monkeypatch, argv):
     from codegenie.exec import run_allowlisted
     from codegenie.errors import DisallowedSubprocessError
-    # act/assert: bash is NOT in ALLOWED_BINARIES; the error must be raised
-    # before any process is spawned. A spy on create_subprocess_exec asserts no call.
+    # Guards the spawn-then-kill mutant and the basename-stripping mutant.
+    spy = mock.AsyncMock(side_effect=AssertionError("must not spawn"))
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
     with pytest.raises(DisallowedSubprocessError):
-        await run_allowlisted(["bash", "-c", "echo hi"], cwd=tmp_path, timeout_s=1.0)
+        await run_allowlisted(argv, cwd=tmp_path, timeout_s=1.0)
+    spy.assert_not_awaited()
 
-@pytest.mark.asyncio
-async def test_env_strips_secret_shaped_vars(tmp_path: Path, monkeypatch):
-    # arrange: set OPENAI_API_KEY in the parent env
+# ───────────────────────────────────────────────────────────────────────────
+# Test 2 — Child env is constructed by omission (chokepoint-level, not helper)
+# ───────────────────────────────────────────────────────────────────────────
+async def test_child_env_keyset_subset_of_safe_baseline(tmp_path: Path, monkeypatch):
+    """Spy on the chokepoint and assert env keyset is a subset of the safe baseline.
+
+    Subsumes 'OPENAI_API_KEY/AWS_*/SSH_AUTH_SOCK/GITHUB_TOKEN/ANTHROPIC_API_KEY never reach
+    the child' — by omission, an unlisted parent-env key is structurally absent.
+    Catches the `env=os.environ.copy()` mutant that leaves _filter_env correct.
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-not-real")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "AKIA-not-real")
-    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock")
-    # act: invoke `git --version` (cheap, available everywhere)
-    from codegenie.exec import run_allowlisted
-    result = await run_allowlisted(["git", "--version"], cwd=tmp_path, timeout_s=10.0)
-    # assert: we can't inspect the child env directly from outside, so the
-    #         tightest pin is to invoke `env` (NOT allowlisted) — equivalent is
-    #         a unit test on the `_filter_env` helper directly:
-    from codegenie.exec import _filter_env
-    env = _filter_env(None)
-    assert "OPENAI_API_KEY" not in env
-    assert "AWS_SECRET_ACCESS_KEY" not in env
-    assert "SSH_AUTH_SOCK" not in env
-    assert "PATH" in env  # baseline preserved
-    assert result.returncode == 0
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/x")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp-not-real")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-real")
 
-@pytest.mark.asyncio
-async def test_cwd_must_exist_and_be_directory(tmp_path: Path):
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 99999
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"git version 2.0\n", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(["git", "--version"], cwd=tmp_path, timeout_s=10.0,
+                          env_extra={"GIT_SSH_COMMAND": "ssh -i /tmp/k"})
+
+    captured_env = spy.await_args.kwargs["env"]
+    allowed = {"PATH", "HOME", "LANG", "LC_ALL", "GIT_SSH_COMMAND"}
+    assert set(captured_env.keys()) <= allowed, f"leaked: {set(captured_env) - allowed}"
+    # None of the five sensitive keys are present:
+    for k in ("OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK",
+              "GITHUB_TOKEN", "ANTHROPIC_API_KEY"):
+        assert k not in captured_env
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 3 — stdin=DEVNULL + no shell= kwarg are pinned via the same spy
+# ───────────────────────────────────────────────────────────────────────────
+async def test_spawn_kwargs_pin_stdin_devnull_and_no_shell(tmp_path: Path, monkeypatch):
+    """Catches the stdin=PIPE mutant and any switch to subprocess.run(..., shell=True)."""
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 99998
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(["git", "--version"], cwd=tmp_path, timeout_s=10.0)
+
+    kwargs = spy.await_args.kwargs
+    assert kwargs["stdin"] is asyncio.subprocess.DEVNULL
+    assert "shell" not in kwargs  # create_subprocess_exec has no shell kwarg by design
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 4 — cwd must exist and be a directory
+# ───────────────────────────────────────────────────────────────────────────
+async def test_cwd_rejection_paths(tmp_path: Path):
     from codegenie.exec import run_allowlisted
     bogus = tmp_path / "does-not-exist"
-    with pytest.raises(FileNotFoundError):  # OSError subclass; caller's responsibility
+    with pytest.raises(FileNotFoundError):
         await run_allowlisted(["git", "--version"], cwd=bogus, timeout_s=1.0)
+    a_file = tmp_path / "file.txt"
+    a_file.write_text("x")
+    with pytest.raises(NotADirectoryError):
+        await run_allowlisted(["git", "--version"], cwd=a_file, timeout_s=1.0)
 
-@pytest.mark.asyncio
-async def test_timeout_raises_probe_timeout_and_sigkills(tmp_path: Path):
-    # arrange: run `git -c http.lowSpeedLimit=0 ls-remote https://10.255.255.1/` —
-    #          a deliberately unreachable host so git hangs in DNS/TCP.
-    #          (Use any reliably-hangs invocation appropriate to the CI runner.)
-    # act/assert: timeout fires; ProbeTimeoutError raised; the child is gone.
-    from codegenie.exec import run_allowlisted
+# ───────────────────────────────────────────────────────────────────────────
+# Test 5 — Timeout escalation: SIGTERM → ~100ms grace → SIGKILL; elapsed_ms in msg;
+#                              _RUNNING_PROCS cleared on the way out.
+# ───────────────────────────────────────────────────────────────────────────
+async def test_timeout_escalates_sigterm_then_sigkill(tmp_path: Path, monkeypatch):
+    """Deterministic, network-free. Catches: immediate-SIGKILL mutant, missing-elapsed-
+    ms mutant, leaked-child mutant, missing-finally-pop mutant."""
+    from codegenie.exec import run_allowlisted, _RUNNING_PROCS
     from codegenie.errors import ProbeTimeoutError
-    with pytest.raises(ProbeTimeoutError):
-        await run_allowlisted(
-            ["git", "-c", "http.lowSpeedLimit=0", "ls-remote", "https://10.255.255.1/"],
-            cwd=tmp_path, timeout_s=0.5,
-        )
 
-@pytest.mark.asyncio
-async def test_missing_binary_raises_tool_missing(tmp_path: Path, monkeypatch):
-    # arrange: empty PATH so `git` can't be found
+    hang = asyncio.Event()  # never set
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 77777
+    fake_proc.returncode = -9
+    fake_proc.communicate = mock.AsyncMock(side_effect=lambda: hang.wait())
+    fake_proc.terminate = mock.MagicMock()
+    fake_proc.kill = mock.MagicMock()
+    fake_proc.wait = mock.AsyncMock(return_value=-9)
+
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    start = asyncio.get_event_loop().time()
+    with pytest.raises(ProbeTimeoutError) as exc_info:
+        await run_allowlisted(["git", "rev-parse", "HEAD"], cwd=tmp_path, timeout_s=0.2)
+    elapsed = asyncio.get_event_loop().time() - start
+
+    assert fake_proc.terminate.call_count == 1
+    assert fake_proc.kill.call_count >= 1
+    # SIGKILL happens after grace, within 1.5×timeout + slack
+    assert 0.2 <= elapsed <= (1.5 * 0.2) + 0.5
+    assert re.search(r"elapsed_ms=\d+", str(exc_info.value))
+    assert 77777 not in _RUNNING_PROCS  # cleaned up in finally:
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 6 — Missing binary → ToolMissingError with git+install/PATH in message
+# ───────────────────────────────────────────────────────────────────────────
+async def test_missing_binary_raises_tool_missing_with_hint(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("PATH", "/nonexistent")
-    # also: temporarily add the binary to ALLOWED_BINARIES if needed for the
-    # error to be ToolMissing and not Disallowed (here we use "git" which IS allowed)
-    from codegenie.exec import run_allowlisted
+    from codegenie.exec import run_allowlisted, _RUNNING_PROCS
     from codegenie.errors import ToolMissingError
-    with pytest.raises(ToolMissingError):
+    with pytest.raises(ToolMissingError, match=r"git.*(install|PATH)"):
         await run_allowlisted(["git", "--version"], cwd=tmp_path, timeout_s=1.0)
+    # No orphan weakref entry from the failed spawn:
+    assert len(_RUNNING_PROCS) == 0
 
-@pytest.mark.asyncio
-async def test_git_rev_parse_happy_path(tmp_path: Path):
-    # arrange: init a real git repo with one commit
-    import subprocess
+# ───────────────────────────────────────────────────────────────────────────
+# Test 7 — Happy path with real git: ProcessResult immutable + typed fields
+# ───────────────────────────────────────────────────────────────────────────
+async def test_git_rev_parse_happy_path_and_result_frozen_typed(tmp_path: Path):
     subprocess.run(["git", "init"], cwd=tmp_path, check=True)
     subprocess.run(["git", "-c", "user.email=t@e.com", "-c", "user.name=t",
                     "commit", "--allow-empty", "-m", "x"], cwd=tmp_path, check=True)
-    # act
-    from codegenie.exec import run_allowlisted
+    from codegenie.exec import run_allowlisted, ProcessResult, _RUNNING_PROCS
     result = await run_allowlisted(["git", "rev-parse", "HEAD"], cwd=tmp_path, timeout_s=10.0)
-    # assert
     assert result.returncode == 0
-    assert len(result.stdout.strip()) == 40  # full SHA-1
+    assert isinstance(result.stdout, bytes) and isinstance(result.stderr, bytes)
+    assert isinstance(result.returncode, int)
+    assert len(result.stdout.strip()) == 40
+    # Immutability:
+    assert ProcessResult.__dataclass_params__.frozen is True
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        result.returncode = 1  # type: ignore[misc]
+    # Weakref table cleared on the success path:
+    assert len(_RUNNING_PROCS) == 0
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 8 — Signature default sentinel pin (mutable-default-footgun guard)
+# ───────────────────────────────────────────────────────────────────────────
+def test_run_allowlisted_signature_default_is_none():
+    """One-line mutation-proof guard. Reverts to `= {}` are build-breakers."""
+    from codegenie.exec import run_allowlisted
+    sig = inspect.signature(run_allowlisted)
+    assert sig.parameters["env_extra"].default is None
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 9 — env_extra hygiene: sensitive keys dropped + structlog event
+# ───────────────────────────────────────────────────────────────────────────
+async def test_env_extra_drops_sensitive_keys(tmp_path: Path, monkeypatch, caplog):
+    """env_extra is a narrow passthrough, not a backdoor."""
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 88888
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(
+        ["git", "--version"], cwd=tmp_path, timeout_s=10.0,
+        env_extra={"OPENAI_API_KEY": "sk-leak",
+                   "AWS_FOO": "leak",
+                   "GIT_SSH_COMMAND": "ssh -i /k"},
+    )
+    captured = spy.await_args.kwargs["env"]
+    assert "OPENAI_API_KEY" not in captured
+    assert "AWS_FOO" not in captured
+    assert "GIT_SSH_COMMAND" in captured  # legitimate extra survives
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 10 — Weakref table: registered during run, cleared after
+# ───────────────────────────────────────────────────────────────────────────
+async def test_running_procs_registered_during_run_cleared_after(tmp_path: Path, monkeypatch):
+    """Pins the Phase-7 coordinator-cancel chokepoint promise."""
+    from codegenie.exec import run_allowlisted, _RUNNING_PROCS
+
+    seen_during_run: list[bool] = []
+    release = asyncio.Event()
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 66666
+    fake_proc.returncode = 0
+
+    async def comm():
+        seen_during_run.append(66666 in _RUNNING_PROCS)
+        release.set()
+        return (b"", b"")
+    fake_proc.communicate = mock.AsyncMock(side_effect=comm)
+
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(["git", "--version"], cwd=tmp_path, timeout_s=5.0)
+    assert seen_during_run == [True]
+    assert 66666 not in _RUNNING_PROCS  # finally: pop ran
 ```
 
-Run; confirm all six fail with `ImportError`. Commit as the red marker.
+Run; confirm all ten fail with `ImportError`. Commit as the red marker.
 
 ### Green — make it pass
 
-`src/codegenie/exec.py`: implement the minimum that turns the six tests green.
+`src/codegenie/exec.py`: implement the minimum that turns the ten tests green.
 
 - `ALLOWED_BINARIES = frozenset({"git"})`.
-- `ProcessResult` dataclass.
-- `_RUNNING_PROCS` weakref dict at module scope.
-- `_filter_env(env_extra: dict[str, str] | None) -> dict[str, str]`: returns a fresh dict with the four-key safe baseline plus any `env_extra`. Never reads `OPENAI_API_KEY`/`AWS_*`/`SSH_AUTH_SOCK`/`GITHUB_TOKEN`/`ANTHROPIC_API_KEY` — by *omission*, not by deletion (safer: never copy them in).
-- `run_allowlisted`: allowlist check raises early; resolve cwd; spawn with the filtered env; track in `_RUNNING_PROCS`; await with timeout; on timeout, escalate signals; map `FileNotFoundError` to `ToolMissingError`; return `ProcessResult`.
+- `ProcessResult` dataclass — `@dataclass(frozen=True)`.
+- `_RUNNING_PROCS` weakref dict at module scope, registered during run, popped in `finally:`.
+- `_filter_env(env_extra: dict[str, str] | None) -> dict[str, str]`: returns a fresh dict with the four-key safe baseline plus any `env_extra` *minus* its sensitive keys (the `OPENAI_API_KEY`/`AWS_*`/`SSH_AUTH_SOCK`/`GITHUB_TOKEN`/`ANTHROPIC_API_KEY` set is filtered from both `os.environ` and `env_extra`). Never reads those keys from `os.environ` — by *omission*, not by deletion (safer: never copy them in). Emit a structlog WARNING when an `env_extra` sensitive key is dropped.
+- `run_allowlisted`: (i) allowlist check on `argv` — handle `argv=[]` and absolute/relative paths by raising `DisallowedSubprocessError` before any spawn; (ii) `Path.resolve(strict=True)` on `cwd`, assert is_dir; (iii) spawn with the filtered env; (iv) `_RUNNING_PROCS[proc.pid] = proc`; (v) await with timeout; (vi) on timeout: `proc.terminate()`, wait ~100 ms, `proc.kill()`, `await proc.wait()`, raise `ProbeTimeoutError(f"... elapsed_ms={int(elapsed*1000)} ...")`; (vii) map `FileNotFoundError` (binary missing on PATH) to `ToolMissingError(f"{argv[0]} not on PATH — install it or fix PATH")` so the regex `r"git.*(install|PATH)"` matches; (viii) `try/finally:` ensure `_RUNNING_PROCS.pop(proc.pid, None)` on every exit path; (ix) return `ProcessResult(returncode, stdout, stderr)`.
 
 ### Refactor — clean up
 
