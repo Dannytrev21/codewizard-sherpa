@@ -166,4 +166,11 @@ forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]
 name = "codegenie (__init__) must not top-level import heavy modules"
 type = "forbidden"
 source_modules = ["codegenie"]
+# `as_packages = false` scopes the source to JUST `codegenie/__init__.py`,
+# not the whole `codegenie.*` tree. The cold-start defense is "what does the
+# CLI entry import eagerly?" — submodules (codegenie.logging, codegenie.cache,
+# …) are imported lazily by cli.py and may freely depend on heavy modules.
+# Without this flag, adding any submodule that imports structlog/yaml/pydantic
+# breaks the contract, which is over-broad vs. the documented intent.
+as_packages = false
 forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]

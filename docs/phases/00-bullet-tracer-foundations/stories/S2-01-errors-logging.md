@@ -1,10 +1,40 @@
 # Story S2-01 — Error hierarchy + structlog config
 
 **Step:** Step 2 — Plant the frozen contracts (probe ABC, hashing, exec allowlist, schema, error hierarchy)
-**Status:** Ready
+**Status:** Done
 **Effort:** S
 **Depends on:** S1-01..S1-05
 **ADRs honored:** ADR-0008, ADR-0012
+
+## Evidence
+
+Executed 2026-05-13.
+
+- AC-1 → [src/codegenie/errors.py:21-78](../../../../src/codegenie/errors.py); pinned by [test_errors.py::test_every_subclass_has_raise_site_docstring](../../../../tests/unit/test_errors.py).
+- AC-2 → [src/codegenie/logging.py:28-46](../../../../src/codegenie/logging.py); pinned by [test_logging.py::test_logging_module_all_closure](../../../../tests/unit/test_logging.py), `test_configure_logging_signature_default_is_false`, `test_event_name_constants_are_plain_strs_with_documented_values`.
+- AC-3 → [src/codegenie/logging.py:55-86](../../../../src/codegenie/logging.py); pinned by `test_configure_logging_json_on_non_tty_every_line_parses`, `test_configure_logging_pretty_on_tty_is_not_json`, `test_verbose_true_enables_debug`, `test_verbose_false_silences_debug`.
+- AC-4 → [tests/unit/test_errors.py](../../../../tests/unit/test_errors.py) (5 tests).
+- AC-5 → [tests/unit/test_logging.py](../../../../tests/unit/test_logging.py) (10 tests, autouse `_reset_structlog`).
+- AC-6 → `uv run ruff check`, `uv run ruff format --check`, `uv run mypy --strict src/codegenie/errors.py src/codegenie/logging.py`, `uv run pytest tests/unit/test_errors.py tests/unit/test_logging.py` all green.
+- AC-7 → `test_configure_logging_is_idempotent`, `test_configure_logging_reapplies_cleanly_on_verbose_change`; module-level cache by `(id(stderr), is_tty, verbose)` triple in [src/codegenie/logging.py:48-77](../../../../src/codegenie/logging.py).
+
+Deviation from AC-4 (Python 3.13 compiler-injected class attributes):
+the AC pins `set(cls.__dict__.keys()) <= {"__module__", "__qualname__", "__doc__"}`,
+but Python 3.13 auto-injects `__firstlineno__` and `__static_attributes__` into
+every class `__dict__`. Both are compiler-generated, not user-declared behavior.
+The test widens the allowed set to include those two keys with an inline
+comment; the load-bearing intent ("subclasses have no user-declared
+behavior") is preserved. Logged in `_attempts/_lessons.md`.
+
+Out-of-scope fix carried inside the story (necessary to keep the canary
+test green): the import-linter contract "codegenie (__init__) must not
+top-level import heavy modules" was scoped as `source_modules = ["codegenie"]`
+treated as the whole package, which would block any legitimate submodule
+import of `structlog`/`yaml`/`pydantic`. Added `as_packages = false` to
+restrict the contract to just `codegenie/__init__.py`, matching its name
+and the documented cold-start defense. Both halves of the S1-05 AC-10
+canary (positive `KEPT` + planted `import yaml` in cli.py → `BROKEN`)
+remain green.
 
 > **Step-assignment note:** `../High-level-impl.md §Step 1` (lines 32–33) originally listed `src/codegenie/errors.py` and `src/codegenie/logging.py` as Step 1 deliverables. This story carries them into Step 2 because their typed consumers (ADR-0008 sanitizer raise sites; ADR-0012 exec wrapper raise sites) all live in Step 2. The deliverables and tests are unchanged from the §Step 1 description.
 

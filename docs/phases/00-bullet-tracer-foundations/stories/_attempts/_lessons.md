@@ -100,3 +100,21 @@ would have benefited from knowing.
   `workflow["on"]` will `KeyError` even when the YAML clearly contains
   `on:`. Tolerate both keys (try `True` first or use a helper) when reading
   GitHub Actions workflow files. Discovered in **S1-05**.
+
+- **Python 3.13 auto-injects `__firstlineno__` and `__static_attributes__`
+  into every class `__dict__`.** Any "markers-only" closure test of the
+  form `set(cls.__dict__.keys()) <= {"__module__", "__qualname__",
+  "__doc__"}` will fail on 3.13+ even for a behavior-free `class X(Base): pass`.
+  Widen the allowed set to include both PEP-issued compiler keys; the
+  load-bearing invariant ("no user-declared attributes") still holds.
+  Discovered in **S2-01**.
+
+- **import-linter's `as_packages` flag distinguishes a package's
+  `__init__.py` from its entire descendant tree.** A `forbidden` contract
+  with `source_modules = ["codegenie"]` and the default
+  `as_packages = true` traverses every submodule — so adding any new
+  submodule that legitimately imports `structlog`/`yaml`/`pydantic` breaks
+  a contract whose documented name says "(`__init__`)". Set
+  `as_packages = false` to scope the contract to just the package init.
+  The canonical S1-05 canary (positive KEPT + planted heavy import →
+  BROKEN) remains the regression test. Discovered in **S2-01**.
