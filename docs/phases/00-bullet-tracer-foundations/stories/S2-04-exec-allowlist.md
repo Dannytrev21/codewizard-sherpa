@@ -1,10 +1,44 @@
 # Story S2-04 — Subprocess allowlist chokepoint
 
 **Step:** Step 2 — Plant the frozen contracts (probe ABC, hashing, exec allowlist, schema, error hierarchy)
-**Status:** Ready (HARDENED 2026-05-13)
+**Status:** Done (2026-05-13)
 **Effort:** M
 **Depends on:** S2-01
 **ADRs honored:** ADR-0012
+
+## Evidence
+
+- Implementation: [`src/codegenie/exec.py`](../../../../src/codegenie/exec.py) — `ALLOWED_BINARIES`, `ProcessResult`, `run_allowlisted`, `_RUNNING_PROCS`, `_filter_env`, `_escalate_and_kill`.
+- Tests: [`tests/unit/test_exec.py`](../../../../tests/unit/test_exec.py) — 13 tests (Test 1 is parametrized x4); covers AC-1 through AC-14 plus structural pins.
+- Attempt log: [`_attempts/S2-04.md`](_attempts/S2-04.md)
+- Gates: `pytest 156/156`, `ruff check` clean, `ruff format --check` clean, `mypy --strict` clean (11 src files), `lint-imports` 2 kept / 0 broken, `scripts/check_forbidden_patterns.py src/codegenie/exec.py` clean.
+
+### AC → test mapping
+
+| AC | Evidence (test name in `tests/unit/test_exec.py`) |
+|---|---|
+| `ALLOWED_BINARIES == frozenset({"git"})` | `test_disallowed_binary_rejected_before_spawn` (rejects every non-`git` arg) |
+| `ProcessResult` frozen + typed | `test_git_rev_parse_happy_path_and_result_frozen_typed` |
+| `run_allowlisted` signature `env_extra: ... | None = None` | `test_run_allowlisted_signature_default_is_none` |
+| AC-4 (a) allowlist before spawn | `test_disallowed_binary_rejected_before_spawn` — spy `assert_not_awaited()` |
+| AC-4 (b) `cwd` existence + directory-ness | `test_cwd_rejection_paths` |
+| AC-4 (c) no `shell=` kwarg | `test_spawn_kwargs_pin_stdin_devnull_and_no_shell` |
+| AC-4 (d) `stdin=DEVNULL` | `test_spawn_kwargs_pin_stdin_devnull_and_no_shell` |
+| AC-4 (e/f) env subset of safe baseline | `test_child_env_keyset_subset_of_safe_baseline` |
+| AC-5 timeout escalation + `elapsed_ms` | `test_timeout_escalates_sigterm_then_sigkill` |
+| AC-6 missing binary → `ToolMissingError` w/ hint | `test_missing_binary_raises_tool_missing_with_hint` |
+| AC-7 weakref table register/clear (all 4 paths) | `test_running_procs_registered_during_run_cleared_after` + assertions in timeout, tool-missing, and happy-path tests |
+| AC-10 `ProcessResult` immutable + typed | `test_git_rev_parse_happy_path_and_result_frozen_typed` |
+| AC-11 signature default sentinel | `test_run_allowlisted_signature_default_is_none` |
+| AC-12 argv shape (empty / abs / rel paths) | `test_disallowed_binary_rejected_before_spawn` (parametrized) |
+| AC-13 env_extra sensitive-key drop + structlog event | `test_env_extra_drops_sensitive_keys` (via `structlog.testing.capture_logs`) |
+
+### Action items surfaced (deviations from arch / ADR-0012, tracked in story prologue)
+
+These are documented in the Validation notes at the top of this story; this implementation honors the story's AC text, which is the contract. The arch and ADR amendments are out-of-scope follow-ups:
+
+1. ADR-0012 §Decision bullet 5 + arch line 537 should be amended to read "wrapper enforces existence + directory-ness; the caller enforces under-repo-root."
+2. ADR-0012 §Decision + arch §Component design line 534 should be amended to show `env_extra: dict[str, str] | None = None` instead of the literal `{}` default.
 
 ## Validation notes
 
