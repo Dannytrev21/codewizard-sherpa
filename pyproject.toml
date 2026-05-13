@@ -51,6 +51,11 @@ dev = [
   "ruff",
   "pre-commit",
   "mkdocs-material",
+  # S1-05: structural cold-start defense + supply-chain scanner. `osv-scanner`
+  # is a Go binary; it ships via google/osv-scanner-action in CI rather than
+  # through this list. `bandit` belongs to a later phase.
+  "import-linter",
+  "pip-audit",
 ]
 
 # Phase 9+ slot — Temporal, Postgres clients land here.
@@ -133,3 +138,32 @@ source = ["src/codegenie"]
 # phase-arch-design.md §Testing strategy / Test pyramid (CLI plumbing is
 # exercised end-to-end by S4-02's smoke test, not by unit-level coverage).
 omit = ["src/codegenie/cli.py"]
+
+# ---------------------------------------------------------------------------
+# import-linter — structural cold-start defense (story S1-05, ADR phase-0006).
+# Replaces the phase-arch-design-flagged flaky CLI timing canary with two
+# `type: forbidden` contracts that block heavy modules from `codegenie.cli`
+# (the CLI entry surface, lands in S4-02) and `codegenie` (the package's
+# `__init__.py`, operative immediately). The blocklist is scoped to exact
+# module names — NOT `codegenie.cli.**` — per High-level-impl.md §Step 1
+# §Risks specific to this step (over-block warning).
+# ---------------------------------------------------------------------------
+
+[tool.importlinter]
+root_packages = ["codegenie"]
+# Required by import-linter v2 when `forbidden_modules` names third-party
+# (external) packages — the import graph must traverse them to reason about
+# transitive imports.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "codegenie.cli must not top-level import heavy modules"
+type = "forbidden"
+source_modules = ["codegenie.cli"]
+forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]
+
+[[tool.importlinter.contracts]]
+name = "codegenie (__init__) must not top-level import heavy modules"
+type = "forbidden"
+source_modules = ["codegenie"]
+forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]

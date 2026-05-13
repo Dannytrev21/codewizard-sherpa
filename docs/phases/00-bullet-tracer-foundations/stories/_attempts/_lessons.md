@@ -76,3 +76,27 @@ would have benefited from knowing.
   In Phase 0 all four hook repos (ruff-pre-commit, mirrors-mypy, gitleaks,
   pre-commit-hooks) ship lightweight tags — no dereference needed.
   Discovered in **S1-04**; will repeat when adding hooks in later phases.
+
+- **import-linter v2 hard-errors on missing `source_modules`.** A story that
+  declares a contract on a module not yet authored ("vacuously enforced until
+  story X") will not work as a no-op — `lint-imports` exits non-zero with
+  "Module 'X' does not exist." The practical resolution is a placeholder stub
+  module with no top-level imports, expanded later. Also, when
+  `forbidden_modules` names external packages (anything not under
+  `root_packages`), `include_external_packages = true` is **required** at the
+  top level of `[tool.importlinter]`; otherwise import-linter refuses to run.
+  Discovered in **S1-05**.
+
+- **Pre-commit's isolated mypy env doesn't share the project venv.** The
+  `mirrors-mypy` hook installs into its own virtualenv listed via
+  `additional_dependencies:`. If `src/` imports `packaging` (or any non-stdlib
+  module not already wired through `[project.dependencies]`), the hook fails
+  with `Cannot find implementation or library stub` even though `make
+  typecheck` is green. Always mirror new `src/` imports into the hook's
+  `additional_dependencies:` block. Discovered in **S1-05**.
+
+- **PyYAML's `safe_load` maps the YAML key `on:` to the Python `True` literal.**
+  YAML 1.1 booleans include `on/off/yes/no`. A parser test that does
+  `workflow["on"]` will `KeyError` even when the YAML clearly contains
+  `on:`. Tolerate both keys (try `True` first or use a helper) when reading
+  GitHub Actions workflow files. Discovered in **S1-05**.

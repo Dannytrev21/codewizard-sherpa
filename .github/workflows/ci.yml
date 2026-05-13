@@ -1,0 +1,160 @@
+# Six-job CI for codewizard-sherpa.
+#
+# This workflow owns five of the six jobs: `lint`, `typecheck`, `test`,
+# `security`, and `fence`. The sixth — `docs` — lives in the sibling
+# `.github/workflows/docs.yml` so it can be path-filtered at the workflow
+# level (AC-12 Option B); that honors the ≤90s p95 walltime advisory from
+# phase-arch-design.md §Testing strategy / CI gates without polluting the
+# six-job decomposition with an extra `changes` setup job.
+#
+# `fence` is the load-bearing ADR-0002 / production-ADR-0005 gate. Do NOT
+# disable, broaden, or "simplify" without an ADR amendment.
+#
+# CODEOWNERS-route this file when CODEOWNERS lands in S5-02; pin reviews to
+# phase-arch-design.md §Edge cases #15.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Default-deny posture (Phase 0). Individual jobs MUST NOT widen `contents`
+# beyond `read`; future SARIF uploads in Phase 3+ may add `security-events:
+# write` only on the job that needs it. Asserted by tests/unit/test_ci_workflow.py.
+permissions:
+  contents: read
+
+# One run per ref — new pushes cancel older runs. `cancel-in-progress: true`
+# is load-bearing (CI quota); advisory-only would let stale runs burn budget.
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: lint — ruff check + ruff format --check + import-linter structural
+  # cold-start defense. `make lint-imports` is intentionally invoked here
+  # (NOT under `typecheck`) per phase-arch-design.md §Testing strategy / CI
+  # gates and S1-05 AC-6.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: make lint
+      - name: Lint imports (import-linter, structural cold-start defense)
+        run: make lint-imports
+
+  # ---------------------------------------------------------------------------
+  # Job 2: typecheck — mypy --strict on src/.
+  # ---------------------------------------------------------------------------
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.11"
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Type-check (mypy --strict)
+        run: make typecheck
+
+  # ---------------------------------------------------------------------------
+  # Job 3: test — full pytest suite. Phase 0 carve-out: `--cov-fail-under=0`
+  # until S4-04 lands the vertical-slice tests that clear the 85% floor.
+  # TODO(S4-04): remove `--cov-fail-under=0` override; the wired floor is
+  # `--cov-fail-under=85` from pyproject.toml.
+  # ---------------------------------------------------------------------------
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.11"
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest -q --cov-fail-under=0
+
+  # ---------------------------------------------------------------------------
+  # Job 4: security — pip-audit + osv-scanner against uv.lock.
+  # Severity gating: HIGH/CRITICAL fail the job; MEDIUM/LOW are advisory
+  # (per phase-arch-design.md §Testing strategy / CI gates job 4).
+  # ---------------------------------------------------------------------------
+  security:
+    name: security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.11"
+      - name: Install dev extras (pip-audit)
+        run: python -m pip install -e ".[dev]"
+      - name: pip-audit (PyPI advisories against uv.lock)
+        # pip-audit reads name+version from uv.lock entries. The shell
+        # pipeline extracts `name = "<x>"` + the adjacent `version = "<y>"`
+        # so pip-audit can resolve advisories deterministically without
+        # asking pip to re-resolve the environment.
+        run: |
+          python - <<'PY' > /tmp/requirements-from-uv.txt
+          import re, pathlib
+          text = pathlib.Path("uv.lock").read_text()
+          pkgs = re.findall(r'\[\[package\]\]\s*\nname = "([^"]+)"\nversion = "([^"]+)"', text)
+          for name, version in pkgs:
+              print(f"{name}=={version}")
+          PY
+          pip-audit --strict --disable-pip --requirement /tmp/requirements-from-uv.txt
+      - name: osv-scanner (uv.lock)
+        uses: google/osv-scanner-action@daa2c68f50d845057895a9c300e42478481c1d26  # v1.9.1
+        with:
+          scan-args: |-
+            --lockfile=uv.lock
+            --fail-on-severity=HIGH
+
+  # ---------------------------------------------------------------------------
+  # Job 5: fence — the load-bearing ADR-0002 gate.
+  #
+  # The install is two-step on purpose: a bare `pip install -e .` measures
+  # the actual gather-pipeline closure (ADR-0006 §Consequences); pytest is
+  # then installed STANDALONE as the harness so the closure measurement is
+  # uncontaminated by `[dev]`. Do NOT install `[dev]`, `[agents]`, or
+  # `[service]` here — asserted by tests/unit/test_ci_workflow.py.
+  # ---------------------------------------------------------------------------
+  fence:
+    name: fence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.11"
+      - name: Install bare distribution (closure measurement)
+        run: pip install -e .
+      - name: Install pytest (harness, STANDALONE)
+        run: pip install pytest
+      - name: Run fence test
+        run: pytest -q tests/unit/test_pyproject_fence.py

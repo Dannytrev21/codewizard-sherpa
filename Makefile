@@ -9,7 +9,7 @@
 # (story S1-03 AC-9). The CI runner is linux/amd64 (sh-as-dash); macOS-only
 # constructs would silently diverge.
 
-.PHONY: bootstrap check lint typecheck test docs fence audit-verify clean
+.PHONY: bootstrap check lint lint-imports typecheck test docs fence audit-verify clean
 
 bootstrap:
 	@if command -v uv >/dev/null 2>&1; then \
@@ -23,6 +23,13 @@ check: lint typecheck test fence
 lint:
 	@ruff check .
 	@ruff format --check .
+
+# Structural cold-start defense (story S1-05). `--no-cache` defeats stale
+# mtime-based cache hits that would otherwise serve a stale "ok" verdict
+# after a pyproject.toml edit. The `lint` CI job invokes both `make lint`
+# AND `make lint-imports`; do not bundle this under `typecheck`.
+lint-imports:
+	@lint-imports --config pyproject.toml --no-cache
 
 typecheck:
 	@mypy --strict src/

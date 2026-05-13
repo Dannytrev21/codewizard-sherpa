@@ -32,6 +32,10 @@ repos:
           - blake3
           - structlog
           - types-PyYAML
+          # S1-05: `src/codegenie/_fence.py` imports `packaging.requirements`
+          # to normalize PEP 508 dependency specs. `packaging` is py.typed —
+          # adding it here lets the isolated mypy hook resolve its stubs.
+          - packaging
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.

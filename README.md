@@ -30,3 +30,25 @@ See
 for the full target list and
 [`docs/phases/00-bullet-tracer-foundations/stories/S1-04-precommit-editorconfig-mkdocs.md`](docs/phases/00-bullet-tracer-foundations/stories/S1-04-precommit-editorconfig-mkdocs.md)
 for the pre-commit / editorconfig / mkdocs setup.
+
+## CI pipeline
+
+Every PR runs through six SHA-pinned jobs across Python 3.11 / 3.12 ×
+`ubuntu-24.04`:
+
+| Job | What it runs | Why it's load-bearing |
+|---|---|---|
+| `lint` | `make lint` (ruff) + `make lint-imports` (import-linter) | Structural cold-start defense — blocks heavy modules from `codegenie.cli` and `codegenie/__init__.py` |
+| `typecheck` | `make typecheck` (mypy `--strict`) | Catches narrowed-type drift early |
+| `test` | `pytest -q` (Phase 0 carve-out: `--cov-fail-under=0`; live floor lands in S4-04) | Full suite |
+| `security` | `pip-audit` + `osv-scanner` against `uv.lock` | Supply-chain advisories; HIGH/CRITICAL fails the job |
+| `docs` | `mkdocs build --strict` (path-filtered on `docs/**` + `mkdocs.yml`) | Docs gate |
+| `fence` | `pytest -q tests/unit/test_pyproject_fence.py` after a two-step bare install | **Load-bearing ADR-0002 gate** — refuses any LLM SDK in the gather-pipeline runtime closure |
+
+Workflow files: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (five
+jobs), [`.github/workflows/docs.yml`](.github/workflows/docs.yml) (the
+sixth, path-filtered separately to honor the ≤90s walltime advisory). All
+third-party actions are pinned by 40-character SHA; concurrency is grouped
+by `${{ github.ref }}` with `cancel-in-progress: true`. See
+[`docs/phases/00-bullet-tracer-foundations/stories/S1-05-ci-fence-import-linter.md`](docs/phases/00-bullet-tracer-foundations/stories/S1-05-ci-fence-import-linter.md)
+for the full setup story.

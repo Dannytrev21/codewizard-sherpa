@@ -1,10 +1,40 @@
 # Story S1-05 — CI workflow + fence job + import-linter
 
 **Step:** Step 1 — Establish project skeleton, tooling, and the `fence` CI job
-**Status:** Ready — HARDENED
+**Status:** Done — 2026-05-13 (phase-story-executor, attempt 1, GREEN)
 **Effort:** M
 **Depends on:** S1-01, S1-02, S1-03 (Makefile target conventions)
 **ADRs honored:** ADR-0002, ADR-0006
+
+## Execution evidence (2026-05-13)
+
+Attempt log: [`_attempts/S1-05.md`](_attempts/S1-05.md).
+
+All twelve ACs satisfied with runtime evidence; 28 new tests across four test
+files, all green; `make lint` / `make typecheck` / `make lint-imports` /
+`pre-commit run --all-files` all clean; full suite `pytest -q --cov-fail-under=0`
+**79 passed**.
+
+| AC | Evidence |
+|---|---|
+| AC-1 | `tests/unit/test_ci_workflow.py::test_ci_workflow_declares_exactly_six_required_jobs` + `::test_ci_workflow_pins_python_311_312_on_ubuntu_2404` + `::test_every_third_party_action_is_sha_pinned_not_tag_pinned` |
+| AC-2 | `::test_ci_workflow_concurrency_cancels_old_runs_on_same_ref` + `::test_ci_workflow_top_level_permissions_are_read_only` + `::test_ci_workflow_triggers_exclude_pull_request_target` + `::test_no_job_widens_contents_permission_beyond_read` |
+| AC-3 | `::test_fence_job_install_is_two_step_and_excludes_dev_extras` |
+| AC-4 | `tests/unit/test_pyproject_fence.py` (9 tests; parametrized over 5 SDKs) |
+| AC-5 | `::test_importlinter_config_root_packages_includes_codegenie` + `::test_importlinter_has_two_forbidden_contracts_for_cli_and_init` |
+| AC-6 | `Makefile` `lint-imports` target invokes `lint-imports --config pyproject.toml --no-cache`; `::test_lint_job_invokes_make_lint_imports` |
+| AC-7 | `tests/unit/test_cli_cold_start.py` (3 tests; subprocess `sys.modules` probe is load-bearing) |
+| AC-8 | `pyproject.toml` `[project.optional-dependencies].dev` contains `import-linter` + `pip-audit`; `uv.lock` regenerated; S1-03 lockstep test green |
+| AC-9 | `tests/unit/test_ci_workflow.py` (14 parser assertions over `ci.yml` + `[tool.importlinter]`) |
+| AC-10 | `tests/unit/test_lint_imports_canary.py` (green half + deliberate-negative half with `finally:` restore) |
+| AC-11 | `::test_security_job_invokes_pip_audit_and_osv_scanner_against_uv_lock` |
+| AC-12 | **Option B** — `.github/workflows/docs.yml` with `paths: [docs/**, mkdocs.yml]`; `::test_docs_job_path_filtering_is_wired_per_ac_12` |
+
+**Deviations from "Files to touch"** (see attempt log for full justification):
+
+1. `src/codegenie/cli.py` placeholder stub created — import-linter v2 hard-errors when `source_modules` references a non-existent module; the story's "vacuously enforced until S4-02" framing is not realizable as a literal no-op. S4-02 will expand the stub.
+2. `include_external_packages = true` added to `[tool.importlinter]` — required by import-linter v2 when `forbidden_modules` names external packages.
+3. `.pre-commit-config.yaml` — `packaging` added to the mypy hook's `additional_dependencies:` so the isolated env can resolve `packaging.requirements` (`_fence.py`'s only new external import).
 
 ## Validation notes (2026-05-13, phase-story-validator v1)
 
