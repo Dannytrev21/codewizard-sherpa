@@ -1,7 +1,7 @@
 # Story S3-04 — Config loader + defaults
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Validated
+**Status:** Done — 2026-05-13. All 21 ACs verified; `mypy --strict src/`, `ruff check`, `ruff format --check`, `pre-commit`, and `lint-imports` (both contracts KEPT) green. Implementation: [`src/codegenie/config/__init__.py`](../../../../src/codegenie/config/__init__.py), [`src/codegenie/config/defaults.py`](../../../../src/codegenie/config/defaults.py), [`src/codegenie/config/loader.py`](../../../../src/codegenie/config/loader.py). Tests: [`tests/unit/test_config_loader.py`](../../../../tests/unit/test_config_loader.py) (34 tests, all green). Attempt log: [`_attempts/S3-04.md`](_attempts/S3-04.md).
 **Effort:** S
 **Depends on:** S2-05
 **See also (cross-story coupling):** S4-02 — CLI must set `auto_envvar_prefix=None` at the click level; companion close to AC-15 (env-var-off) verified there, not here.

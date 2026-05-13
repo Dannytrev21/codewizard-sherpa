@@ -197,3 +197,21 @@ would have benefited from knowing.
   semantics correct without test-pollution leakage. Function-local flags
   emit the warning every call; no flag emits noise that teaches
   contributors to ignore the message. Discovered in **S3-03**.
+
+- **`typing.get_type_hints(<dataclass>)` is the per-field-isinstance hook
+  under `from __future__ import annotations`.** Bare `dataclasses.fields(C)[i].type`
+  returns the *unresolved string* form ("int", "bool") under PEP 563, so
+  `isinstance(value, field.type)` fails with `TypeError: isinstance() arg 2
+  must be a type`. `typing.get_type_hints(C)` resolves the strings to actual
+  types in one stdlib call; cheaper than `inspect.get_annotations` for a
+  hot loop because it caches. Discovered in **S3-04** while wiring AC-9's
+  type-mismatch wrap (dataclasses don't validate types at construction —
+  the wrap has to be explicit).
+
+- **Spy-on-helper tests require the helper to be a module-scope `def`.**
+  S3-04 AC-14 uses `monkeypatch.setattr(loader_mod, "_typed_construct", spy)`
+  to intercept the merged-dict before `Config(**merged)` runs. A nested
+  closure, a `lambda`, or a method bound to a class instance would not be
+  patchable from outside. Lesson: every wrappable surface a downstream test
+  may want to introspect should be a `_underscored` top-level function. Has
+  no runtime cost; preserves test-time hookability. Discovered in **S3-04**.
