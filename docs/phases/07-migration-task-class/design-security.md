@@ -111,11 +111,11 @@ The structural choice that defines this lens: **the new task class is a new subg
    │       `image.signature.invalid`, `dockerfile.parse_rejected`         │
    └────────────────┬─────────────────────────────────────────────────────┘
                     │  microVM spawn with extended rootfs:
-                    │   + docker-buildx@<pinned>                          
-                    │   + dive@<pinned>                                   
-                    │   + dockerfile-parse@<pinned>                       
-                    │   + cosign@<pinned>                                 
-                    │   + chainguard-image-runner (entrypoint exec util)  
+                    │   + docker-buildx@<pinned>
+                    │   + dive@<pinned>
+                    │   + dockerfile-parse@<pinned>
+                    │   + cosign@<pinned>
+                    │   + chainguard-image-runner (entrypoint exec util)
    TRUST BOUNDARY: hardware-virtualized (Firecracker) OR syscall-mediated (gVisor) — UNCHANGED
                     ▼
    ┌──────────────────────────────────────────────────────────────────────┐

@@ -47,3 +47,32 @@ would have benefited from knowing.
   bash-ism check that scans the whole file would self-trigger. Scope the
   recipe-body extractor to lines beginning with `\t` only. Discovered in
   **S1-03** while writing the bash-ism guard.
+
+- **Pre-commit local hooks that scan "all text" amplify documentation noise.**
+  A `types: [text]` scope on a forbidden-patterns hook hits every markdown
+  file that documents the banned construct (regex sources, ADR text,
+  example snippets). Tighten with `files: '\.py$'` so the hook only sees
+  Python source; `exclude:` then carries the per-rule scoping (AC-11's
+  `^(tests/|scripts/)`). Discovered in **S1-04**. Same lesson applies to
+  S2-02's AST scans — scope by import path, not file type.
+
+- **`mkdocs build --strict` needs a tolerant `validation:` block in a
+  multi-phase repo.** Strict mode promotes every warning to an error;
+  cross-phase ADR relative links (`../../../production/adrs/...`,
+  `../../../../CLAUDE.md`) resolve outside `docs_dir` and trip 42+
+  warnings. Set `validation.nav.omitted_files: ignore`,
+  `validation.nav.not_found: ignore`, `validation.links.not_found: ignore`
+  in Phase 0; let S5-02 untangle the link graph. Discovered in **S1-04**.
+
+- **`root = true` in `.editorconfig` breaks Python `configparser`.**
+  The editorconfig spec puts `root = true` outside any section; `configparser`
+  treats top-of-file properties as a `MissingSectionHeaderError`. If a TDD
+  contract test reads `.editorconfig` with `configparser`, omit `root = true`
+  or wrap it in a `[DEFAULT]` section. Discovered in **S1-04**.
+
+- **SHA-resolving a hook repo's release tag.** `gh api repos/<owner>/<repo>/git/refs/tags/<tag>`
+  returns `object.sha` directly when `object.type == "commit"` (lightweight
+  tags); only annotated tags require a second lookup against `git/tags/<sha>`.
+  In Phase 0 all four hook repos (ruff-pre-commit, mirrors-mypy, gitleaks,
+  pre-commit-hooks) ship lightweight tags — no dereference needed.
+  Discovered in **S1-04**; will repeat when adding hooks in later phases.

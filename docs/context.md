@@ -392,7 +392,7 @@ The gatherer doesn't dump `RepoContext` into the agent's prompt. That would be e
 # Agent-facing tools, one MCP call each:
 
 get_repo_summary(repo_id) -> RepoSummary
-    # Compact (~500 tokens): language, build, current base image, 
+    # Compact (~500 tokens): language, build, current base image,
     # entrypoint, risk_flags, available skill names
 
 get_dockerfile(repo_id, path?) -> DockerfileDetail
@@ -409,7 +409,7 @@ get_adr(adr_id) -> ADRContent
     # Full ADR content, lazy-loaded
 
 get_blast_radius(repo_id, change_type) -> BlastRadius
-    # For a proposed change type, what callers and 
+    # For a proposed change type, what callers and
     # downstream services are affected
 
 list_callers(symbol_fqn, depth=1) -> Callers
@@ -452,14 +452,14 @@ The Probe interface is minimal and stable:
 class Probe(ABC):
     name: str
     layer: Literal["A", "B", "C", "D", "E"]
-    
+
     def applies(self, repo: RepoSnapshot) -> bool:
         """Skip-detection: should this Probe run for this repo?"""
-    
+
     def declared_inputs(self) -> set[str]:
-        """File globs / external resources this Probe reads. 
+        """File globs / external resources this Probe reads.
         Used for incremental gather and cache keying."""
-    
+
     def run(self, repo: RepoSnapshot, ctx: ProbeContext) -> ProbeOutput:
         """Produce the schema slice this Probe owns."""
 ```

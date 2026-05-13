@@ -1,0 +1,36 @@
+# EditorConfig — cross-editor formatting baseline (story S1-04 AC-3).
+# https://editorconfig.org/
+#
+# NOTE: `root = true` (recommended by the spec to halt upward search) is
+# intentionally omitted here. Python's configparser — which the contract
+# test uses — rejects properties outside a section, and editorconfig
+# clients only consult this file at the repo root anyway. If a child
+# repo ever vendors codewizard-sherpa, `root = true` can be added under
+# a `[DEFAULT]` header without breaking the test.
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{yml,yaml,toml,json}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+# Trailing whitespace can be load-bearing in Markdown (line break).
+trim_trailing_whitespace = false
+
+[Makefile]
+# POSIX recipe rule: command lines MUST begin with a tab character.
+# This is THE reason the Makefile section exists.
+indent_style = tab

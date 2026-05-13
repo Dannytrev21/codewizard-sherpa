@@ -511,7 +511,7 @@ The synthesizer picked a position none of the three proposed in the following pl
    - **ADR-P7-004**: OpenRewrite `rewrite-docker` deferred from Phase 7 (critic best-practices.4); handrolled-only.
    - **ADR-P7-005**: `RuntimeTraceProbe` Phase 2 stub kept in place forever as a no-op; `ShellInvocationTraceProbe` ships as a sibling new file with a distinct name.
    - **ADR-P7-006**: Phase 3 `Recipe.engine` Literal extended additively with `"dockerfile"`. Phase 3 contract-snapshot test regenerates.
-   
+
    Each ADR is small (≤ 1 page), names the exact diff, and the Phase 7 PR template requires linking each ADR to the file lines it justifies.
 
 4. **`dive_efficiency` as advisory-only (synthesis original).** `[S]` proposed `image_size_post / image_size_pre ≤ 0.8` as strict-AND. Critic sec.3 landed: legitimate Alpine→glibc migrations fail this. Synthesizer: ship the signal but `passed=True` always; `details` carry the ratio for human review. Phase 13's calibration window decides whether to harden.

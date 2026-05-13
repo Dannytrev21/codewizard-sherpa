@@ -1,0 +1,71 @@
+# pre-commit firewall — runs on every developer's commit before CI sees the diff.
+#
+# Every non-`local` repo's `rev` is a 40-character commit SHA (NOT a mutable
+# tag) per phase-arch §Testing strategy / CI gates ("Actions pinned by SHA")
+# and story S1-04 AC-9. The local `forbidden-patterns` hook is the executable
+# enforcement of ADR-0008 (no `yaml.load` without `Loader=`, no `yaml.Dumper`)
+# and ADR-0012 (no `shell=True`, no `os.system`, no `os.popen`, no `eval(`,
+# no `exec(`, no `__import__(`, no `pickle.loads`).
+
+repos:
+  # ruff — lint + format. Pinned to v0.15.12.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 6fec9b7edb08fd9989088709d864a7826dc74e80
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # mypy — strict on src/. Additional deps mirror [project.dependencies] so the
+  # hook's isolated venv has the same import surface as the runtime closure.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: d2823d321df3af8f878f7ee3414dc94d037145b9
+    hooks:
+      - id: mypy
+        args: [--strict, src/]
+        pass_filenames: false
+        additional_dependencies:
+          - click
+          - pyyaml
+          - jsonschema>=4.21
+          - pydantic>=2
+          - blake3
+          - structlog
+          - types-PyYAML
+
+  # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
+  # outside the gather hot path). Pinned to v8.30.1.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e
+    hooks:
+      - id: gitleaks
+
+  # Generic file-shape hooks from pre-commit/pre-commit-hooks v6.0.0.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # Local forbidden-patterns hook — executable enforcement of ADR-0008/0012.
+  # `entry:` resolves to a real file under scripts/ so story S1-04's Test 2
+  # can invoke it directly with fixture inputs (behavioral verification of
+  # AC-2 and AC-12).
+  - repo: local
+    hooks:
+      - id: forbidden-patterns
+        name: forbidden-patterns (ADR-0008 + ADR-0012)
+        language: script
+        entry: scripts/check_forbidden_patterns.py
+        # Scope to Python source — the load-bearing target per ADR-0012
+        # (`src/codegenie/`) and ADR-0008. Docs and the YAML config catalog
+        # the banned constructs literally (examples, regex sources); scanning
+        # them produces noise without preventing a single real violation.
+        files: '\.py$'
+        # AC-11: the print( rule must not fire under tests/ or scripts/ —
+        # both legitimately use stdout. The same regex covers the entry
+        # script itself, which intentionally contains banned literals in
+        # its rule table (regex sources, not real call sites).
+        exclude: '^(tests/|scripts/)'

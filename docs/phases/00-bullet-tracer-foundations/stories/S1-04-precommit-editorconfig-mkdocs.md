@@ -1,10 +1,49 @@
 # Story S1-04 — Pre-commit hooks + editorconfig + gitignore + mkdocs curated nav
 
 **Step:** Step 1 — Establish project skeleton, tooling, and the `fence` CI job
-**Status:** Ready (validated 2026-05-13 — HARDENED)
+**Status:** Done (executed 2026-05-13)
 **Effort:** M
 **Depends on:** S1-02
 **ADRs honored:** ADR-0008, ADR-0012
+
+## Evidence (executed 2026-05-13)
+
+All 12 acceptance criteria verified by behavior; see `_attempts/S1-04.md` for the
+implementer journal and `_validation/S1-04-precommit-editorconfig-mkdocs.md` for
+the hardening audit.
+
+- **AC-1** ✓ — `.pre-commit-config.yaml` declares all 9 required hooks; verified by
+  `tests/unit/test_precommit_and_docs_config.py::test_precommit_config_declares_exactly_the_required_hooks`.
+- **AC-2** ✓ — All 11 banned constructs rejected (behavioral fixture suite):
+  `test_forbidden_patterns_hook_rejects_each_banned_construct[*]` (11 parametrized cases).
+- **AC-3** ✓ — `.editorconfig` 6-key contract on `[*.py]` + `[Makefile] indent_style = tab`:
+  `test_editorconfig_python_and_makefile_contracts`.
+- **AC-4** ✓ — All 13 `.gitignore` entries line-parse-verified:
+  `test_gitignore_contains_all_required_entries_as_uncommented_lines`.
+- **AC-5** ✓ — `mkdocs.yml` nav (recursively flattened over `list`+`Mapping`) excludes all 5 superseded docs:
+  `test_mkdocs_nav_excludes_all_superseded_design_docs`.
+- **AC-6** ✓ — `pre-commit run --all-files` exits 0 over the current tree:
+  `test_pre_commit_run_all_files_exits_zero` (also reproduced manually).
+- **AC-7** ✓ — `mkdocs build --strict` exits 0:
+  `test_mkdocs_build_strict_exits_zero` (also reproduced manually via `make docs`).
+- **AC-8** ✓ — `tests/unit/test_precommit_and_docs_config.py` exists with 12 test functions
+  (24 parametrized cases); `pytest tests/unit/test_precommit_and_docs_config.py -q`
+  reports `24 passed`. (Coverage-gate non-zero exit is the same project-wide
+  pre-existing condition that S1-01/02/03 carry, gated on S4-04's vertical slice.)
+- **AC-9** ✓ — All non-`local` hooks SHA-pinned to 40-char hex:
+  `test_every_non_local_hook_rev_is_sha_pinned`. Pins: ruff-pre-commit `6fec9b7e…74e80`,
+  mirrors-mypy `d2823d32…145b9`, gitleaks `83d9cd68…cbd8e`, pre-commit-hooks `3e8a8703…b2c8c`.
+- **AC-10** ✓ — `docs/contributing.md` exists with `TODO(S5-02)` marker:
+  `test_contributing_md_placeholder_exists_with_todo_marker`.
+- **AC-11** ✓ — `forbidden-patterns` hook `exclude: ^(tests/|scripts/)` matches both prefixes:
+  `test_print_rule_excludes_tests_and_scripts`.
+- **AC-12** ✓ — `yaml.Dumper` regex `(?<!CSafe)(?<!Safe)yaml\.Dumper\b` preserves the
+  ADR-0008-prescribed writers:
+  `test_yaml_dumper_regex_does_not_reject_csafedumper_or_safedumper[*]` (2 parametrized cases).
+
+Files shipped: `.pre-commit-config.yaml`, `.editorconfig`, `.gitignore`, `mkdocs.yml`,
+`scripts/check_forbidden_patterns.py`, `docs/contributing.md`, `docs/index.md` (mkdocs
+landing page, prerequisite for nav resolution), `tests/unit/test_precommit_and_docs_config.py`.
 
 ## Validation notes
 

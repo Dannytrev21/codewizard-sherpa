@@ -2243,4 +2243,3 @@ The full registry lives at `src/codegenie/audit/events.yaml`. Phase 4 introduces
 | `cache.replay` | `(run_id, prior_chain_head)` | (Phase 3 — re-emitted on Phase 4 caches) |
 
 (Phase 13 reads this registry for the dashboard.)
-

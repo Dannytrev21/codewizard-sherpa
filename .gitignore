@@ -1,0 +1,27 @@
+# Gather pipeline cache + audit trail (per ADR-0011: 0600/0700 permissions;
+# dogfood runs of `codegenie gather` against this repo write here).
+.codegenie/
+
+# Python build / bytecode
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+
+# Virtualenv + dotenv (security-relevant: never commit local secrets per
+# ADR-0008's spirit).
+.venv/
+.env
+
+# macOS finder noise
+.DS_Store
+
+# mkdocs build output
+site/
