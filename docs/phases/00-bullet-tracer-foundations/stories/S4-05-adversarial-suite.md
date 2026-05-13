@@ -54,7 +54,7 @@ These tests are deliberately small. Each pins one invariant. The value is the *s
 - [ ] `tests/adv/test_secret_leak.py` exists and pins the invariant: a synthetic probe emitting `schema_slice = {"github_token": "ghp_AAA..."}` is caught by `_ProbeOutputValidator` at the coordinator boundary; the probe is marked failed (`confidence="low"`, `errors=[...]`); the gather continues. Specifically:
   - Defines a one-off `class _SecretLeakingProbe(Probe)` whose `run(...)` returns `ProbeOutput(schema_slice={"github_token": "ghp_AAAAAAAAAA"}, ...)`.
   - Dispatches it through the coordinator (direct API call against `coordinator.gather(...)` is fine — does not need to be CLI-level).
-  - Asserts `_ProbeOutputValidator(...)` raised `SecretLikelyFieldNameError`.
+  - Asserts `_ProbeOutputValidator(...)` raised `pydantic.ValidationError` whose wrapped typed error (via `errors()[0]["ctx"]["error"]` or `__cause__`) is a `SecretLikelyFieldNameError` (Pydantic v2 wrapping; matches S3-02 AC-4).
   - Asserts the coordinator caught the error: `executions["_secret_leak"].output.errors` contains the validator's error string; `confidence == "low"`.
   - If `LanguageDetectionProbe` also ran in the same gather, asserts the gather as a whole exited 0 (other probes succeeded; per ADR-0009 the surviving probe's success is enough).
 - [ ] `tests/adv/test_env_var_strip.py` exists and pins the invariant: `run_allowlisted` filters env vars before invoking the subprocess; sensitive vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AWS_*`, `SSH_AUTH_SOCK`, `GITHUB_TOKEN`) set in the parent env never reach the child. Specifically:
@@ -132,14 +132,26 @@ Traces to: ADR-0010; phase-arch-design.md §Edge cases row 5; §Scenarios — Sc
 import pytest
 
 def test_secret_field_rejected_by_validator():
+    # Pydantic v2 wraps validator-raised exceptions in ValidationError; the
+    # typed error is retrievable via errors()[0]["ctx"]["error"] or __cause__
+    # (matches S3-02 AC-4 contract).
+    from pydantic import ValidationError
     from codegenie.coordinator.validator import _ProbeOutputValidator
     from codegenie.errors import SecretLikelyFieldNameError
-    # act + assert
-    with pytest.raises(SecretLikelyFieldNameError):
+    with pytest.raises(ValidationError) as ei:
         _ProbeOutputValidator(
             schema_slice={"github_token": "ghp_AAAAAAAAAA"},
             confidence="high",
         )
+    typed = None
+    for e in ei.value.errors():
+        ctx = e.get("ctx") or {}
+        if isinstance(ctx.get("error"), Exception):
+            typed = ctx["error"]
+            break
+    if typed is None:
+        typed = ei.value.__cause__
+    assert isinstance(typed, SecretLikelyFieldNameError)
 
 def test_secret_leaking_probe_does_not_poison_gather(tmp_path, monkeypatch):
     # arrange: a one-off probe class that emits a secret-shaped field
@@ -249,6 +261,6 @@ If the tests pass straight away, that's the expected behavior: each adversarial 
 - `test_symlink_escape.py` requires POSIX. Skip on Windows. Symlink tests are notoriously flaky on Windows even with admin (developer-mode varies); the `@pytest.mark.skipif` is the right defense.
 - `test_env_var_strip.py` mocks `asyncio.create_subprocess_exec`. This is intentional: the goal is to inspect what `run_allowlisted` *would have passed* to the subprocess, not to actually spawn one. A real-subprocess test is a Phase 2+ concern (real `git` invocation against the chokepoint) and lives in the `test_exec.py` unit test from S2-04.
 - `test_secret_leak.py`'s synthetic `_SecretLeakingProbe` class is **only** in the test file — do **not** register it via `@register_probe` (it would pollute `default_registry`). Either instantiate the coordinator with a fresh `Registry()` containing just this probe (and `LanguageDetectionProbe`), or pass the probe class explicitly to `coordinator.gather(probes=[...])`.
-- The secret regex from S3-02's `_ProbeOutputValidator` is `(?i)(token|secret|password|api[_-]?key|credential|private[_-]?key|ghp_|sk-)` (per `final-design.md §2.6`). `"github_token"` matches `"token"`; `"api_key"` matches `"api[_-]?key"`. If a test fails because the regex didn't match a name you expected, the regex needs widening — surface this as a follow-up to S3-02, do not loosen the adversarial assertion.
+- The secret regex from S3-02's `_ProbeOutputValidator` is `(?i)^.*(secret|token|password|credential|api[_-]?key|auth[_-]?token|bearer|access[_-]?key|private[_-]?key).*$` (per ADR-0010 §Decision; matches `final-design.md §2.6`). `"github_token"` matches `"token"`; `"api_key"` matches `"api[_-]?key"`; `"aws_access_key"` matches `"access[_-]?key"`. The regex matches on **field name** only (not the value), so `ghp_`/`sk-`-shaped *values* are NOT what triggers rejection — the key `github_token` is. If a test fails because the regex didn't match a name you expected, the regex needs widening — surface this as a follow-up to S3-02 (file an ADR-0010 amendment), do not loosen the adversarial assertion.
 - The path-traversal test deliberately does **not** assert a specific exit code. Different rejection mechanisms (`Path.resolve(strict=True)` raising `FileNotFoundError` → unhandled → exit 1; a `CodegenieError` subclass → exit per the dispatch table) are both acceptable; the structural invariant is "this is refused with a non-zero exit." Pinning a specific exit code couples the test to the mechanism, which violates `CLAUDE.md` Rule 3 ("Surgical changes — don't refactor what isn't broken"): if S4-02 later picks a different rejection code, the test should not need to follow.
 - Avoid `pytest.mark.parametrize` here. Each test pins one invariant; parametrized adversarial tests obscure which invariant failed. Per `phase-arch-design.md §Testing strategy — Adversarial tests`, the suite is a set of clearly named individual tests.
