@@ -6,6 +6,17 @@ byte-for-byte to ``docs/localv2.md §4`` and pinned by
 addition*; editing the contract requires the ADR-amendment workflow in
 ``templates/adr-amendment.md``.
 
-Intentionally empty otherwise — no ``importlib.metadata`` scan, no
-side-effecting registration. The registry lands in S2-05.
+Explicit imports — no ``importlib.metadata`` scan, no side-effecting
+registration discovery. The registry (:mod:`codegenie.probes.registry`,
+S2-05) collects probes via the ``@register_probe`` decorator at module
+import time; concrete probe modules are imported by name below as Phase 1
+stories land.
 """
+
+from codegenie.probes import base, registry
+
+# Concrete probe modules opt in by explicit import. S4-01 lands
+# ``codegenie.probes.language_detection`` and uncomments the import below.
+# from codegenie.probes import language_detection  # noqa: F401  # S4-01
+
+__all__ = ["base", "registry"]

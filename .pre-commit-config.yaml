@@ -28,6 +28,7 @@ repos:
           - click
           - pyyaml
           - jsonschema>=4.21
+          - types-jsonschema
           - pydantic>=2
           - blake3
           - structlog

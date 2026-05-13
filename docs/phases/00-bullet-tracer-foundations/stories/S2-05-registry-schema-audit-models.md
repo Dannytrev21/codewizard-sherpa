@@ -1,7 +1,37 @@
 # Story S2-05 — Registry + JSON Schema envelope + audit models
 
 **Step:** Step 2 — Plant the frozen contracts (probe ABC, hashing, exec allowlist, schema, error hierarchy)
-**Status:** Ready (HARDENED)
+**Status:** Done (2026-05-13 — phase-story-executor attempt 1, GREEN)
+
+## Evidence (closed 2026-05-13)
+
+- **Implementation:**
+  - [src/codegenie/probes/registry.py](../../../../src/codegenie/probes/registry.py) — `register_probe`, `Registry`, `default_registry`, module-level `_filter` lru_cache helper.
+  - [src/codegenie/probes/__init__.py](../../../../src/codegenie/probes/__init__.py) — explicit `from codegenie.probes import base, registry`; commented placeholder for S4-01's `language_detection`.
+  - [src/codegenie/schema/__init__.py](../../../../src/codegenie/schema/__init__.py) — package marker.
+  - [src/codegenie/schema/repo_context.schema.json](../../../../src/codegenie/schema/repo_context.schema.json) — envelope; `$id` carries `v0.1.0`; root `additionalProperties: false`; `probes.additionalProperties: true`.
+  - [src/codegenie/schema/probes/__init__.py](../../../../src/codegenie/schema/probes/__init__.py) — package marker.
+  - [src/codegenie/schema/probes/language_detection.schema.json](../../../../src/codegenie/schema/probes/language_detection.schema.json) — first per-probe sub-schema; `$id` carries `language_detection/v0.1.0`; strict at slice.
+  - [src/codegenie/schema/validator.py](../../../../src/codegenie/schema/validator.py) — `validate(...)`, cached `_validator()` via `functools.lru_cache(maxsize=1)`, `referencing.Registry` for `$ref` resolution.
+  - [src/codegenie/audit.py](../../../../src/codegenie/audit.py) — Pydantic v2 `ProbeExecutionRecord` + `RunRecord` with `frozen=True, extra="forbid"`; `AuditWriter.record` stub raising `NotImplementedError` (S3-06 owns the body).
+- **Tests (27 new, all green):**
+  - [tests/unit/test_registry.py](../../../../tests/unit/test_registry.py) — 11 tests pinning AC-1, AC-2 (5-row filter matrix), AC-3, AC-4, AC-8 (template existence), AC-9 (decorator return, lru cache hit, empty-language set).
+  - [tests/unit/test_schema_validation.py](../../../../tests/unit/test_schema_validation.py) — 10 tests pinning AC-5, AC-6, AC-7, AC-10, AC-13.
+  - [tests/unit/test_audit_models.py](../../../../tests/unit/test_audit_models.py) — 6 tests pinning AC-11.
+- **Gates (all green):**
+  - Full suite: 183 passed (was 156 before this story; 27 new).
+  - Coverage: 94.02 % (gate ≥ 85 %); registry/validator at 100 %, audit at 96 % (uncovered line is the deliberate `AuditWriter.record` `NotImplementedError` — S3-06).
+  - `ruff check src/ tests/`: clean.
+  - `ruff format --check`: clean.
+  - `mypy --strict src/`: 16 source files, no issues.
+  - `lint-imports --no-cache`: 2 kept, 0 broken.
+  - `pre-commit run --all-files`: every hook passes (including mypy in isolated venv after `types-jsonschema` was added to the hook's `additional_dependencies`).
+- **Coordinated dep update:** `pyproject.toml` `[dev]` extras + `.pre-commit-config.yaml` mypy hook + `uv.lock` all carry the new `types-jsonschema` stub package (jsonschema is not py.typed).
+- **Attempt log:** [`_attempts/S2-05.md`](_attempts/S2-05.md). Cross-story lesson appended to [`_attempts/_lessons.md`](_attempts/_lessons.md) (three-edit rule for new third-party deps; module-level cached helper rule; `referencing.Registry` over deprecated `RefResolver`).
+
+---
+
+**Original status (pre-execution):** Ready (HARDENED)
 **Effort:** M
 **Depends on:** S2-02, S2-03, S2-04
 **ADRs honored:** ADR-0003, ADR-0004, ADR-0007, ADR-0013

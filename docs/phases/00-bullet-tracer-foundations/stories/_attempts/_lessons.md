@@ -118,3 +118,29 @@ would have benefited from knowing.
   `as_packages = false` to scope the contract to just the package init.
   The canonical S1-05 canary (positive KEPT + planted heavy import →
   BROKEN) remains the regression test. Discovered in **S2-01**.
+
+- **A new third-party dep is *three* coordinated edits, not one.**
+  `pyproject.toml` (so the local venv resolves it), the pre-commit
+  `mypy` hook's `additional_dependencies:` block (so the hook's
+  isolated venv resolves it identically), and a regenerated `uv.lock`
+  (the `test_uv_lock_is_in_lockstep_with_pyproject_dep_set` gate
+  catches drift). Forgetting any one of the three lets local CI pass
+  while a downstream gate (pre-commit hook OR lockstep test) silently
+  fails. Discovered in **S2-05** when adding `types-jsonschema`.
+
+- **`functools.lru_cache` on bound methods leaks `self`; module-level
+  cached helpers expose `.cache_info()` for free.** When an AC asks
+  for an observable cache (`hits >= 1` after repeated calls), factor
+  the cached function to module scope and have the method delegate.
+  Bound-method caching stores `self` in the cache key (registry/instance
+  lifetime leak) and the descriptor wrapping hides the `cache_info`
+  attribute from `instance.method.cache_info()`. Discovered in **S2-05**.
+
+- **`jsonschema.RefResolver` is deprecated; `referencing.Registry` is the
+  forward path.** Register sub-schemas by their absolute `$id` (e.g.
+  `https://…/probes/<name>/v0.1.0.json`) — the envelope's `$ref` is then
+  a stable absolute URI, no relative-path base-URI surprises. Stories
+  whose implementer notes still suggest `RefResolver` can adopt the
+  modern API without breaking ACs; the validator tests check what
+  `$ref` resolves to, not which library did the resolution. Discovered
+  in **S2-05**.

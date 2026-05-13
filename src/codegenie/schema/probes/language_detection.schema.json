@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/language_detection/v0.1.0.json",
+  "title": "LanguageDetection probe output",
+  "description": "Slice of repo-context produced by the LanguageDetection probe (Layer A, S4-01). Strict at the slice — sets the precedent Phase 1 probes inherit (ADR-0013).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["counts", "primary"],
+  "properties": {
+    "counts": {
+      "type": "object",
+      "description": "Map of language name (lowercased) to file count detected by the probe.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "primary": {
+      "type": "string",
+      "description": "The language with the highest count (ties broken by alphabetical order)."
+    }
+  }
+}
