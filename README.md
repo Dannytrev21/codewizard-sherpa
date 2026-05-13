@@ -27,8 +27,13 @@ $ python -m codegenie gather ./path/to/repo
 
 Global flags: `--verbose` (DEBUG events), `--version`, `--refresh-tools`
 (re-detect external tools), `--no-gitignore` / `--auto-gitignore`
-(skip / auto-append `.codegenie/` to `.gitignore`; mutation routine
-lands in S4-03).
+(skip / auto-append `.codegenie/` to `.gitignore`; mutually exclusive —
+combining them exits 2 with a click usage error). On a TTY, `gather`
+prompts before appending the canonical two-line block
+(`# codewizard-sherpa generated artifacts; safe to delete\n.codegenie/\n`);
+on non-TTY (CI), the append is skipped with a structured warning. A
+`.gitignore` that already contains a line matching `^\.codegenie/?\s*$`
+is detected as idempotent and never rewritten (mtime preserved).
 
 ## Quickstart
 

@@ -35,6 +35,16 @@ EVENT_PROBE_SUCCESS: Final[str] = "probe.success"
 EVENT_PROBE_FAILURE: Final[str] = "probe.failure"
 EVENT_PROBE_TIMEOUT: Final[str] = "probe.timeout"
 
+# S4-03: `.gitignore` mutation routine event names. Phase-arch §Edge case #8
+# ("append failure → warn + continue") + final-design §2.15 (TTY policy)
+# are the source of truth; the helper imports these constants so the names
+# stay rename-resistant.
+GITIGNORE_APPEND_ACCEPTED: Final[str] = "gitignore.append.accepted"
+GITIGNORE_APPEND_DECLINED: Final[str] = "gitignore.append.declined"
+GITIGNORE_APPEND_SKIPPED: Final[str] = "gitignore.append.skipped"
+GITIGNORE_APPEND_IDEMPOTENT: Final[str] = "gitignore.append.idempotent"
+GITIGNORE_APPEND_FAILED: Final[str] = "gitignore.append.failed"
+
 __all__ = [
     "EVENT_PROBE_CACHE_HIT",
     "EVENT_PROBE_FAILURE",
@@ -42,6 +52,11 @@ __all__ = [
     "EVENT_PROBE_START",
     "EVENT_PROBE_SUCCESS",
     "EVENT_PROBE_TIMEOUT",
+    "GITIGNORE_APPEND_ACCEPTED",
+    "GITIGNORE_APPEND_DECLINED",
+    "GITIGNORE_APPEND_FAILED",
+    "GITIGNORE_APPEND_IDEMPOTENT",
+    "GITIGNORE_APPEND_SKIPPED",
     "configure_logging",
 ]
 

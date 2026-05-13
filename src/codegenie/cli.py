@@ -184,19 +184,18 @@ def _detect_git_version() -> str:
     return asyncio.run(_run())
 
 
-def _seam_gitignore_mutation_stub(repo_root: Path, *, auto: bool, skip: bool) -> None:
-    """Step 3 — `.gitignore` mutation shim (AC-14).
+def _seam_maybe_append_gitignore(repo_root: Path, *, auto: bool, skip: bool) -> None:
+    """Step 3 — `.gitignore` mutation (S4-03).
 
-    S4-03 replaces the body of this function without changing its signature.
-    Right now it logs ``gitignore.mutation.deferred_to_s4_03`` and returns;
-    when ``skip=True`` the caller short-circuits BEFORE invoking this stub
-    so the log line is NOT emitted (AC-14 (c)).
+    Thin seam over :func:`codegenie.output.gitignore.maybe_append_gitignore`.
+    The helper is the source of truth for branch precedence, byte-exact
+    append contract, atomic-write, and the ``gitignore.append.*`` event
+    family. ``importlib.import_module`` is mandatory here — the helper
+    transitively imports ``structlog``, which the cli.py import-linter
+    contract forbids as an AST-visible top-level import.
     """
-    del repo_root, auto  # placeholder slots; S4-03 wires them
-    if skip:
-        return
-    structlog = importlib.import_module("structlog")
-    structlog.get_logger(__name__).info("gitignore.mutation.deferred_to_s4_03")
+    gitignore_mod = importlib.import_module("codegenie.output.gitignore")
+    gitignore_mod.maybe_append_gitignore(repo_root, auto=auto, skip=skip)
 
 
 def _seam_load_config(repo_root: Path, cli_overrides: dict[str, Any]) -> Any:
@@ -346,8 +345,8 @@ def _run_gather_pipeline(
     # Step 2 — tool-readiness cache.
     tool_versions = _seam_check_tools(refresh_tools)
 
-    # Step 3 — .gitignore mutation shim.
-    _seam_gitignore_mutation_stub(path, auto=auto_gitignore, skip=no_gitignore)
+    # Step 3 — .gitignore mutation (S4-03).
+    _seam_maybe_append_gitignore(path, auto=auto_gitignore, skip=no_gitignore)
 
     # Step 4 — config loader.
     config = _seam_load_config(path, {})
@@ -517,6 +516,12 @@ def cli(
     auto_gitignore: bool,
 ) -> None:
     """codewizard-sherpa local POC CLI."""
+    # S4-03 AC-15 — the two flag override the prompt in opposite directions;
+    # combining them is operator confusion, not a partial override. Reject at
+    # the group callback so the subcommand body never sees the impossible
+    # state and the user gets a clear click usage error (exit 2).
+    if auto_gitignore and no_gitignore:
+        raise click.UsageError("--auto-gitignore and --no-gitignore are mutually exclusive")
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["refresh_tools"] = refresh_tools

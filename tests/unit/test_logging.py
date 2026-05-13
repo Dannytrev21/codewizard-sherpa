@@ -27,6 +27,17 @@ EXPECTED_EVENT_NAMES = {
     "EVENT_PROBE_TIMEOUT": "probe.timeout",
 }
 
+# S4-03: `.gitignore` mutation routine event-name family. Kept in a
+# separate dict (not `EVENT_PROBE_*`) so closure assertions stay scoped
+# to the `probe.*` family unchanged.
+EXPECTED_GITIGNORE_EVENT_NAMES = {
+    "GITIGNORE_APPEND_ACCEPTED": "gitignore.append.accepted",
+    "GITIGNORE_APPEND_DECLINED": "gitignore.append.declined",
+    "GITIGNORE_APPEND_SKIPPED": "gitignore.append.skipped",
+    "GITIGNORE_APPEND_IDEMPOTENT": "gitignore.append.idempotent",
+    "GITIGNORE_APPEND_FAILED": "gitignore.append.failed",
+}
+
 
 @pytest.fixture(autouse=True)
 def _reset_structlog() -> object:
@@ -59,7 +70,31 @@ def test_event_name_constant_closure() -> None:
 
 
 def test_logging_module_all_closure() -> None:
-    assert set(cgl.__all__) == {"configure_logging", *EXPECTED_EVENT_NAMES}
+    assert set(cgl.__all__) == {
+        "configure_logging",
+        *EXPECTED_EVENT_NAMES,
+        *EXPECTED_GITIGNORE_EVENT_NAMES,
+    }
+
+
+def test_gitignore_event_name_constants_are_plain_strs_with_documented_values() -> None:
+    """S4-03 AC-21: five GITIGNORE_APPEND_* constants pinned by value."""
+    for name, expected_value in EXPECTED_GITIGNORE_EVENT_NAMES.items():
+        value = getattr(cgl, name)
+        assert type(value) is str, (
+            f"{name} must be a plain str, not {type(value).__name__}; "
+            "the str-identity ban applies to the gitignore family too"
+        )
+        assert value == expected_value
+
+
+def test_gitignore_event_name_constant_closure() -> None:
+    """Closure pin — adding a GITIGNORE_APPEND_* constant requires an ADR amendment."""
+    discovered = {n for n in dir(cgl) if n.startswith("GITIGNORE_APPEND_")}
+    assert discovered == set(EXPECTED_GITIGNORE_EVENT_NAMES), (
+        f"gitignore.append.* closure drift: expected {set(EXPECTED_GITIGNORE_EVENT_NAMES)}, "
+        f"got {discovered}"
+    )
 
 
 def test_configure_logging_signature_default_is_false() -> None:

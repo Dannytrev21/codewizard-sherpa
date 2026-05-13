@@ -328,12 +328,12 @@ The coordinator dispatches exactly one probe in Phase 0 (LanguageDetection), but
 
 CLAUDE.md mandates the CLI offer to add `.codegenie/` to the *analyzed* repo's `.gitignore` on first run. Resolution:
 
-- `codegenie gather` checks if `<analyzed-repo>/.gitignore` exists and contains `.codegenie/`.
-- If absent and stdin is a TTY: prompt `Add .codegenie/ to .gitignore? [Y/n]`. On accept, append `.codegenie/` with a comment line above (`# codewizard-sherpa generated artifacts; safe to delete`). The append is **atomic** (read, edit, `fsync`, `os.replace`).
-- If absent and stdin is **not** a TTY (CI, pipe): do nothing; log a structured warning `gitignore.codegenie.not_present`.
-- `--auto-gitignore` flag forces the append non-interactively (for scripted runs).
-- `--no-gitignore` flag suppresses both the prompt and the warning.
-- A test asserts the prompt path is reached on a TTY and skipped without one.
+- `codegenie gather` checks if `<analyzed-repo>/.gitignore` exists and contains a `.codegenie/` line (line-anchored regex `^\.codegenie/?\s*$` under `re.MULTILINE`, NOT a file-level substring — see `phase-arch-design.md §Harness engineering — Idempotence` and S4-03 AC-11).
+- If absent and both `sys.stdin.isatty()` and `sys.stdout.isatty()` are true: prompt `Append .codegenie/ to .gitignore?`. On accept, atomically append the two-line canonical block (`# codewizard-sherpa generated artifacts; safe to delete\n.codegenie/\n`) via `<tmp> → fsync → os.replace`. Emits `gitignore.append.accepted` at INFO with `reason="tty_accept"`.
+- If absent and either isatty is false (CI, pipe): do nothing; log `gitignore.append.skipped` at WARNING with `reason="non_tty"`. (The event name `gitignore.codegenie.not_present` from earlier drafts is superseded by the `gitignore.append.*` family; see S4-03 validation note #7.)
+- `--auto-gitignore` flag forces the append non-interactively (`gitignore.append.accepted` reason `auto_flag`).
+- `--no-gitignore` flag suppresses both the prompt and the file write (`gitignore.append.skipped` reason `never_flag` at DEBUG). Combining `--auto-gitignore` and `--no-gitignore` is rejected at the CLI layer with `click.UsageError` (exit 2) — see S4-03 AC-15.
+- A test asserts the prompt path is reached on a TTY and skipped without one (`tests/unit/test_gitignore_mutation.py`).
 
 This is the only Phase 0 code path that mutates the analyzed repo. It is bounded, atomic, and opt-in.
 

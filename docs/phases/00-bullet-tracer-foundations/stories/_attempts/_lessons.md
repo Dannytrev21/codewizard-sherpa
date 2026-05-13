@@ -369,3 +369,54 @@ would have benefited from knowing.
   16-hex `run_id` at cli.start (asyncio Task contexts isolate the
   coordinator's inner rebind). All three are different values by
   design — equality is NOT a contract. Discovered in **S4-02** AC-13.
+
+## Test infrastructure
+
+- **`capsys` is unfit for tests that ALSO monkeypatch `sys.stdin.isatty`
+  / `sys.stdout.isatty`.** pytest rotates the `CaptureIO` between
+  fixture setup and the test body — the patched isatty stays on the
+  pre-swap stream and the helper under test sees the post-swap stream
+  whose `isatty` is the default built-in `False`. Minimal repro: a
+  fixture that does `monkeypatch.setattr(sys.stdout, "isatty", lambda:
+  True)` and depends on `capsys`; the test asserts `sys.stdout.isatty()
+  is True` and fails. Removing `capsys` from the fixture deps makes it
+  pass. Combined with structlog's `PrintLoggerFactory(file=sys.stderr)`
+  caching the file at config time (which closes when its CaptureIO
+  closes between tests), this produces both `non_tty`-branch false
+  positives AND `ValueError: I/O operation on closed file`. **Default
+  for any test that asserts on structlog events: use
+  `structlog.testing.capture_logs()` (already the pattern in
+  `tests/unit/test_cli_orchestration.py` and
+  `tests/unit/test_cli_flags.py:test_cache_gc_stub_emits_exact_event_name`).**
+  Note the level key is named `log_level` (not `level`) in
+  capture_logs output. Discovered in **S4-03**.
+
+- **`from __future__ import annotations` defeats naive
+  `inspect.signature(...).return_annotation` checks.** With the
+  future-import on, annotations are stored as strings — `return_annotation`
+  is `'None'` (str), not the `None` object. Either use
+  `inspect.signature(fn, eval_str=True)` (Python 3.10+) or accept the
+  string form. The codebase uses `from __future__ import annotations`
+  everywhere (Rule 11), so this trap is project-wide. Discovered in
+  **S4-03** AC-1.
+
+- **`list` does not accept arbitrary attribute assignment.** Test
+  fixtures that try `calls = []; calls.return_value = ...` raise
+  `AttributeError`. Build a small spy class instead — `__call__`,
+  `__len__`, `__eq__`, plus the configurable return value as a real
+  attribute. Discovered in **S4-03** while wiring the click.confirm
+  spy; surfaces because v1 of S4-03's TDD plan used the pattern verbatim.
+
+## CLI / harness wiring (continued)
+
+- **Resolve structlog loggers inside the function body, not at module
+  import.** `_log = structlog.get_logger(__name__)` at module top binds
+  the proxy's underlying PrintLogger to whatever `sys.stderr` was at
+  import time. Under pytest that's the very first test's `CaptureIO`,
+  which gets closed when the test ends — every subsequent test that
+  exercises the module hits `ValueError: I/O operation on closed
+  file`. Wrap the logger lookup in a `_logger()` helper that returns
+  `structlog.get_logger(__name__)` on demand; per-call cost is one
+  dict lookup. Production cost is negligible (most call sites run
+  once per CLI invocation). Discovered in **S4-03** while debugging
+  the `gitignore.append.*` event capture failures.

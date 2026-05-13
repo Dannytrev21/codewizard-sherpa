@@ -62,7 +62,7 @@ def test_global_flags_propagate_to_gather(
         seen["gitignore"] = (auto, skip)
 
     monkeypatch.setattr(cli_mod, "_seam_check_tools", _check)
-    monkeypatch.setattr(cli_mod, "_seam_gitignore_mutation_stub", _gitignore)
+    monkeypatch.setattr(cli_mod, "_seam_maybe_append_gitignore", _gitignore)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.js").write_text("//")
@@ -84,7 +84,7 @@ def test_auto_gitignore_propagates(
     def _gitignore(repo_root: Path, *, auto: bool, skip: bool) -> None:
         seen["gitignore"] = (auto, skip)
 
-    monkeypatch.setattr(cli_mod, "_seam_gitignore_mutation_stub", _gitignore)
+    monkeypatch.setattr(cli_mod, "_seam_maybe_append_gitignore", _gitignore)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.js").write_text("//")
@@ -104,29 +104,25 @@ def test_cache_gc_stub_emits_exact_event_name() -> None:
     assert len(stub_events) == 1, [e.get("event") for e in logs]
 
 
-def test_gitignore_stub_signature_and_noop(tmp_home: Path, tmp_path: Path) -> None:
-    """AC-14 — shim signature is stable across S4-02 → S4-03; ``skip=False``
-    invocation logs ``gitignore.mutation.deferred_to_s4_03`` and writes no
-    files. ``skip=True`` short-circuits before the log."""
-    from codegenie.cli import _seam_gitignore_mutation_stub as stub
+def test_gitignore_seam_signature_and_skip_is_noop(tmp_home: Path, tmp_path: Path) -> None:
+    """S4-03 — seam signature stays stable; ``skip=True`` is a true filesystem no-op.
 
-    sig = inspect.signature(stub)
+    The helper's full branch matrix lives in
+    :mod:`tests.unit.test_gitignore_mutation` — this CLI-level test only
+    pins the seam contract: signature parity with the S4-02 stub and the
+    ``skip=True`` short-circuit that has zero filesystem effect.
+    """
+    from codegenie.cli import _seam_maybe_append_gitignore as seam
+
+    sig = inspect.signature(seam)
     assert list(sig.parameters) == ["repo_root", "auto", "skip"]
     assert sig.parameters["auto"].kind == inspect.Parameter.KEYWORD_ONLY
     assert sig.parameters["skip"].kind == inspect.Parameter.KEYWORD_ONLY
 
-    # No filesystem writes — call against an empty tmp dir; assert the dir
-    # stays empty.
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    stub(workspace, auto=False, skip=False)
-    assert list(workspace.iterdir()) == []
-
-    # skip=True short-circuits BEFORE emitting the deferred-log event.
-    with structlog.testing.capture_logs() as logs:
-        stub(workspace, auto=False, skip=True)
-    deferred = [e for e in logs if e.get("event") == "gitignore.mutation.deferred_to_s4_03"]
-    assert deferred == [], "skip=True must short-circuit before any log emit"
+    seam(workspace, auto=False, skip=True)
+    assert list(workspace.iterdir()) == [], "skip=True must not write any file"
 
 
 def test_verbose_emits_debug_events(tmp_home: Path, tmp_path: Path) -> None:

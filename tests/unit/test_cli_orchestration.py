@@ -69,7 +69,7 @@ def test_startup_order_matches_ac5_spec(
 
     monkeypatch.setattr(cli_mod, "_seam_configure_logging", _spy("configure_logging", None))
     monkeypatch.setattr(cli_mod, "_seam_check_tools", _spy("check_tools", {"git": "stub"}))
-    monkeypatch.setattr(cli_mod, "_seam_gitignore_mutation_stub", _spy("gitignore_stub", None))
+    monkeypatch.setattr(cli_mod, "_seam_maybe_append_gitignore", _spy("gitignore_stub", None))
     monkeypatch.setattr(cli_mod, "_seam_load_config", _spy("load_config", _StubConfig()))
     monkeypatch.setattr(cli_mod, "_seam_git_rev_parse", _spy("run_allowlisted", None))
     monkeypatch.setattr(cli_mod, "_seam_registry_for_task", _spy("registry_for_task", []))
