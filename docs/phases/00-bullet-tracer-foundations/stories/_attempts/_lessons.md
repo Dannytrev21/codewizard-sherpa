@@ -314,3 +314,58 @@ would have benefited from knowing.
   log lines that no later pass scrubs. Discovered in **S4-01** for the
   symlink-escape event payload; will apply to every Layer A–G probe that
   logs path-shaped values.
+
+## CLI / harness wiring
+
+- **`structlog.testing.capture_logs()` swaps `processors` only, NOT
+  `wrapper_class`.** A test that captures logs while running code that
+  also calls `structlog.configure(...)` (e.g., `configure_logging`) sees
+  an EMPTY `logs[]` — the second `configure` call wipes the capture
+  processor chain. Fix in tests that need capture: monkeypatch
+  `_seam_configure_logging` (or the equivalent step) to a no-op so the
+  capture's processor chain survives. For tests that need verbose-mode
+  DEBUG events specifically, assert on `CliRunner` `result.output`
+  substring (the JSON renderer writes to stderr which CliRunner merges)
+  rather than `capture_logs` — the `wrapper_class` filtering still
+  applies even after `capture_logs` swaps the chain. Discovered in
+  **S4-02**.
+
+- **`importlib.import_module(...)` is the escape hatch for EVERY heavy
+  dependency inside a `codegenie.cli` command body — not just
+  `codegenie.audit`.** Once `cli.py` grows past the `audit verify`
+  stub (S4-02), any AST-visible `from codegenie.<X> import Y` (where
+  X transitively imports yaml / pydantic / structlog / blake3 /
+  jsonschema) breaks the `forbidden_modules` contract. The pattern: a
+  `_seam_*` helper that does `importlib.import_module("codegenie.<X>")`
+  + accessor. Bonus: gives tests a stable monkeypatch handle at the
+  CLI layer without exercising heavy code paths. Discovered in
+  **S4-02** while writing the gather command body.
+
+- **`importlib.import_module(...)` returns `Any` — mypy strict will
+  complain about `Any` leaking into return values.** Two patterns
+  emerge: (a) for primitive returns (str, Path), annotate a local
+  binding (`decoded: str = result.stdout.decode(...).strip()`) and
+  return the local; (b) for opaque returns, accept `Any` at the
+  callsite and annotate the next-step parameter. Avoid `cast(...)` —
+  the local-annotation pattern self-documents the dynamic-import
+  boundary. Discovered in **S4-02**.
+
+- **`structlog.contextvars.bind_contextvars` only flows into events
+  via the `merge_contextvars` processor in the chain.** Default
+  `configure_logging` includes it; `structlog.testing.capture_logs`
+  does NOT. When emitting an event whose `run_id` must appear under
+  both production AND `capture_logs` test inspection, pass it
+  explicitly as a kwarg (`log.info("cli.start", run_id=run_id)`)
+  *in addition to* the bind. The bind is the convenience for child
+  events; the kwarg is the contract. Discovered in **S4-02** while
+  AC-13 asserted `cli.start` and `cli.end` share a `run_id` under
+  capture_logs.
+
+- **CLI `run_id` and audit filename `<short>` are intentionally
+  distinct.** The coordinator binds `run_id = secrets.token_hex(8)`
+  (16 hex chars) via contextvars for log correlation; the
+  `AuditWriter` filename's `<short>` is `secrets.token_hex(4)` (8 hex
+  chars) for per-write collision-avoidance. The CLI mints its OWN
+  16-hex `run_id` at cli.start (asyncio Task contexts isolate the
+  coordinator's inner rebind). All three are different values by
+  design — equality is NOT a contract. Discovered in **S4-02** AC-13.

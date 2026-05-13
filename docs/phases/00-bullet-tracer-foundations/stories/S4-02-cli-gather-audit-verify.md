@@ -1,10 +1,44 @@
 # Story S4-02 — CLI `gather` + `audit verify` + tool-readiness check
 
 **Step:** Step 4 — Cut the vertical slice: CLI, `LanguageDetectionProbe`, fixtures, end-to-end smoke
-**Status:** Ready — HARDENED 2026-05-13
+**Status:** Done — 2026-05-13 (GREEN on first executor pass)
 **Effort:** M
 **Depends on:** S3-06, S4-01
 **ADRs honored:** ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013
+
+## Evidence — runtime closure
+
+All 24 ACs verified at runtime. 32 new unit tests; 537 total; mypy `--strict`
+clean; `lint-imports` 2/2 contracts kept; pre-commit clean; coverage 93%.
+
+| AC | Test (file::function) |
+|---|---|
+| AC-1 | `test_cli_audit_subcommand.py` (subcommand wiring) + `test_cli_flags.py::test_cache_gc_stub_emits_exact_event_name` |
+| AC-2 | `test_cli_flags.py::test_global_flags_propagate_to_gather` + `test_auto_gitignore_propagates` + `test_cli_tool_readiness.py::test_refresh_tools_forces_re_detection` |
+| AC-3 | `test_cli_cold_start_imports.py::test_help_and_version_keep_heavy_modules_out_of_sys_modules` |
+| AC-4 | `test_cli_exit_codes.py::test_gather_help_lists_documented_exit_codes_only` + `test_exit_5_when_output_yaml_is_symlink` |
+| AC-5 | `test_cli_orchestration.py::test_startup_order_matches_ac5_spec` + `test_non_git_path_yields_null_git_commit` |
+| AC-6 | `test_cli_exit_codes.py::test_exit_code_policy_per_adr_0009` (parametrized over 5 scenarios) |
+| AC-7 | `test_cli_tool_readiness.py::test_first_run_creates_dir_and_cache_at_correct_modes` |
+| AC-8 | `test_cli_audit_subcommand.py::test_audit_verify_clean_returns_zero` + `test_audit_verify_tampered_returns_four` |
+| AC-9 | `test_cli_exit_codes.py::test_documented_error_maps_to_documented_exit_code` (parametrized) + `test_dispatch_table_snapshot` |
+| AC-10 | pre-commit `run --all-files` clean (ruff, ruff format, mypy strict, secrets, yaml/toml, EOF, trailing-ws, forbidden-patterns) + `lint-imports` 2/2 |
+| AC-11 | `test_cli_exit_codes.py::test_gather_exits_2_leaves_no_yaml_but_writes_audit` + `test_exit_2_run_record_reflects_failures` |
+| AC-12 | `test_cli_exit_codes.py::test_gather_happy_path_writes_language_stack` |
+| AC-13 | `test_cli_orchestration.py::test_cli_start_and_end_events_share_run_id` |
+| AC-14 | `test_cli_flags.py::test_gitignore_stub_signature_and_noop` |
+| AC-15 | `test_cli_orchestration.py::test_unhandled_exception_exits_1_with_crash_outcome` |
+| AC-16 | `test_cli_flags.py::test_version_matches_codegenie_version` |
+| AC-17 | `test_cli_flags.py::test_cache_gc_stub_emits_exact_event_name` |
+| AC-18 | `test_cli_orchestration.py::test_non_git_path_yields_null_git_commit` |
+| AC-19 | `test_cli_flags.py::test_verbose_emits_debug_events` |
+| AC-20 | `test_cli_orchestration.py::test_startup_order_matches_ac5_spec` |
+| AC-21 | `test_cli_exit_codes.py::test_exit_6_via_sanitizer_when_validator_bypassed` (real probe + real sanitizer; validator monkey-patched to no-op) |
+| AC-22 | `test_cli_tool_readiness.py::test_corrupt_tool_cache_becomes_miss_then_rewritten` |
+| AC-23 | `test_cli_tool_readiness.py::test_atomic_write_leaves_no_tmp_sidecar` |
+| AC-24 | `test_cli_orchestration.py::test_probe_name_collision_emits_cli_unhandled` (defense-in-depth — registry enforces uniqueness at registration time, S2-05) |
+
+Full attempt log at `_attempts/S4-02.md`.
 
 ## Validation notes (2026-05-13)
 

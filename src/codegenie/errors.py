@@ -29,6 +29,7 @@ __all__ = [
     "SecretLikelyFieldNameError",
     "DisallowedSubprocessError",
     "SymlinkRefusedError",
+    "AllProbesFailedError",
 ]
 
 
@@ -76,3 +77,9 @@ class DisallowedSubprocessError(CodegenieError):
 
 class SymlinkRefusedError(CodegenieError):
     """Raised by the writer / sanitizer walker when a symlink would escape the analyzed repo."""
+
+
+class AllProbesFailedError(CodegenieError):
+    """Raised by the coordinator-result drainer in the CLI when every probe was
+    Skipped or returned an errored Ran — i.e. ``len(GatherResult.outputs) == 0``.
+    Maps to gather exit code 2 per ADR-0009 §Consequences."""

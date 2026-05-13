@@ -1,11 +1,15 @@
 """``python -m codegenie`` entry point.
 
-Phase 0 ships only a placeholder CLI; the real subcommands
-(``gather``, ``audit verify``, ``cache gc``) land in story S4-02.
+S1-01 pinned the ``main(argv) -> int`` signature; S4-02 reshapes the body to
+dispatch through :data:`codegenie.cli.cli` (the click group that now owns
+``gather`` / ``audit verify`` / ``cache gc``). The signature stays stable so
+downstream packagers and test fixtures keep working.
 
-The function signature pinned here (``main(argv) -> int``) is the contract
-S4-02 inherits — keeping ``__main__.py``'s shape stable so subsequent
-stories never have to refactor the entry path.
+The dispatch wraps the click group in ``standalone_mode=False`` and traps
+``click.exceptions.Exit`` so the function returns an integer exit code rather
+than calling ``sys.exit`` itself; ``python -m codegenie`` (this module's
+``__main__`` block) is the only place that escalates the return value to
+``sys.exit``.
 """
 
 from __future__ import annotations
@@ -14,25 +18,7 @@ import sys
 
 import click
 
-from codegenie.version import __version__
-
-
-@click.command(
-    name="codegenie",
-    help=(
-        "codewizard-sherpa local POC CLI. "
-        "Phase 0 ships a placeholder; gather/audit/cache subcommands land in S4-02."
-    ),
-)
-@click.version_option(__version__, prog_name="codegenie")
-def _cli() -> None:
-    """Placeholder root command.
-
-    Invocations without flags print the help text instead of erroring; this
-    keeps ``python -m codegenie`` discoverable while the real subcommand
-    surface is still under construction (S4-02).
-    """
-    click.echo(_cli.get_help(click.get_current_context()))
+from codegenie.cli import cli
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,9 +36,18 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code; ``0`` on success.
     """
     try:
-        _cli.main(args=argv, prog_name="codegenie", standalone_mode=False)
+        cli.main(args=argv, prog_name="codegenie", standalone_mode=False)
     except click.exceptions.Exit as exc:
         return int(exc.exit_code)
+    except SystemExit as exc:
+        # The subcommands call ``sys.exit(code)`` directly; click's
+        # ``standalone_mode=False`` lets ``SystemExit`` propagate. Translate
+        # to a plain return value so callers can compose this function.
+        code = exc.code if isinstance(exc.code, int) else (1 if exc.code else 0)
+        return code
+    except click.ClickException as exc:
+        exc.show()
+        return exc.exit_code
     return 0
 
 

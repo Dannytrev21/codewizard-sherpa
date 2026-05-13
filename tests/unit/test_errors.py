@@ -24,6 +24,7 @@ EXPECTED_SUBCLASSES = {
     "SecretLikelyFieldNameError",
     "DisallowedSubprocessError",
     "SymlinkRefusedError",
+    "AllProbesFailedError",
 }
 DOCUMENTED_MODULE_SLUGS = {
     "exec",

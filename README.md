@@ -9,7 +9,26 @@ The implementation entry point is the `codegenie` CLI (`src/codegenie/`).
 
 ```console
 $ python -m codegenie --help
+$ python -m codegenie gather ./path/to/repo
 ```
+
+### Phase 0 subcommand surface
+
+- `codegenie gather <path>` — vertical slice. Walks the repo, dispatches
+  the registered probes (Phase 0 ships `LanguageDetectionProbe`), and
+  writes `.codegenie/context/repo-context.yaml` + a per-run audit record
+  under `.codegenie/context/runs/`. Exit codes: `0` ok, `2` all probes
+  failed, `3` schema validation failed (writes `.yaml.invalid` sibling),
+  `5` symlink output refused, `6` secret-shaped field rejected.
+- `codegenie audit verify --runs-dir <r> --cache-dir <c> --yaml-path <y>`
+  — pure-read verifier. Recomputes per-probe blob anchors + the whole-YAML
+  anchor; exit `0` clean, exit `4` mismatch.
+- `codegenie cache gc` — Phase-1+ stub (logs `cache.gc.stub` and exits 0).
+
+Global flags: `--verbose` (DEBUG events), `--version`, `--refresh-tools`
+(re-detect external tools), `--no-gitignore` / `--auto-gitignore`
+(skip / auto-append `.codegenie/` to `.gitignore`; mutation routine
+lands in S4-03).
 
 ## Quickstart
 
