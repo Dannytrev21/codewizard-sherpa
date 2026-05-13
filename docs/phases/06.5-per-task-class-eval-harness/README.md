@@ -1,7 +1,7 @@
 # Phase 6.5 — Per-task-class eval harness + first benches *(preamble to Phase 7)*
 
-**Design pipeline:** `roadmap-phase-designer` → `phase-architect` → `phase-story-writer`
-**Status:** `roadmap-phase-designer` complete; `phase-architect` pending; `phase-story-writer` pending.
+**Design pipeline:** `roadmap-phase-designer` → `phase-architect` → `phase-story-writer` — **all three complete**
+**Status:** Design pipeline complete. 36 stories ready for autonomous implementation. See [`stories/README.md`](stories/README.md) for the manifest + dependency DAG.
 **Roadmap entry:** [`../../roadmap.md` §Phase 6.5](../../roadmap.md)
 **Anchor ADR:** [Phase 5 ADR-0016](../05-sandbox-trust-gates/ADRs/0016-per-task-class-eval-harness-as-trust-evidence.md) — per-task-class eval harness as evidence source for trust-tier promotion, threshold calibration, and LLM-Judge un-deferral.
 
