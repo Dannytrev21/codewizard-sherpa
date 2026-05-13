@@ -1,7 +1,7 @@
 # Story S1-03 — Makefile + uv lock + bootstrap targets
 
 **Step:** Step 1 — Establish project skeleton, tooling, and the `fence` CI job
-**Status:** Ready (validated 2026-05-12 — HARDENED)
+**Status:** Done (executed 2026-05-13)
 **Effort:** S
 **Depends on:** S1-01
 **ADRs honored:** ADR-0006

@@ -10,3 +10,14 @@ The implementation entry point is the `codegenie` CLI (`src/codegenie/`).
 ```console
 $ python -m codegenie --help
 ```
+
+## Quickstart
+
+```console
+$ make bootstrap   # installs [dev] extras via uv (or pip fallback)
+$ make check       # runs lint → typecheck → test → fence
+```
+
+`make bootstrap` works with or without `uv` on `$PATH`. See
+[`docs/phases/00-bullet-tracer-foundations/stories/S1-03-makefile-bootstrap.md`](docs/phases/00-bullet-tracer-foundations/stories/S1-03-makefile-bootstrap.md)
+for the full target list.

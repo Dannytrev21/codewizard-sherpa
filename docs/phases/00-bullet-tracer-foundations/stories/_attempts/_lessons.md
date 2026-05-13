@@ -33,3 +33,17 @@ would have benefited from knowing.
   The AC-1 wording "`[tool.ruff.format]` table is declared" is satisfied by
   an empty table header — ruff format works against it. Don't invent format
   knobs you don't actually need. Discovered in **S1-02**.
+
+- **Substring assertions in TDD plans should be anti-subsequences of near-misses.**
+  Asserting `"pip install" in body` would also match `"uv pip install"`,
+  silently passing a uv-only Makefile that omits the pip fallback. Pick the
+  longer literal (`"python -m pip install"`) that appears only in the branch
+  you actually want to assert. The same pattern applies to fence tests
+  (S1-05) and exec allowlists (S2-04). Discovered in **S1-03**.
+
+- **`_recipe_body` regex must be tab-anchored to avoid matching comment blocks.**
+  When the Makefile's header comment deliberately mentions forbidden tokens
+  (e.g., `[[ ... ]]` to document the POSIX-sh prohibition), an AC-9-style
+  bash-ism check that scans the whole file would self-trigger. Scope the
+  recipe-body extractor to lines beginning with `\t` only. Discovered in
+  **S1-03** while writing the bash-ism guard.
