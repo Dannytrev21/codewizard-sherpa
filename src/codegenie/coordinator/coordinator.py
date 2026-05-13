@@ -336,10 +336,17 @@ async def _dispatch_one(
                 else:
                     raise
             else:
+                # ``cache_key`` is part of the coordinator's ``probe.success``
+                # payload so the warm-run / cold-run comparison in S4-04's
+                # metamorphic cache pair can pin byte-equality across runs.
+                # The probe-internal ``probe.success`` event (S4-01) carries
+                # ``count_total`` / ``confidence`` instead — downstream filters
+                # disambiguate by ``cache_key in event``.
                 _log.info(
                     "probe.success",
                     probe=name,
                     duration_ms=duration_ms,
+                    cache_key=key,
                     run_id=run_id,
                 )
 

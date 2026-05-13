@@ -413,7 +413,16 @@ def _run_gather_pipeline(
         "schema_version": "0.1.0",
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "repo": {
-            "root": str(snapshot.root),
+            # ``repo.root`` is the analyzed repo's basename only, not its
+            # absolute filesystem path. ADR-0008 §Sanitizer requires the
+            # rendered ``RepoContext`` carry no user-identifying path
+            # prefixes (``/Users/<u>/...``, ``/home/<u>/...``, tmp dirs);
+            # the envelope is the load-bearing emission surface for that
+            # commitment. The schema (``repo_context.schema.json``) accepts
+            # any string under ``repo.root``; downstream consumers that
+            # need the absolute path read it from their own invocation
+            # context, never from the rendered YAML.
+            "root": snapshot.root.name,
             "git_commit": snapshot.git_commit,
         },
         "probes": {},

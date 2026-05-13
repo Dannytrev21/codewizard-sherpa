@@ -420,3 +420,25 @@ would have benefited from knowing.
   dict lookup. Production cost is negligible (most call sites run
   once per CLI invocation). Discovered in **S4-03** while debugging
   the `gitignore.append.*` event capture failures.
+
+- **`probe.success` is a colliding event name: the probe emits one
+  flavor; the coordinator emits another.** `LanguageDetectionProbe`
+  (S4-01) emits `probe.success` with `confidence` + `count_total`;
+  the coordinator (S3-05) emits its own `probe.success` carrying
+  `duration_ms` + `cache_key`. Filters that `event == "probe.success"
+  and probe == "<name>"` match BOTH and give a misleading count.
+  Disambiguate by a unique field of the variant you want
+  (`"cache_key" in event` selects the coordinator's). Will recur for
+  every Phase 1+ probe that emits its own lifecycle event. Discovered
+  in **S4-04** while pinning the metamorphic-pair cache assertions.
+
+- **`OutputSanitizer.scrub` chokepoint covers `ProbeOutput.schema_slice`
+  only — NOT envelope-level fields.** The CLI's `_run_gather_pipeline`
+  constructs `envelope["repo"] = {"root": str(snapshot.root), ...}`
+  AFTER the sanitizer has already run on every `ProbeOutput`. The raw
+  resolved absolute path leaks straight into the rendered YAML. Phase 0
+  redacts to the basename inline in `cli.py`; the cleaner fix (widen
+  the sanitizer to be a true `RepoContext` chokepoint, OR codify in
+  ADR-0008 that envelope-level paths are the CLI's responsibility)
+  belongs to Phase 1. Discovered in **S4-04** while wiring the
+  sanitizer-substring scan over the rendered YAML.

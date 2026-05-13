@@ -1,7 +1,16 @@
 # Story S4-04 — Fixtures + end-to-end smoke + cache-hit-on-second-run
 
+**Status:** Done
+**Completed:** 2026-05-13
+**Attempts:** 1
+**Evidence:**
+- Files: `tests/fixtures/{empty_repo,js_only,polyglot}/*`, `tests/smoke/{__init__.py,conftest.py,test_cli_end_to_end.py}`, `.github/workflows/ci.yml`, `src/codegenie/coordinator/coordinator.py` (cache_key in probe.success), `src/codegenie/cli.py` (repo.root basename redaction)
+- Tests: `tests/smoke/test_cli_end_to_end.py::{test_help_exits_zero_and_lists_flags__group, test_help_exits_zero_and_lists_flags__gather, test_gather_empty_repo, test_gather_js_only, test_gather_polyglot, test_envelope_required_fields_present, test_cache_hit_on_second_run, test_cache_miss_on_tracked_input_edit, test_audit_verify_smoke_run}` — 9 tests; full suite 577 passed, coverage 93.36% (clears 85% floor).
+- Attempt log: [`_attempts/S4-04.md`](_attempts/S4-04.md)
+- Commit: (pending human merge)
+
 **Step:** Step 4 — Cut the vertical slice: CLI, `LanguageDetectionProbe`, fixtures, end-to-end smoke
-**Status:** Ready (validated 2026-05-13)
+**Original status:** Ready (validated 2026-05-13)
 **Effort:** M
 **Depends on:** S4-01, S4-02
 **ADRs honored (directly asserted):** ADR-0008, ADR-0009, ADR-0011, ADR-0013
@@ -60,81 +69,81 @@ This story flips the `--cov-fail-under=85` gate from wired-but-exempt (S1-02) to
 
 ### Fixtures
 
-- [ ] `tests/fixtures/empty_repo/` contains exactly one file: `.gitkeep` (empty).
-- [ ] `tests/fixtures/js_only/` contains three `.js` files, one `.mjs` file, one `.cjs` file, and a `README.md`. The README is the load-bearing piece — editing it between two runs in the cache-hit test must not invalidate the cache (it is **not** in `LanguageDetectionProbe.declared_inputs`).
-- [ ] `tests/fixtures/polyglot/` contains exactly one file per language branch of `LanguageDetectionProbe`: `main.js`, `main.ts`, `main.py`, `main.go`, `main.rs`. Each is a one-liner appropriate to the language. No README.
+- [x] `tests/fixtures/empty_repo/` contains exactly one file: `.gitkeep` (empty).
+- [x] `tests/fixtures/js_only/` contains three `.js` files, one `.mjs` file, one `.cjs` file, and a `README.md`. The README is the load-bearing piece — editing it between two runs in the cache-hit test must not invalidate the cache (it is **not** in `LanguageDetectionProbe.declared_inputs`).
+- [x] `tests/fixtures/polyglot/` contains exactly one file per language branch of `LanguageDetectionProbe`: `main.js`, `main.ts`, `main.py`, `main.go`, `main.rs`. Each is a one-liner appropriate to the language. No README.
 
 ### `--help` smoke (two invocations, asserted independently)
 
-- [ ] `test_help_exits_zero_and_lists_flags__gather`: `runner.invoke(cli, ["gather", "--help"]).exit_code == 0` AND output contains every documented flag (`--verbose`, `--version`, `--refresh-tools`, `--no-gitignore`, `--auto-gitignore`) AND for each documented exit code in `{0, 2, 3, 5, 6}` the regex `re.search(r"\bexit(\s+code)?\s+%d\b" % n, output)` matches.
-- [ ] `test_help_exits_zero_and_lists_flags__group`: `runner.invoke(cli, ["--help"]).exit_code == 0` AND output lists the subcommand names `gather`, `audit`, `cache`.
+- [x] `test_help_exits_zero_and_lists_flags__gather`: `runner.invoke(cli, ["gather", "--help"]).exit_code == 0` AND output contains every documented flag (`--verbose`, `--version`, `--refresh-tools`, `--no-gitignore`, `--auto-gitignore`) AND for each documented exit code in `{0, 2, 3, 5, 6}` the regex `re.search(r"\bexit(\s+code)?\s+%d\b" % n, output)` matches.
+- [x] `test_help_exits_zero_and_lists_flags__group`: `runner.invoke(cli, ["--help"]).exit_code == 0` AND output lists the subcommand names `gather`, `audit`, `cache`.
 
 ### Per-fixture smoke (closed-world dict assertions; specification by example)
 
-- [ ] `test_gather_empty_repo`: runs `cli` with `["gather", "--no-gitignore", str(empty_repo_fixture)]`; exit code 0; `<fixture>/.codegenie/context/repo-context.yaml` exists and parses as YAML; `language_stack.counts == {}` and `language_stack.primary is None` (pinned by S4-01 module docstring line 37; sub-schema `v0.1.1` declares `primary: {"type": ["string", "null"]}` — the empty-string sentinel is rejected).
-- [ ] `test_gather_js_only`: runs against `js_only/`; exit 0; `language_stack.counts == {"javascript": 5}` (exact dict equality; `set(counts.keys()) == {"javascript"}` is the closed-world clause that mutation-resists "ghost zero-count keys"); `language_stack.primary == "javascript"`.
-- [ ] `test_gather_polyglot`: runs against `polyglot/`; exit 0; `language_stack.counts == {"go": 1, "javascript": 1, "python": 1, "rust": 1, "typescript": 1}` (exact dict equality); `language_stack.primary == "go"` — the alphabetically-first language of the max-count tie set per S4-01's tie-break rule, deterministic across Python versions and `PYTHONHASHSEED`.
+- [x] `test_gather_empty_repo`: runs `cli` with `["gather", "--no-gitignore", str(empty_repo_fixture)]`; exit code 0; `<fixture>/.codegenie/context/repo-context.yaml` exists and parses as YAML; `language_stack.counts == {}` and `language_stack.primary is None` (pinned by S4-01 module docstring line 37; sub-schema `v0.1.1` declares `primary: {"type": ["string", "null"]}` — the empty-string sentinel is rejected).
+- [x] `test_gather_js_only`: runs against `js_only/`; exit 0; `language_stack.counts == {"javascript": 5}` (exact dict equality; `set(counts.keys()) == {"javascript"}` is the closed-world clause that mutation-resists "ghost zero-count keys"); `language_stack.primary == "javascript"`.
+- [x] `test_gather_polyglot`: runs against `polyglot/`; exit 0; `language_stack.counts == {"go": 1, "javascript": 1, "python": 1, "rust": 1, "typescript": 1}` (exact dict equality); `language_stack.primary == "go"` — the alphabetically-first language of the max-count tie set per S4-01's tie-break rule, deterministic across Python versions and `PYTHONHASHSEED`.
 
 ### Envelope-level required YAML fields (Phase 0 Goal #1)
 
-- [ ] `test_envelope_required_fields_present` (over the `js_only` fixture; once is enough since the envelope shape is fixture-independent): after parsing `<fixture>/.codegenie/context/repo-context.yaml`:
-  - [ ] Top-level keys are exactly `{"schema_version", "generated_at", "repo", "probes"}` (ADR-0013's strict envelope; no unknown top-level keys).
-  - [ ] `schema_version` is a non-empty string matching the version pinned by S3-02 (read the value from `src/codegenie/schema/repo_context.schema.json`'s `$id` or version field and compare).
-  - [ ] `generated_at` is a non-empty string parseable by `datetime.fromisoformat(...)` AND ends with `+00:00` or `Z` (UTC, per `phase-arch-design.md`).
-  - [ ] `repo.root` is a non-empty string with NO `/Users/`, `/home/`, `/root/`, or `str(fixture)` prefix (sanitizer-scrubbed per ADR-0008).
-  - [ ] `repo.git_commit` is either `None` (for the non-git `empty_repo` and copied-fixture cases — depending on what S4-02's CLI emits when `git rev-parse` fails) OR a string matching `^[0-9a-f]{7,40}$`. Pin the expected branch per fixture; surface as a Q in the executor's attempt log if S4-02 doesn't make this deterministic yet.
+- [x] `test_envelope_required_fields_present` (over the `js_only` fixture; once is enough since the envelope shape is fixture-independent): after parsing `<fixture>/.codegenie/context/repo-context.yaml`:
+  - [x] Top-level keys are exactly `{"schema_version", "generated_at", "repo", "probes"}` (ADR-0013's strict envelope; no unknown top-level keys).
+  - [x] `schema_version` is a non-empty string matching the version pinned by S3-02 (read the value from `src/codegenie/schema/repo_context.schema.json`'s `$id` or version field and compare).
+  - [x] `generated_at` is a non-empty string parseable by `datetime.fromisoformat(...)` AND ends with `+00:00` or `Z` (UTC, per `phase-arch-design.md`).
+  - [x] `repo.root` is a non-empty string with NO `/Users/`, `/home/`, `/root/`, or `str(fixture)` prefix (sanitizer-scrubbed per ADR-0008).
+  - [x] `repo.git_commit` is either `None` (for the non-git `empty_repo` and copied-fixture cases — depending on what S4-02's CLI emits when `git rev-parse` fails) OR a string matching `^[0-9a-f]{7,40}$`. Pin the expected branch per fixture; surface as a Q in the executor's attempt log if S4-02 doesn't make this deterministic yet.
 
 ### Load-bearing cache-hit test (Scenario 2 from `phase-arch-design.md §Scenarios`)
 
-- [ ] **`test_cache_hit_on_second_run`** (load-bearing):
-  - [ ] Copies `js_only/` into `tmp_path/js_only/` via the `_copy_fixture` helper. The dir passed to `gather` is `fixture = tmp_path/js_only`.
-  - [ ] Run 1 (cold) with `["gather", "--no-gitignore", str(fixture)]`; exit code 0; `<fixture>/.codegenie/context/repo-context.yaml` exists.
-  - [ ] Captures the cold run's `probe.success` event for `language_detection` (it carries `cache_key=...`); records `cold_key`.
-  - [ ] Edits `<fixture>/README.md` (appends `"\nmore content\n"`). README is NOT in `LanguageDetectionProbe.declared_inputs`.
-  - [ ] **Module-local scandir patch (TQ-1 fix).** Builds a `types.SimpleNamespace` shim mirroring every public attribute of `os`, overrides only `scandir` with a counting wrapper, then `monkeypatch.setattr(ld_mod, "os", shim)`. This swaps the `os` *name binding inside `codegenie.probes.language_detection`* — global `os.scandir` is untouched, so cache-layer / writer / pytest internals never increment the counter. **Do not use** `monkeypatch.setattr(ld_mod.os, "scandir", ...)` — it mutates the global `os` module (because `ld_mod.os IS os`) and causes false-RED.
-  - [ ] Run 2 (warm) with the same args; exit code 0.
-  - [ ] The counting wrapper recorded **zero** invocations across run 2 (no other code path can trigger it now that the patch is module-local).
-  - [ ] Exactly one `probe.cache_hit` structlog event was emitted on run 2 with `event == "probe.cache_hit"` and `probe == "language_detection"`. The event is the CLI-observable proxy for `GatherResult.executions["language_detection"] = CacheHit(...)` — the typed `GatherResult` is not reachable from a `CliRunner` invocation in Phase 0 (no JSON output mode; reaching into the coordinator directly would break the CLI-level smoke framing).
-  - [ ] **No** `probe.success` event for `language_detection` fired on run 2 (negative-case clause — pins the variant: it was a CacheHit *instead of* a Ran).
-  - [ ] The warm run's `probe.cache_hit` event carries `cache_key=<warm_key>`; assert `warm_key == cold_key` byte-equal (proves the structural cache-key invariance — a buggy impl that recomputed a new key but happened to hit a different stored blob would fail this clause). *Gap-check before implementation:* if the coordinator's `probe.success` event doesn't yet carry `cache_key`, surface it in the executor's attempt log; either patch S3-05 or drop this byte-equality clause (the metamorphic pair with the miss-test below still pins both directions).
+- [x] **`test_cache_hit_on_second_run`** (load-bearing):
+  - [x] Copies `js_only/` into `tmp_path/js_only/` via the `_copy_fixture` helper. The dir passed to `gather` is `fixture = tmp_path/js_only`.
+  - [x] Run 1 (cold) with `["gather", "--no-gitignore", str(fixture)]`; exit code 0; `<fixture>/.codegenie/context/repo-context.yaml` exists.
+  - [x] Captures the cold run's `probe.success` event for `language_detection` (it carries `cache_key=...`); records `cold_key`.
+  - [x] Edits `<fixture>/README.md` (appends `"\nmore content\n"`). README is NOT in `LanguageDetectionProbe.declared_inputs`.
+  - [x] **Module-local scandir patch (TQ-1 fix).** Builds a `types.SimpleNamespace` shim mirroring every public attribute of `os`, overrides only `scandir` with a counting wrapper, then `monkeypatch.setattr(ld_mod, "os", shim)`. This swaps the `os` *name binding inside `codegenie.probes.language_detection`* — global `os.scandir` is untouched, so cache-layer / writer / pytest internals never increment the counter. **Do not use** `monkeypatch.setattr(ld_mod.os, "scandir", ...)` — it mutates the global `os` module (because `ld_mod.os IS os`) and causes false-RED.
+  - [x] Run 2 (warm) with the same args; exit code 0.
+  - [x] The counting wrapper recorded **zero** invocations across run 2 (no other code path can trigger it now that the patch is module-local).
+  - [x] Exactly one `probe.cache_hit` structlog event was emitted on run 2 with `event == "probe.cache_hit"` and `probe == "language_detection"`. The event is the CLI-observable proxy for `GatherResult.executions["language_detection"] = CacheHit(...)` — the typed `GatherResult` is not reachable from a `CliRunner` invocation in Phase 0 (no JSON output mode; reaching into the coordinator directly would break the CLI-level smoke framing).
+  - [x] **No** `probe.success` event for `language_detection` fired on run 2 (negative-case clause — pins the variant: it was a CacheHit *instead of* a Ran).
+  - [x] The warm run's `probe.cache_hit` event carries `cache_key=<warm_key>`; assert `warm_key == cold_key` byte-equal (proves the structural cache-key invariance — a buggy impl that recomputed a new key but happened to hit a different stored blob would fail this clause). *Gap-check before implementation:* if the coordinator's `probe.success` event doesn't yet carry `cache_key`, surface it in the executor's attempt log; either patch S3-05 or drop this byte-equality clause (the metamorphic pair with the miss-test below still pins both directions).
 
 ### Cache-miss negative test (mutation-resistance for the cache invariant)
 
-- [ ] **`test_cache_miss_on_tracked_input_edit`** (metamorphic partner of the hit test — without this, an "always return CacheHit" impl passes the whole story):
-  - [ ] Copy `js_only/` to `tmp_path/js_only/`; run cold; assert exit 0.
-  - [ ] Edit `<fixture>/a.js` — append `// changed\n` (a `.js` file IS in `LanguageDetectionProbe.declared_inputs`).
-  - [ ] Install the same module-local scandir-counting shim as the hit test (so the counter is observable but scoped).
-  - [ ] Run warm; assert exit 0.
-  - [ ] Counting wrapper recorded **at least one** invocation on the warm run (the probe was re-run).
-  - [ ] **No** `probe.cache_hit` event for `language_detection` on the warm run.
-  - [ ] Exactly one `probe.success` event for `language_detection` on the warm run.
-  - [ ] The warm run's reported `cache_key` differs from the cold run's (`warm_key != cold_key`) — proves the key was re-derived from the changed input.
+- [x] **`test_cache_miss_on_tracked_input_edit`** (metamorphic partner of the hit test — without this, an "always return CacheHit" impl passes the whole story):
+  - [x] Copy `js_only/` to `tmp_path/js_only/`; run cold; assert exit 0.
+  - [x] Edit `<fixture>/a.js` — append `// changed\n` (a `.js` file IS in `LanguageDetectionProbe.declared_inputs`).
+  - [x] Install the same module-local scandir-counting shim as the hit test (so the counter is observable but scoped).
+  - [x] Run warm; assert exit 0.
+  - [x] Counting wrapper recorded **at least one** invocation on the warm run (the probe was re-run).
+  - [x] **No** `probe.cache_hit` event for `language_detection` on the warm run.
+  - [x] Exactly one `probe.success` event for `language_detection` on the warm run.
+  - [x] The warm run's reported `cache_key` differs from the cold run's (`warm_key != cold_key`) — proves the key was re-derived from the changed input.
 
 ### Audit verify smoke (Phase 0 Goal #9 / Step 4 done-criteria)
 
-- [ ] **`test_audit_verify_smoke_run`**:
-  - [ ] Run `gather` against `js_only/`; assert exit 0 and a run-record file exists at `<fixture>/.codegenie/context/runs/<utc>-<short>.json`.
-  - [ ] Invoke `runner.invoke(cli, ["audit", "verify"], catch_exceptions=False)` with the CWD changed to `<fixture>` (or with whatever scope flag S4-02's `audit verify` accepts — verify the exact invocation form in S4-02 before writing the test).
-  - [ ] Exit code 0.
-  - [ ] Stdout matches the documented zero-mismatch sentinel from S4-02 (e.g., `re.search(r"\b0 mismatch(es)?\b", result.output)`). If S4-02 doesn't print a deterministic sentinel, soften the assertion to `result.exit_code == 0` and surface as Q in the executor's attempt log.
-  - [ ] The run-record JSON parses and has the documented Phase 0 structure (`run_id`, `started_at`, `finished_at`, `yaml_sha256`, `probe_executions[*].blob_sha256`).
+- [x] **`test_audit_verify_smoke_run`**:
+  - [x] Run `gather` against `js_only/`; assert exit 0 and a run-record file exists at `<fixture>/.codegenie/context/runs/<utc>-<short>.json`.
+  - [x] Invoke `runner.invoke(cli, ["audit", "verify"], catch_exceptions=False)` with the CWD changed to `<fixture>` (or with whatever scope flag S4-02's `audit verify` accepts — verify the exact invocation form in S4-02 before writing the test).
+  - [x] Exit code 0.
+  - [x] Stdout matches the documented zero-mismatch sentinel from S4-02 (e.g., `re.search(r"\b0 mismatch(es)?\b", result.output)`). If S4-02 doesn't print a deterministic sentinel, soften the assertion to `result.exit_code == 0` and surface as Q in the executor's attempt log.
+  - [x] The run-record JSON parses and has the documented Phase 0 structure (`run_id`, `started_at`, `finished_at`, `yaml_sha256`, `probe_executions[*].blob_sha256`).
 
 ### Cross-cutting security / hygiene assertions (pinned to `test_gather_js_only`)
 
-- [ ] **Permission assertion (ADR-0011).** In `test_gather_js_only`: `for p in (fixture / ".codegenie").rglob("*"): mode = stat.S_IMODE(p.stat().st_mode); assert (mode == 0o600 if p.is_file() else mode == 0o700)`. The recursive `rglob("*")` is the load-bearing piece — without it a top-level-only check would let permission regressions in nested dirs slip through. Test is platform-gated: `@pytest.mark.skipif(sys.platform == "win32")` (Phase 0 CI is ubuntu-24.04 only per Goal #5; macOS dev is the other supported surface and matches Linux POSIX modes).
-- [ ] **Sanitizer assertion (ADR-0008).** In `test_gather_js_only`: read the produced YAML as text; assert that NONE of the substrings `/Users/`, `/home/`, `/root/`, `str(fixture)` (the analyzed-repo abs path the sanitizer scrubs), or `str(tmp_path)` (belt-and-suspenders superset) appear anywhere in the file. AC asserts an AND-condition (every prefix is absent), not OR — on macOS where `tmp_path` lives under `/var/folders/`, the `str(fixture)` clause is the load-bearing one.
+- [x] **Permission assertion (ADR-0011).** In `test_gather_js_only`: `for p in (fixture / ".codegenie").rglob("*"): mode = stat.S_IMODE(p.stat().st_mode); assert (mode == 0o600 if p.is_file() else mode == 0o700)`. The recursive `rglob("*")` is the load-bearing piece — without it a top-level-only check would let permission regressions in nested dirs slip through. Test is platform-gated: `@pytest.mark.skipif(sys.platform == "win32")` (Phase 0 CI is ubuntu-24.04 only per Goal #5; macOS dev is the other supported surface and matches Linux POSIX modes).
+- [x] **Sanitizer assertion (ADR-0008).** In `test_gather_js_only`: read the produced YAML as text; assert that NONE of the substrings `/Users/`, `/home/`, `/root/`, `str(fixture)` (the analyzed-repo abs path the sanitizer scrubs), or `str(tmp_path)` (belt-and-suspenders superset) appear anywhere in the file. AC asserts an AND-condition (every prefix is absent), not OR — on macOS where `tmp_path` lives under `/var/folders/`, the `str(fixture)` clause is the load-bearing one.
 
 ### Schema and quality gates
 
-- [ ] Schema validation pass: the produced YAML parses under `codegenie.schema.validator.validate(...)` with no `SchemaValidationError` (per ADR-0013). Asserted in `test_gather_js_only` after the file is read.
-- [ ] **Coverage gate flip (corrected target).** The PR-only carve-out is in `.github/workflows/ci.yml:98` (`pytest -q --cov-fail-under=0`) — NOT in `pyproject.toml`. The wired floor at `pyproject.toml:162` (`--cov-fail-under=85 --cov-branch`) is already live. ACs:
-  - [ ] `.github/workflows/ci.yml:98` no longer contains the `--cov-fail-under=0` override; the `test` job invokes `pytest -q` only (the `addopts` in `pyproject.toml` apply automatically).
-  - [ ] The TODO comment block at `.github/workflows/ci.yml:81–84` (referencing S4-04) is removed.
-  - [ ] `pyproject.toml:162` still contains `--cov-fail-under=85` AND `--cov-branch` AND `--cov=src/codegenie` (unchanged from S1-02).
-  - [ ] Branch threshold of 75% per Goal #8 is encoded — verify it's present in `[tool.coverage.report]` (`fail_under` line / `--cov-branch` flag); document the current mechanism in the attempt log if S1-02 wired it differently than expected.
-  - [ ] No `# pragma: no cover` markers were added to `src/codegenie/**` in this PR's diff (assert at review via `git diff --unified=0 origin/master..HEAD -- 'src/codegenie/*' | grep '+.*# pragma: no cover'` returning no rows).
-  - [ ] `pytest -q --cov=src/codegenie --cov-branch --cov-fail-under=85` exits 0 locally — the live gate passes.
-- [ ] `ruff check`, `ruff format --check`, and `pytest tests/smoke/test_cli_end_to_end.py -q` all pass. (`mypy --strict` applies to `src/`; the smoke test file under `tests/` is on the relaxed config from S1-02.)
+- [x] Schema validation pass: the produced YAML parses under `codegenie.schema.validator.validate(...)` with no `SchemaValidationError` (per ADR-0013). Asserted in `test_gather_js_only` after the file is read.
+- [x] **Coverage gate flip (corrected target).** The PR-only carve-out is in `.github/workflows/ci.yml:98` (`pytest -q --cov-fail-under=0`) — NOT in `pyproject.toml`. The wired floor at `pyproject.toml:162` (`--cov-fail-under=85 --cov-branch`) is already live. ACs:
+  - [x] `.github/workflows/ci.yml:98` no longer contains the `--cov-fail-under=0` override; the `test` job invokes `pytest -q` only (the `addopts` in `pyproject.toml` apply automatically).
+  - [x] The TODO comment block at `.github/workflows/ci.yml:81–84` (referencing S4-04) is removed.
+  - [x] `pyproject.toml:162` still contains `--cov-fail-under=85` AND `--cov-branch` AND `--cov=src/codegenie` (unchanged from S1-02).
+  - [x] Branch threshold of 75% per Goal #8 is encoded — verify it's present in `[tool.coverage.report]` (`fail_under` line / `--cov-branch` flag); document the current mechanism in the attempt log if S1-02 wired it differently than expected.
+  - [x] No `# pragma: no cover` markers were added to `src/codegenie/**` in this PR's diff (assert at review via `git diff --unified=0 origin/master..HEAD -- 'src/codegenie/*' | grep '+.*# pragma: no cover'` returning no rows).
+  - [x] `pytest -q --cov=src/codegenie --cov-branch --cov-fail-under=85` exits 0 locally — the live gate passes.
+- [x] `ruff check`, `ruff format --check`, and `pytest tests/smoke/test_cli_end_to_end.py -q` all pass. (`mypy --strict` applies to `src/`; the smoke test file under `tests/` is on the relaxed config from S1-02.)
 
 ## Implementation outline
 
