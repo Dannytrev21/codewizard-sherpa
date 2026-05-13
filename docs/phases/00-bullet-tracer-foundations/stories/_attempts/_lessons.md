@@ -285,3 +285,32 @@ would have benefited from knowing.
   (`next(k for k in record if k.startswith("blob_") and k != "blob_sha256")`).
   Bonus: the source is robust to a future BLAKE3 → BLAKE4 swap without
   touching the verifier. Discovered in **S3-06**.
+
+## Probes / contract
+
+- **`Path.rglob(pattern)` is unforgiving about bare extensions.**
+  `rglob(".js")` matches files literally *named* `.js` (none in normal
+  repos); `rglob("**/*.js")` matches every `.js` at any depth. A probe whose
+  `declared_inputs = [".js", ...]` produces a constant empty input set, which
+  collapses `content_hash_of_inputs([])` to a single value across probes →
+  cache-key collisions on the warm path and false-positive cache hits that
+  mask real source changes. **Always glob-form, never bare extension.**
+  Discovered in **S4-01**.
+
+- **`PermissionError` is an `OSError` subclass — one except clause suffices.**
+  A probe walker that catches both `PermissionError` and `OSError` in
+  separate clauses is dead-code in the second branch (the first catches
+  everything). Collapse to `except OSError` and emit
+  `f"{type(exc).__name__}: {exc}"`; the AC-5-style `errors[0].startswith("PermissionError")`
+  assertion still passes for permission cases, and other walk failures (e.g.,
+  `FileNotFoundError` on a missing root) demote confidence without
+  re-raising. Discovered in **S4-01**.
+
+- **`OutputSanitizer.scrub` is a chokepoint on `RepoContext` emit, NOT a
+  structlog processor.** Anything a probe emits via `_log.info(...)` ships
+  unscrubbed through the structlog processor chain. So when logging from
+  inside a probe, **emit relative paths only** (`str(Path(entry.path).relative_to(snapshot.root))`),
+  never resolved symlink targets — those would leak `/Users/<user>/...` into
+  log lines that no later pass scrubs. Discovered in **S4-01** for the
+  symlink-escape event payload; will apply to every Layer A–G probe that
+  logs path-shaped values.

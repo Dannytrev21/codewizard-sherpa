@@ -13,10 +13,7 @@ import time; concrete probe modules are imported by name below as Phase 1
 stories land.
 """
 
-from codegenie.probes import base, registry
+from codegenie.probes import base, language_detection, registry
+from codegenie.probes.registry import default_registry
 
-# Concrete probe modules opt in by explicit import. S4-01 lands
-# ``codegenie.probes.language_detection`` and uncomments the import below.
-# from codegenie.probes import language_detection  # noqa: F401  # S4-01
-
-__all__ = ["base", "registry"]
+__all__ = ["base", "default_registry", "language_detection", "registry"]

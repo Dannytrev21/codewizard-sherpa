@@ -1,7 +1,7 @@
 # Story S4-01 — `LanguageDetectionProbe` + registration
 
 **Step:** Step 4 — Cut the vertical slice: CLI, `LanguageDetectionProbe`, fixtures, end-to-end smoke
-**Status:** Ready (Hardened)
+**Status:** Done — 2026-05-13. All 11 ACs verified; 13/13 new unit tests green; full suite 500/500; coverage 92.68%; mypy `--strict` + ruff + pre-commit all clean. Attempt log: [`_attempts/S4-01.md`](_attempts/S4-01.md). Implementation: [`src/codegenie/probes/language_detection.py`](../../../../src/codegenie/probes/language_detection.py). Tests: [`tests/unit/test_language_detection_probe.py`](../../../../tests/unit/test_language_detection_probe.py). Sub-schema amendment: [`src/codegenie/schema/probes/language_detection.schema.json`](../../../../src/codegenie/schema/probes/language_detection.schema.json) (`$id` → `v0.1.1`).
 **Effort:** S
 **Depends on:** S3-05
 **See also:** S2-05 (sub-schema this story amends in-PR), S4-02 (CLI wires schema_slice into envelope under `probes.<name>`), S4-04 (smoke + cache-hit test; reads `language_stack.counts` / `language_stack.primary`)

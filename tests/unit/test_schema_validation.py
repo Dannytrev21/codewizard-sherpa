@@ -55,7 +55,9 @@ def test_language_detection_slice_valid_payload_passes() -> None:
         {
             **_MINIMAL,
             "probes": {
-                "language_detection": {"counts": {"javascript": 3}, "primary": "javascript"},
+                "language_detection": {
+                    "language_stack": {"counts": {"javascript": 3}, "primary": "javascript"}
+                },
             },
         }
     )
@@ -66,7 +68,7 @@ def test_language_detection_slice_invalid_primary_type_fails() -> None:
         validate(
             {
                 **_MINIMAL,
-                "probes": {"language_detection": {"counts": {}, "primary": 42}},
+                "probes": {"language_detection": {"language_stack": {"counts": {}, "primary": 42}}},
             }
         )
 
@@ -78,7 +80,12 @@ def test_language_detection_slice_invalid_counts_shape_fails() -> None:
             {
                 **_MINIMAL,
                 "probes": {
-                    "language_detection": {"counts": ["javascript"], "primary": "javascript"},
+                    "language_detection": {
+                        "language_stack": {
+                            "counts": ["javascript"],
+                            "primary": "javascript",
+                        }
+                    },
                 },
             }
         )
@@ -92,13 +99,25 @@ def test_language_detection_unknown_sub_key_fails_when_subschema_is_strict() -> 
                 **_MINIMAL,
                 "probes": {
                     "language_detection": {
-                        "counts": {"javascript": 1},
-                        "primary": "javascript",
+                        "language_stack": {
+                            "counts": {"javascript": 1},
+                            "primary": "javascript",
+                        },
                         "unknown_extra_field": "should reject",
                     },
                 },
             }
         )
+
+
+def test_language_detection_primary_null_is_valid_for_empty_repo() -> None:
+    """`primary: null` is a load-bearing AC-2/AC-3 affordance for the empty-repo case."""
+    validate(
+        {
+            **_MINIMAL,
+            "probes": {"language_detection": {"language_stack": {"counts": {}, "primary": None}}},
+        }
+    )
 
 
 def test_envelope_schema_id_is_versioned() -> None:
@@ -124,7 +143,7 @@ def test_language_detection_subschema_id_is_versioned() -> None:
         / "language_detection.schema.json"
     )
     schema = json.loads(schema_path.read_text())
-    assert "language_detection/v0.1.0" in schema["$id"]
+    assert "language_detection/v0.1.1" in schema["$id"]
 
 
 def test_validator_is_cached() -> None:
