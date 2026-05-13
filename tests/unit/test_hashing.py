@@ -23,14 +23,17 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def test_module_all_closure_is_exactly_three_public_functions() -> None:
-    """AC-1: ``__all__`` pins the public surface — no missing, no extra."""
+def test_module_all_closure_is_exactly_five_public_functions() -> None:
+    """AC-1 (S2-03) + AC-13 (S3-01): ``__all__`` pins the public surface —
+    three original helpers plus the two byte-hash extensions added in S3-01."""
     import codegenie.hashing as h
 
     assert set(h.__all__) == {
         "content_hash",
-        "identity_hash",
+        "content_hash_bytes",
         "content_hash_of_inputs",
+        "identity_hash",
+        "identity_hash_bytes",
     }
 
 
@@ -317,3 +320,65 @@ def test_content_hash_of_inputs_propagates_filenotfounderror(
 
     with pytest.raises(FileNotFoundError):
         content_hash_of_inputs([tmp_path / "does-not-exist"])
+
+
+# ---------------------------------------------------------------------------
+# S3-01 AC-13 — byte-hash chokepoint extension
+# ---------------------------------------------------------------------------
+
+
+def test_byte_helpers_listed_in_module_all() -> None:
+    """S3-01 AC-13: ``__all__`` advertises the two byte-hash helpers
+    alongside the original three functions."""
+    import codegenie.hashing as h
+
+    assert "content_hash_bytes" in h.__all__
+    assert "identity_hash_bytes" in h.__all__
+
+
+def test_content_hash_bytes_matches_content_hash_over_same_bytes(
+    tmp_path: Path,
+) -> None:
+    """S3-01 AC-13 parity: ``content_hash_bytes(p.read_bytes()) ==
+    content_hash(p)`` for any ``p``. This is the load-bearing equivalence-
+    class assertion guaranteeing the cache store can use the bytes-flavored
+    helper without drifting the on-disk filename relative to a streaming
+    re-hash of the same content."""
+    from codegenie.hashing import content_hash, content_hash_bytes
+
+    p = tmp_path / "blob"
+    payload = b"some serialized probe output"
+    p.write_bytes(payload)
+    assert content_hash_bytes(payload) == content_hash(p)
+
+
+def test_content_hash_bytes_prefix_and_determinism() -> None:
+    """Shape: ``blake3:<64-hex>`` and deterministic for identical bytes."""
+    from codegenie.hashing import content_hash_bytes
+
+    h1 = content_hash_bytes(b"x")
+    h2 = content_hash_bytes(b"x")
+    assert h1 == h2
+    assert re.fullmatch(r"blake3:[0-9a-f]{64}", h1)
+    assert content_hash_bytes(b"y") != h1
+
+
+def test_identity_hash_bytes_matches_hashlib_known_vector() -> None:
+    """S3-01 AC-13: ``identity_hash_bytes(b)`` matches stdlib
+    ``hashlib.sha256(b).hexdigest()`` — pins the algorithm in the
+    chokepoint extension."""
+    from codegenie.hashing import identity_hash_bytes
+
+    payload = b"audit-anchor-bytes"
+    expected = hashlib.sha256(payload).hexdigest()
+    assert identity_hash_bytes(payload) == f"sha256:{expected}"
+
+
+def test_identity_hash_bytes_prefix_and_lowercase() -> None:
+    """Shape: ``sha256:<64-hex>`` and digest is lowercase (kills a
+    ``hexdigest().upper()`` mutant)."""
+    from codegenie.hashing import identity_hash_bytes
+
+    h = identity_hash_bytes(b"")
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", h)
+    assert h == h.lower()

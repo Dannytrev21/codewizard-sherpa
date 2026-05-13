@@ -34,7 +34,13 @@ import hashlib
 from collections.abc import Iterable
 from pathlib import Path
 
-__all__ = ["content_hash", "identity_hash", "content_hash_of_inputs"]
+__all__ = [
+    "content_hash",
+    "content_hash_bytes",
+    "content_hash_of_inputs",
+    "identity_hash",
+    "identity_hash_bytes",
+]
 
 
 _UNIT_SEP = "\x1f"
@@ -71,6 +77,32 @@ def identity_hash(*parts: str) -> str:
     joined = _UNIT_SEP.join(parts).encode("utf-8")
     digest = hashlib.sha256(arity_byte + joined).hexdigest()
     return f"sha256:{digest}"
+
+
+def content_hash_bytes(b: bytes) -> str:
+    """Return ``blake3:<64-hex>`` of the in-memory bytes ``b``.
+
+    Companion to :func:`content_hash` that takes already-materialized bytes
+    rather than a file path. Used by the cache store to compute the
+    content-addressed BLAKE3 filename for a serialized probe blob without
+    making the cache import ``blake3`` directly (ADR-0001 chokepoint
+    discipline).
+    """
+    from blake3 import blake3 as _blake3
+
+    return f"blake3:{_blake3(b).hexdigest()}"
+
+
+def identity_hash_bytes(b: bytes) -> str:
+    """Return ``sha256:<64-hex>`` of the in-memory bytes ``b``.
+
+    Companion to :func:`identity_hash`: takes raw bytes (rather than a
+    variadic string tuple) so the cache store can compute the tamper-check
+    SHA-256 of a serialized blob without importing ``hashlib.sha256``
+    directly. ADR-0001's "one chokepoint" invariant is preserved — this is
+    an *additive* extension to the chokepoint, not a bypass.
+    """
+    return f"sha256:{hashlib.sha256(b).hexdigest()}"
 
 
 def content_hash_of_inputs(paths: Iterable[Path]) -> str:

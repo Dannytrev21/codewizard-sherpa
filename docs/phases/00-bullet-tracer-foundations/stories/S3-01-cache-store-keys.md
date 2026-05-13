@@ -1,7 +1,7 @@
 # Story S3-01 — Cache store + two-level keys per ADR-0003
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Ready
+**Status:** Done — 2026-05-13 (see [`_attempts/S3-01.md`](_attempts/S3-01.md))
 **Effort:** M
 **Depends on:** S2-05
 **ADRs honored:** ADR-0001, ADR-0003, ADR-0004, ADR-0011
