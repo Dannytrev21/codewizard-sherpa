@@ -25,6 +25,7 @@ Architecture Decision Records for Phase 5, in Nygard format. Each ADR captures o
 | [0013](0013-digest-pinned-policy-yaml-codegenie-owned.md) | Sandbox policy YAML is codegenie-owned and digest-pinned; not repo-resident | policy · supply-chain · adversarial |
 | [0014](0014-objectivesignals-extra-forbid-static-introspection.md) | `ObjectiveSignals` is `extra="forbid", frozen=True`; static-introspection CI test enforces ADR-0008 | trust · enforcement · type-safety |
 | [0015](0015-test-inventory-delta-asymmetric-policy.md) | Test-inventory `delta < 0` fails strict-AND; `delta > 0` is informational | signals · adversarial · trust |
+| [0016](0016-per-task-class-eval-harness-as-trust-evidence.md) | Per-task-class eval harness as the evidence source for trust-tier promotion, threshold calibration, and LLM-Judge un-deferral | trust · evidence · eval-harness · per-task-class · roadmap-gap · calibration |
 
 ## Conventions
 
