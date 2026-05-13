@@ -1,11 +1,12 @@
 # Story S3-03 — Output sanitizer + atomic writer
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Ready — HARDENED
+**Status:** Done — 2026-05-13 (executed)
 **Effort:** M
 **Depends on:** S2-05, S3-02 (provides `coordinator.validator.SECRET_FIELD_PATTERN`)
 **ADRs honored:** ADR-0008, ADR-0010 (single-source secret pattern), ADR-0011
 **Validated:** 2026-05-13 (phase-story-validator → HARDENED; see [`_validation/S3-03-sanitizer-writer.md`](_validation/S3-03-sanitizer-writer.md))
+**Executed:** 2026-05-13 — see [`_attempts/S3-03.md`](_attempts/S3-03.md). All 26 ACs green via 39 new tests; full suite 381 passed, 94.43% coverage; ruff/mypy --strict/import-linter/forbidden-patterns clean.
 
 ## Validation notes (2026-05-13 — HARDENED)
 

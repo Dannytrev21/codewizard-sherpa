@@ -167,3 +167,33 @@ would have benefited from knowing.
   as `float(1.0)`. If a field needs to reject `Decimal` (e.g. JSON-only
   closures), use `@field_validator(..., mode="before")` to whitelist
   leaf types before Pydantic's coercion runs. Discovered in **S3-02**.
+
+- **Longest-prefix-wins in path scrubbing falls out of `re` alternation
+  order.** Python's `re` evaluates `|` left-to-right and stops at first
+  match. Place the longest/most-specific prefix first in the alternation
+  and the engine picks it for free — no lookbehind, no sort pass. Used by
+  the path-scrub regex in `output/sanitizer.py` to handle the case where
+  `repo_root` happens to sit under `/Users/<u>/`. Discovered in **S3-03**.
+
+- **TDD-plan test bodies and helpers can contradict each other.** S3-03's
+  story shipped a `_iter_strings` helper that walked dict keys, but an
+  assertion `flat == ["src/a.js"]` that presumed no keys appeared. Always
+  rewrite a test that contradicts its own helper to encode WHY (Rule 9)
+  rather than mechanically copying the broken shape. Similarly, the
+  benign-key matrix included `tokens_per_line` — which the canonical
+  `SECRET_FIELD_PATTERN` correctly flags. Discovered in **S3-03**.
+
+- **`types-PyYAML` belongs in `[project.optional-dependencies].dev` whenever
+  `src/codegenie/**` imports `yaml`.** The pre-commit mypy hook lists it
+  under `additional_dependencies`, but the local `make typecheck` reads
+  only `[dev]`. Adding the stub closes the local/CI gap so a fresh
+  contributor checkout passes `mypy --strict` on day one. Discovered in
+  **S3-03**.
+
+- **Module-level mutable flag for "log once per process".** When a fallback
+  path is expected to fire and persist across many calls (e.g. `yaml`
+  C-extension missing), a module-level `bool` plus a single test that
+  `monkeypatch.setattr(mod, "_warned", False, raising=False)` keeps the
+  semantics correct without test-pollution leakage. Function-local flags
+  emit the warning every call; no flag emits noise that teaches
+  contributors to ignore the message. Discovered in **S3-03**.

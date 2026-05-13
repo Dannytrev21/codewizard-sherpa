@@ -59,6 +59,10 @@ dev = [
   # S2-05: `codegenie.schema.validator` imports `jsonschema`; the package is
   # not py.typed so mypy --strict needs the stub distribution.
   "types-jsonschema",
+  # S3-03: `codegenie.output.writer` imports `yaml`; PyYAML ships no inline
+  # types so mypy --strict needs the stub distribution. Already mirrored in
+  # the pre-commit mypy hook's `additional_dependencies` list.
+  "types-PyYAML",
 ]
 
 # Phase 9+ slot — Temporal, Postgres clients land here.
