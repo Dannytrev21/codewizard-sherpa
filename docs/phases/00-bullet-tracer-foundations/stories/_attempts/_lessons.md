@@ -144,3 +144,26 @@ would have benefited from knowing.
   modern API without breaking ACs; the validator tests check what
   `$ref` resolves to, not which library did the resolution. Discovered
   in **S2-05**.
+
+- **Recursive Pydantic v2 types on Python 3.11 → `typing_extensions.TypeAliasType`.**
+  A naive `JSONValue: TypeAlias = Union[..., "list[JSONValue]", ...]`
+  hangs Pydantic v2's schema builder with `RecursionError`. The
+  documented workaround is a *named* recursive alias —
+  `TypeAliasType("JSONValue", Union[...])` from `typing_extensions` —
+  not the PEP-695 `type` statement (3.12+ only). `typing_extensions`
+  is transitively available via pydantic; no pyproject change.
+  Discovered in **S3-02**.
+
+- **Pydantic v2 `@field_validator` only wraps `ValueError`,
+  `AssertionError`, and `PydanticCustomError`.** Raising a typed
+  exception (e.g. `SecretLikelyFieldNameError`) directly propagates
+  unwrapped — the `ValidationError` contract breaks. Wrap via
+  `raise PydanticCustomError("kind", "msg", {"error": exc, ...}) from exc`
+  and downstream consumers recover the typed error at
+  `errors()[0]["ctx"]["error"]`. Discovered in **S3-02**.
+
+- **Pydantic v2 strict mode does NOT reject `Decimal -> float`.** Even
+  with `model_config = ConfigDict(strict=True)`, `Decimal('1.0')` lands
+  as `float(1.0)`. If a field needs to reject `Decimal` (e.g. JSON-only
+  closures), use `@field_validator(..., mode="before")` to whitelist
+  leaf types before Pydantic's coercion runs. Discovered in **S3-02**.

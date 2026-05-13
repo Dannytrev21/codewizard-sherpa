@@ -1,7 +1,15 @@
 # Story S3-02 — Pydantic `_ProbeOutputValidator` trust boundary
 
 **Step:** Step 3 — Build the harness internals (cache, coordinator, validator, sanitizer, writer, config)
-**Status:** Ready (validated 2026-05-13 — HARDENED)
+**Status:** Done — 2026-05-13 (phase-story-executor attempt 1, GREEN — see [`_attempts/S3-02.md`](_attempts/S3-02.md))
+
+## Evidence
+
+- Implementation: [`src/codegenie/coordinator/__init__.py`](../../../../src/codegenie/coordinator/__init__.py) (empty package marker), [`src/codegenie/coordinator/validator.py`](../../../../src/codegenie/coordinator/validator.py) (`JSONValue`, `SECRET_FIELD_PATTERN`, `_ProbeOutputValidator`, iterative `_walk_and_enforce`).
+- Tests: [`tests/unit/test_probe_output_validator.py`](../../../../tests/unit/test_probe_output_validator.py) — 85 parametrized cases covering AC-1 .. AC-19.
+- Test run: `pytest tests/unit/test_probe_output_validator.py` → 85 passed. Full suite: 294 passed, 1 skipped (mkdocs). Coverage 94.18% > 85% gate.
+- Lint/types: `ruff check .` clean, `ruff format --check .` clean, `mypy --strict src/codegenie/` clean.
+- Deviation: AC-4's literal "loc MUST include the offending key" is preserved as `errors()[0]["ctx"]["key"]` + `["path"]` rather than tuple-extended `loc` (Pydantic v2 `@field_validator` doesn't expose loc beyond the field name; tests pin `ctx["error"]` instead). See attempt log for details.
 **Effort:** S
 **Depends on:** S2-05
 **ADRs honored:** ADR-0010, ADR-0008, ADR-0007
