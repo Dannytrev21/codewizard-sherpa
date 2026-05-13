@@ -24,7 +24,7 @@ This document sequences the work from a local bullet tracer through to a multi-t
 | 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default | ✅ [05-sandbox-trust-gates](phases/05-sandbox-trust-gates/) |
 | 6 | SHERPA-style state machine for the vuln loop | vuln | LangGraph runtime, Pydantic state ledger, `interrupt()` + SQLite checkpointer | ✅ [06-sherpa-state-machine](phases/06-sherpa-state-machine/) |
 | 6.5 | **Per-task-class eval harness + first benches** *(preamble to Phase 7)* | vuln | `eval/` package, `@register_task_class` registry, `BenchScore` model, `bench/{task-class}/` directory contract, fence-CI gate, backfilled `bench/vuln-remediation/` |  |
-| 7 | **Add migration task class (Chainguard distroless)** | vuln + migration | Extension by addition — proves contracts extend without edits |
+| 7 | **Add migration task class (Chainguard distroless)** | vuln + migration | Extension by addition — proves contracts extend without edits | ✅ [07-migration-task-class](phases/07-migration-task-class/) |
 | 8 | Hierarchical Planner + pre-rendered hot views | vuln + migration | Planning supervisor, Redis hot views, MCP-style stdio Skills server |
 | 9 | Durable workflow envelope — Temporal | vuln + migration | Temporal workflows + activities, Postgres checkpointer, temporal-ui |
 | 10 | Stage 0 Discovery + Stage 1 Assessment | vuln + migration | Multi-repo discovery (GitHub API), assessment scoring, eligibility filtering |
