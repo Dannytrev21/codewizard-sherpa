@@ -79,3 +79,57 @@ include = [
   "README.md",
   "pyproject.toml",
 ]
+
+# ---------------------------------------------------------------------------
+# Quality toolchain (story S1-02). One source of truth per phase-arch §Tradeoffs
+# — no separate .ruff.toml, no setup.cfg. Later phases extend selected rules
+# only by addition; weakening T201 / T20 (the "no print() in src/" invariant
+# from phase-arch-design.md §Harness engineering / Logging strategy) requires
+# an ADR amendment.
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Minimum viable rule set — later phases extend by addition.
+# T201 (print) is load-bearing: all logging goes through structlog.
+select = ["E", "F", "I", "B", "UP", "T201"]
+
+[tool.ruff.format]
+# Empty sub-table is the AC-named opt-in marker for ruff format.
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# warn_unreachable is a strict-extra; --strict does NOT enable it. Without
+# this, dead-code-after-narrowing slips through silently.
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# tests/ runs under relaxed typing — fixtures and parametrize tables routinely
+# use untyped defs. Strict checking still applies to fixture *types* (we do not
+# set ignore_errors), only to def-level annotations.
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+# asyncio_mode = "auto" lets coroutine tests run without @pytest.mark.asyncio
+# — S3-05's coordinator tests depend on this.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# --cov-fail-under=85 is WIRED here; it goes live as a merge gate in S4-04
+# once the vertical slice produces enough real code to clear the floor.
+addopts = "-ra --strict-markers --cov=src/codegenie --cov-branch --cov-fail-under=85"
+
+[tool.coverage.run]
+branch = true
+source = ["src/codegenie"]
+
+[tool.coverage.report]
+# cli.py is the ONLY architecturally-permitted coverage exemption per
+# phase-arch-design.md §Testing strategy / Test pyramid (CLI plumbing is
+# exercised end-to-end by S4-02's smoke test, not by unit-level coverage).
+omit = ["src/codegenie/cli.py"]

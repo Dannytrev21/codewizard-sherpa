@@ -8,9 +8,7 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 
 LLM_SDKS = frozenset({"anthropic", "langgraph", "openai", "langchain", "transformers"})
-RUNTIME_DEPS = frozenset(
-    {"click", "pyyaml", "jsonschema", "pydantic", "blake3", "structlog"}
-)
+RUNTIME_DEPS = frozenset({"click", "pyyaml", "jsonschema", "pydantic", "blake3", "structlog"})
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
 DEV_FLOOR = frozenset(
     {
@@ -44,9 +42,7 @@ def _runtime_requirements() -> list[Requirement]:
 
 def _extra_requirements(extra: str) -> list[Requirement]:
     """Requirements tagged ``; extra == "<extra>"`` — i.e. an optional-dependencies slot."""
-    return [
-        r for r in _parse_requires() if f'extra == "{extra}"' in str(r.marker or "")
-    ]
+    return [r for r in _parse_requires() if f'extra == "{extra}"' in str(r.marker or "")]
 
 
 def test_package_distribution_is_installed() -> None:
@@ -78,9 +74,7 @@ def test_runtime_dependencies_are_exactly_adr_0006_closure() -> None:
         f"LLM SDK in gather closure: {names & LLM_SDKS} — violates ADR-0002 / "
         f"production ADR-0005 / CLAUDE.md §'No LLM anywhere in the gather pipeline'"
     )
-    assert "aiofiles" not in names, (
-        "aiofiles removed per ADR-0006 / High-level-impl §Step 1"
-    )
+    assert "aiofiles" not in names, "aiofiles removed per ADR-0006 / High-level-impl §Step 1"
 
 
 def test_runtime_dependencies_carry_required_version_specifiers() -> None:
@@ -112,8 +106,7 @@ def test_optional_dependencies_declare_four_slots_and_empties_are_empty() -> Non
     dist = distribution("codewizard-sherpa")
     provides_extra = set(dist.metadata.get_all("Provides-Extra") or [])
     assert {"gather", "dev", "service", "agents"}.issubset(provides_extra), (
-        f"missing Provides-Extra slots: "
-        f"{ {'gather', 'dev', 'service', 'agents'} - provides_extra }"
+        f"missing Provides-Extra slots: { {'gather', 'dev', 'service', 'agents'} - provides_extra }"
     )
 
     # Mutation-resistant: a lazy impl that put `pyyaml` under `[gather]` would fail here.
@@ -173,7 +166,6 @@ def test_python_dash_m_codegenie_help_returns_zero() -> None:
         check=False,
     )
     assert result.returncode == 0, (
-        f"`python -m codegenie --help` exited {result.returncode}; "
-        f"stderr={result.stderr!r}"
+        f"`python -m codegenie --help` exited {result.returncode}; stderr={result.stderr!r}"
     )
     assert result.stdout, "expected non-empty --help output"
