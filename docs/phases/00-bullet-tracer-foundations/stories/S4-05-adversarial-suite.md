@@ -1,11 +1,34 @@
 # Story S4-05 — Adversarial test suite
 
 **Step:** Step 4 — Cut the vertical slice: CLI, `LanguageDetectionProbe`, fixtures, end-to-end smoke
-**Status:** Ready (validated 2026-05-13)
+**Status:** Done (2026-05-13)
 **Effort:** M
 **Depends on:** S4-02
 **ADRs honored (directly asserted):** ADR-0008, ADR-0010, ADR-0012
 **ADRs honored (transitively via dispatch):** ADR-0007 (synthetic probe respects the §4 dataclass contract), ADR-0009 (gather continues when at least one probe survived)
+
+## Done evidence (2026-05-13)
+
+Implemented in one attempt — see [`_attempts/S4-05.md`](_attempts/S4-05.md). Full validator-pass against every AC; runtime evidence below.
+
+| AC | Test name | File |
+|---|---|---|
+| AC-1 | (package marker) | `tests/adv/__init__.py` |
+| AC-2a, AC-2c | `test_path_traversal_nonexistent_refused` | `tests/adv/test_path_traversal.py:24` |
+| AC-2b | `test_path_traversal_existing_outside_root_refused` (`xfail(strict=True)`) | `tests/adv/test_path_traversal.py:57` |
+| AC-3, AC-3-platform | `test_symlink_out_of_repo_skipped` | `tests/adv/test_symlink_escape.py:34` |
+| AC-4a | `test_secret_field_rejected_by_validator_top_level` | `tests/adv/test_secret_leak.py:63` |
+| AC-4b | `test_secret_field_rejected_by_validator_at_depth_3_via_list` | `tests/adv/test_secret_leak.py:84` |
+| AC-4c | `test_secret_leaking_probe_caught_at_coordinator_boundary` | `tests/adv/test_secret_leak.py:159` |
+| AC-4d | `test_secret_leak_defense_in_depth_via_sanitizer` | `tests/adv/test_secret_leak.py:226` |
+| AC-5a | `test_parent_env_built_by_omission` | `tests/adv/test_env_var_strip.py:54` |
+| AC-5b (filter) | `test_env_extra_sensitive_keys_filtered` | `tests/adv/test_env_var_strip.py:103` |
+| AC-5b (case-insensitive) | `test_env_extra_case_insensitivity` | `tests/adv/test_env_var_strip.py:158` |
+| AC-6 | `pytest tests/adv/ -q` → **9 passed, 1 xfailed** | runtime |
+| AC-7 | every test function carries the `Pins/Traces to/Catches` triple | inspection |
+| AC-8 | `ruff check tests/adv/` clean · `ruff format --check tests/adv/` clean · `mypy --strict src/` clean · full `pytest tests/` → 586 passed, 1 xfailed, coverage 93.36% | runtime |
+
+Open questions (Q1: seven-vs-four scope; Q2: containment plan for AC-2b; Q3: catch-vs-propagate for sanitizer raise) carried forward in [`_attempts/S4-05.md`](_attempts/S4-05.md). Q1 blocks Phase 0 exit per `High-level-impl.md §Step 5 Done criteria`.
 
 ## Validation notes
 

@@ -442,3 +442,23 @@ would have benefited from knowing.
   ADR-0008 that envelope-level paths are the CLI's responsibility)
   belongs to Phase 1. Discovered in **S4-04** while wiring the
   sanitizer-substring scan over the rendered YAML.
+
+- **Story skeletons can lag the frozen `Probe` ABC.** S4-05's TDD-plan
+  skeleton constructed `Task(name="__bullet_tracer__", languages=...)`,
+  but `src/codegenie/probes/base.py` (ADR-0007 byte-frozen) declares
+  `Task(type=..., options={})`. The skeleton was guidance; the ABC is the
+  contract. Always cross-reference dataclass field names against
+  `probes/base.py` at implementation time, not the story body. Same
+  caveat applies to `RepoSnapshot` (`root`, `git_commit`,
+  `detected_languages`, `config`). Discovered in **S4-05**.
+
+- **The rendered YAML envelope nests probe outputs one level deeper than
+  the probe's `schema_slice`.** `_seam_shallow_merge` at `cli.py:260`
+  places each `SanitizedProbeOutput.schema_slice` under
+  `envelope["probes"][probe.name]`. So a probe producing
+  `schema_slice = {"language_stack": {...}}` lands at
+  `data["probes"]["language_detection"]["language_stack"]` in the YAML —
+  not `data["language_stack"]`. Tests that load `repo-context.yaml` and
+  assert on a probe's payload must walk through `probes[<probe.name>]`.
+  Discovered in **S4-05** while pinning the symlink-escape closed-world
+  counts assertion.
