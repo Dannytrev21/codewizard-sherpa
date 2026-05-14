@@ -1,0 +1,13 @@
+{
+  "name": "node-yarn-berry-nonpnp-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "yarn@3.6.4",
+  "scripts": {
+    "test": "vitest",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}

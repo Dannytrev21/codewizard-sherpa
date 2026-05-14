@@ -581,3 +581,40 @@ prescribe the same alias-chain shape (S3-01's plan was inherited
 from the validator's S1-03-era reading of arch §"Edge cases"); the
 implementer should substitute the deep-nesting fixture and cite L-29
 in the attempt log.
+
+## L-30 — Splitting an enum value forces a family-vs-variant comparison discipline (S2-02a)
+
+When a single enum value (`"yarn"`) gets split into variants
+(`"yarn-classic"` / `"yarn-berry"`), every existing code path that
+compared *against* that value must be audited. The
+`package_manager.declaration_lockfile_disagree` check in
+`node_build_system.py` previously compared the declared `packageManager`
+prefix (e.g. `"yarn"` from `"yarn@1.22.19"`) directly against the
+resolved `package_manager`. Once variant detection runs, the resolved
+value is `"yarn-classic"`/`"yarn-berry"` — so `"yarn" != "yarn-classic"`
+would spuriously flag every legitimate yarn declaration as a
+disagreement.
+
+**Fix shape (the load-bearing pattern):** when comparing a declared
+manager *family* against a resolved value that may be a *variant*, strip
+the variant suffix before the equality check. In this codebase that's
+`package_manager.split("-", 1)[0]`. A pinned regression test for *each
+variant* + a *negative-control* test (a true cross-family disagreement
+must still emit the warning) is the minimum coverage.
+
+**Apply to:** any future enum splits in this codebase (e.g., if pnpm
+ever forks into `pnpm-classic` / `pnpm-workspaces`, or if the npm
+lockfile-version-6 vs -7+ distinction ever lands as separate enum
+values in S3-05). The family-strip approach generalizes only if NO
+package-manager family identifier itself contains a hyphen — currently
+true; verify before extending.
+
+**Don't:** add an `if package_manager.startswith("yarn-")` special-case
+branch. The right shape is the family-strip, not a per-family branch
+— it scales to N variants per family for free.
+
+**Carry forward:** S3-03 (yarn lockfile parser) will need to *dispatch*
+on variant (`yarn-classic` → `pyarn`; `yarn-berry` → `safe_yaml.load`).
+That's a different operation (selection, not comparison) and should use
+a small `Mapping[str, Parser]` with the variant strings as keys — no
+family-strip needed, because dispatch is exact-match by design.

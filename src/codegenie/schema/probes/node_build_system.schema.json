@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codewizard-sherpa.dev/schemas/probes/node_build_system/v0.1.0.json",
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/node_build_system/v0.2.0.json",
   "title": "NodeBuildSystem probe output",
   "description": "Slice of repo-context produced by the NodeBuildSystem probe (Layer A, Phase 1). Strict at the slice (`additionalProperties: false`) at every nested block, in keeping with Phase 1 ADR-0004. The slice is OPTIONAL at the envelope (ADR-0010): non-Node repos don't emit it and validation must pass. Warning IDs match the ADR-0007 pattern (`^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$`); typed-exception IDs land in `ProbeOutput.errors` rather than in the slice.",
   "type": "object",
@@ -26,8 +26,8 @@
       "properties": {
         "package_manager": {
           "type": ["string", "null"],
-          "enum": ["bun", "pnpm", "yarn", "npm", null],
-          "description": "Lockfile-derived package manager (precedence: bun > pnpm > yarn > npm). Null when no lockfile is present."
+          "enum": ["bun", "pnpm", "yarn-classic", "yarn-berry", "npm", null],
+          "description": "Lockfile-derived package manager (precedence: bun > pnpm > yarn > npm). Yarn splits into 'yarn-classic' (1.x — node_modules) and 'yarn-berry' (2+ — Plug'n'Play or node-modules linker) per Phase 1 ADR-0013, detected by (1) package.json#packageManager 'yarn@MAJOR.', (2) .yarnrc.yml, (3) .yarn/, (4) .pnp.cjs / .pnp.loader.mjs, (5) safe-default classic with the 'yarn_variant_inferred' warning. Null when no lockfile is present."
         },
         "package_manager_version": {
           "type": ["string", "null"],

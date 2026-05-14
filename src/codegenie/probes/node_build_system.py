@@ -72,7 +72,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Final, TypedDict
+from typing import Any, Final, Literal, TypedDict
 
 import structlog
 
@@ -108,6 +108,11 @@ _log = structlog.get_logger(__name__)
 # wins; remaining hits report on ``additional_lockfiles`` in this order.
 # Adding a new package manager (e.g., Deno) is a single tuple-entry insertion
 # (+ schema enum bump + fixture test). Zero edits to selection logic.
+#
+# NOTE: index ``[2]`` is the yarn seam — the static ``"yarn"`` literal here is
+# OVERRIDDEN at probe runtime by ``_detect_yarn_variant`` (S2-02a / ADR-0013),
+# which resolves to either ``"yarn-classic"`` or ``"yarn-berry"``. A reader
+# grepping for ``"yarn"`` should not mistake this literal for the emitted value.
 _LOCKFILE_PRECEDENCE: Final[tuple[tuple[str, str], ...]] = (
     ("bun.lockb", "bun"),
     ("pnpm-lock.yaml", "pnpm"),
@@ -138,6 +143,10 @@ _TSCONFIG_EXTENDS_MAX_DEPTH: Final[int] = 4
 _NODE_VERSION_CHECK_TIMEOUT_S: Final[float] = 5.0
 _NODE_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"^v\d+\.\d+\.\d+")
 _SEMVER_FOR_COMPARE_RE: Final[re.Pattern[str]] = re.compile(r"^v?\d+\.\d+\.\d+")
+# Anchored + tight; captures only the major number. Pre-release suffixes
+# (e.g. ``yarn@4.0.0-rc.42``) match cleanly. ``yarn@1`` (no dot) does NOT
+# match — major-only declarations fall through to marker detection.
+_YARN_PACKAGE_MANAGER_RE: Final[re.Pattern[str]] = re.compile(r"^yarn@(\d+)\.")
 
 
 def _read_small_text_first_line(path: Path) -> str | None:
@@ -208,6 +217,8 @@ _WARNING_IDS: Final[frozenset[str]] = frozenset(
         "tsconfig.extends_depth_exceeded",
         "node.version_unparseable",
         "node.version_declared_resolved_disagree",
+        "node_build_system.yarn_variant_inferred",
+        "node_build_system.package_manager_field_unparseable",
     }
 )
 
@@ -281,6 +292,75 @@ def _select_package_manager(
     by_filename = dict(_LOCKFILE_PRECEDENCE)
     picked = by_filename[present[0]]
     return picked, present[1:]
+
+
+# Priority-ordered Berry filesystem markers. Each entry is
+# ``(name, predicate)``. The first hit wins; deciding whether
+# the marker is a file or a directory is the predicate's job.
+# Open/Closed: a future Berry marker (e.g. a fork ships ``.yarn-modern.cjs``)
+# is a one-line tuple-entry insertion + a fixture test; zero edits to the
+# priority-chain control flow in ``_detect_yarn_variant``.
+_BERRY_MARKERS: Final[tuple[tuple[str, Callable[[Path], bool]], ...]] = (
+    (".yarnrc.yml", lambda p: p.is_file()),
+    (".yarn", lambda p: p.is_dir()),
+    (".pnp.cjs", lambda p: p.is_file()),
+    (".pnp.loader.mjs", lambda p: p.is_file()),
+)
+
+
+# Priority-anchor discipline (Rule 12). A refactor that flattens the
+# priority chain or reshuffles the head will fail at import time.
+assert _BERRY_MARKERS[0][0] == ".yarnrc.yml", (
+    "S2-02a _BERRY_MARKERS: '.yarnrc.yml' must be the highest-priority Berry marker "
+    f"(got {_BERRY_MARKERS[0]!r}). ADR-0013 priority chain: yml > .yarn/ > .pnp.*."
+)
+
+
+def _detect_yarn_variant(
+    repo_root: Path,
+    parsed_manifest: Mapping[str, Any] | None,
+) -> tuple[Literal["yarn-classic", "yarn-berry"], list[str]]:
+    """Resolve ``yarn`` to ``yarn-classic`` or ``yarn-berry`` per ADR-0013.
+
+    Priority order (first hit wins):
+
+    1. ``package.json#packageManager`` matches ``^yarn@1\\.`` → ``yarn-classic``
+    2. ``package.json#packageManager`` matches ``^yarn@(\\d+)\\.`` with major ≥ 2 → ``yarn-berry``
+    3. ``.yarnrc.yml`` exists in repo root → ``yarn-berry``
+       (Berry-only — Classic uses ``.yarnrc`` without the extension.)
+    4. ``.yarn/`` directory exists → ``yarn-berry``
+    5. ``.pnp.cjs`` or ``.pnp.loader.mjs`` exists → ``yarn-berry``
+    6. Safe default → ``yarn-classic`` + ``node_build_system.yarn_variant_inferred``
+
+    A ``packageManager`` value that starts with ``yarn`` but does not match
+    the priority-1/2 regex emits ``node_build_system.package_manager_field_unparseable``
+    and falls through to priorities 3-6.
+
+    Returns ``(variant, warnings)``. The function is pure given inputs: no
+    side effects, no I/O beyond filesystem existence checks on the listed
+    markers.
+    """
+    warnings: list[str] = []
+
+    pm_field = parsed_manifest.get("packageManager") if parsed_manifest is not None else None
+    if isinstance(pm_field, str) and pm_field.startswith("yarn"):
+        m = _YARN_PACKAGE_MANAGER_RE.match(pm_field)
+        if m is not None:
+            major = int(m.group(1))
+            if major == 1:
+                return "yarn-classic", warnings
+            if major >= 2:
+                return "yarn-berry", warnings
+            # major == 0 is nonsense — fall through.
+        else:
+            warnings.append("node_build_system.package_manager_field_unparseable")
+
+    for name, predicate in _BERRY_MARKERS:
+        if predicate(repo_root / name):
+            return "yarn-berry", warnings
+
+    warnings.append("node_build_system.yarn_variant_inferred")
+    return "yarn-classic", warnings
 
 
 def _parse_node_version_output(stdout: str) -> str | None:
@@ -536,11 +616,23 @@ class NodeBuildSystemProbe(Probe):
         else:
             output_artifacts = []
 
+        # --- yarn variant detection (S2-02a / ADR-0013) -----------------
+        # Runs only when the lockfile-precedence resolution picked plain
+        # "yarn". Other managers (bun/pnpm/npm) skip this entirely.
+        if package_manager == "yarn":
+            variant, variant_warnings = _detect_yarn_variant(repo.root, pkg)
+            package_manager = variant
+            warnings.extend(variant_warnings)
+
         # --- packageManager (AC-8) --------------------------------------
+        # Compare *families* (yarn/pnpm/npm/bun), not variants, so
+        # ``packageManager: yarn@1.22.19`` against a ``yarn.lock`` does not
+        # spuriously disagree with the variant ``yarn-classic``.
         pm_field = pkg.get("packageManager")
         if isinstance(pm_field, str) and "@" in pm_field and package_manager is not None:
             declared_prefix = pm_field.split("@", 1)[0]
-            if declared_prefix != package_manager:
+            resolved_family = package_manager.split("-", 1)[0]
+            if declared_prefix != resolved_family:
                 warnings.append("package_manager.declaration_lockfile_disagree")
 
         # --- (3) tsconfig.json ------------------------------------------

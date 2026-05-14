@@ -194,7 +194,9 @@ def test_probe_contract_attributes_match_arch_design() -> None:
             ["yarn.lock", "package-lock.json"],
             True,
         ),
-        ({"yarn.lock", "package-lock.json"}, "yarn", ["package-lock.json"], True),
+        # Per ADR-0013 (S2-02a): a bare ``yarn.lock`` with no Berry markers
+        # resolves to ``yarn-classic`` via the safe-default path.
+        ({"yarn.lock", "package-lock.json"}, "yarn-classic", ["package-lock.json"], True),
         ({"package-lock.json"}, "npm", [], False),
         ({"bun.lockb", "package-lock.json"}, "bun", ["package-lock.json"], True),
     ],
