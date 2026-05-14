@@ -1,7 +1,7 @@
 # Story S1-04 — `jsonc` parser: state-machine comment stripper chained into `safe_json`
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (hardened by phase-story-validator)
+**Status:** Done (phase-story-executor, 2026-05-14)
 **Effort:** S
 **Depends on:** S1-02 (chronological — consumes `parsers._io` / `parsers._depth` if S1-03 lifted them; otherwise mirrors `safe_json`'s shape)
 **ADRs honored:** ADR-0008, ADR-0009, ADR-0007; Phase-0 markers-only contract
