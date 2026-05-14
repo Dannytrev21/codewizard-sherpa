@@ -69,8 +69,12 @@ repos:
         # the banned constructs literally (examples, regex sources); scanning
         # them produces noise without preventing a single real violation.
         files: '\.py$'
-        # AC-11: the print( rule must not fire under tests/ or scripts/ —
-        # both legitimately use stdout. The same regex covers the entry
-        # script itself, which intentionally contains banned literals in
-        # its rule table (regex sources, not real call sites).
-        exclude: '^(tests/|scripts/)'
+        # AC-11: the print( rule must not fire under tests/, scripts/, or
+        # tools/ — all three legitimately use stdout (tests use pytest's
+        # capsys; scripts and tools/ are CLI entry points). The same regex
+        # covers the entry script itself, which intentionally contains
+        # banned literals in its rule table (regex sources, not real call
+        # sites). S3-03 added tools/ for the throwaway pre-PR fuzz harness
+        # `tools/fuzz_yarn_lock.py`; ruff's T201 still gates the per-line
+        # `# noqa: T201` discipline inside such files.
+        exclude: '^(tests/|scripts/|tools/)'
