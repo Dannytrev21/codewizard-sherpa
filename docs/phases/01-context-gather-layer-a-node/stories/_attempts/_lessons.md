@@ -154,6 +154,38 @@ a deviation in the attempt log. (Sibling to L-4 / L-7: the story is
 contract; the executor's judgment call is on payloads that contradict
 themselves, not on architectural decisions the validator settled.)
 
+## L-13 — Bound-method `id()` is unstable; identity tests must capture `__self__` (S1-07)
+
+When a story's TDD plan prescribes `id(ctx.parsed_manifest)` (or any other
+bound-method attribute) to pin sharing vs. isolation, recognize that Python
+builds a *fresh* bound-method object on every attribute access — so
+`id(memo.get) != id(memo.get)`, and a freshly-collected bound-method slot
+may even be recycled across two distinct memos (yielding spurious
+identity-equal). The load-bearing invariant is the *underlying instance*
+identity, not the bound-method identity. Resolution: capture
+`ctx.parsed_manifest.__self__` (the bound instance) and compare with
+`is` / `is not`. Same shape as L-9: when the story's literal identity
+assertion disagrees with Python's runtime model, preserve the behavioral
+contract and widen the identity check. Surface as a deviation in the
+attempt log so the next reader doesn't re-litigate. (Rule 9: tests verify
+intent, not implementation strings.)
+
+## L-14 — `FakeProbe.cache_key` short-circuits same-named probes across gathers (S1-07)
+
+`FakeProbe.cache_key` in `tests/unit/_coordinator_fixtures.py` returns
+`f"sha256:{self.name}"` — a name-keyed cache identity. Two `gather()` calls
+on the *same repo* + *same FakeProbe name* hit the same `CacheStore`
+entry, and the second gather short-circuits at the cache lookup before
+`probe.run()` executes. For tests whose AC is "two gathers ⇒ two memos"
+(AC-17), this collapses the captured-id list from length 2 to length 1.
+Resolution: name the two probes distinctly per gather (e.g., `stub-a-1` /
+`stub-a-2`) so the cache key differs and each gather goes through the full
+dispatch path. The invariant under test is memo-instance identity per
+gather, not cache behavior — the renaming is inert to the AC's intent.
+Document inline so a future reader doesn't think the distinct names are
+load-bearing. (Rule 9 — tests verify intent; the contract is "two memos",
+the cache identity is incidental.)
+
 ## L-12 — `NamedTuple` > frozen-dataclass for value-keyed set membership (S1-06)
 
 When a contract type's only requirement is to be a member of a

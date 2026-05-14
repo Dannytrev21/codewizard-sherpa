@@ -1,10 +1,22 @@
 # Story S1-07 — `ParsedManifestMemo` per-gather coordinator memo
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (validator-hardened 2026-05-14)
+**Status:** Done (2026-05-14)
 **Effort:** M
 **Depends on:** S1-02, S1-06
 **ADRs honored:** ADR-0002
+
+## Evidence (S1-07 Done)
+
+- Module: [`src/codegenie/coordinator/parsed_manifest_memo.py`](../../../../src/codegenie/coordinator/parsed_manifest_memo.py) — `ParsedManifestMemo` kernel (one public symbol).
+- BudgetingContext extension: [`src/codegenie/coordinator/budget.py:80`](../../../../src/codegenie/coordinator/budget.py) — `parsed_manifest`, `input_snapshot` fields appended (None defaults).
+- Coordinator wiring: [`src/codegenie/coordinator/coordinator.py:230`](../../../../src/codegenie/coordinator/coordinator.py) — `_make_probe_context` threads `parsed_manifest`; `_dispatch_one` accepts `memo`; `gather()` constructs exactly one memo and feeds both prelude + rest dispatches.
+- Unit tests (memo kernel — 22 cases): [`tests/unit/coordinator/test_parsed_manifest_memo.py`](../../../../tests/unit/coordinator/test_parsed_manifest_memo.py).
+- Wiring tests (AC-16 / AC-17 / AC-18 + end-to-end): [`tests/unit/coordinator/test_coordinator_injects_memo.py`](../../../../tests/unit/coordinator/test_coordinator_injects_memo.py).
+- Field-shape pin (AC-15): [`tests/unit/test_coordinator_budget.py`](../../../../tests/unit/test_coordinator_budget.py) — `test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields`.
+- Full test suite: 816 passed (3 pre-existing failures carried from master per S1-06 attempt-log L-11; unrelated to S1-07).
+- `ruff check src tests`, `ruff format --check src tests`, `mypy --strict src/`: all green.
+- Attempt log: [`_attempts/S1-07.md`](_attempts/S1-07.md).
 
 ## Validation notes
 
