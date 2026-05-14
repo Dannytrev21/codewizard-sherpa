@@ -1,10 +1,20 @@
 # Story S1-01 — Errors extension for parser + catalog typed markers
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (hardened by phase-story-validator)
+**Status:** Done (2026-05-13)
 **Effort:** S
 **Depends on:** —
 **ADRs honored:** ADR-0007
+
+## Evidence (Status: Done)
+
+- **RED commit:** `75997a9` — `test(phase1/S1-01): RED — extend test_errors.py for 6 new marker subclasses`
+- **GREEN commit:** `05e07c1` — `feat(phase1/S1-01): GREEN — six Phase 1 marker subclasses for parsers/catalogs`
+- **Files touched:** `src/codegenie/errors.py`, `tests/unit/test_errors.py`
+- **Tests added (all green):** `test_phase1_subclasses_accept_message_arg_and_expose_args0[×6]`, `test_caught_phase1_exception_recovers_via_args0`, `test_codegenie_error_root_init_unchanged`, `test_symlink_refused_class_identity_preserved`, `test_catalog_load_error_doc_marks_hard_fail`, `test_phase1_subclasses_inherit_codegenie_error_directly[×6]`
+- **Phase 0 invariants verified across all 17 subclasses:** `test_subclasses_are_markers_only`, `test_every_subclass_directly_inherits_codegenie_error`, `test_every_subclass_has_raise_site_docstring`, `test_all_closure_pins_public_surface`, `test_codegenie_error_root_is_distinct_subclass_of_exception`.
+- **Gates:** `ruff check` ✅, `ruff format --check` ✅, `mypy --strict` ✅, full suite 615 passed at 92.74% line+branch coverage.
+- **Attempt log:** `_attempts/S1-01.md` (passed Stage 3 first try).
 
 ## Validation notes (phase-story-validator, 2026-05-13)
 
