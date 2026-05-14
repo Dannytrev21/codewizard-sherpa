@@ -137,3 +137,39 @@ implementation outline showed inline code). Lesson: when a story's AC
 requires a typed-error identity the shared kernel can't deliver,
 inlining wins unless the kernel-refactor cost is bounded enough for
 the same story. File the kernel-refactor as a follow-up.
+
+## L-11 — Hardened stories are contracts; treat them as such (S1-06)
+
+When `phase-story-validator` has produced a thorough hardening report and
+pre-decided every contested call (file location of new types, the
+`Any` vs `JSONValue` boundary call, where the sentinel test lives,
+which TODO is preserved), the implementer's job collapses to mechanical
+execution. **Do not re-litigate hardened decisions** — the validator
+already weighed dependency-inversion, cycle risk, fence-widening cost,
+and Open/Closed-at-file-boundary. Re-deriving these from scratch costs
+attempt budget and may resurface defects the validator already fixed.
+Read the validator report once, treat the story body as the contract,
+and execute. Surface any *new* defect (one the validator didn't see) as
+a deviation in the attempt log. (Sibling to L-4 / L-7: the story is
+contract; the executor's judgment call is on payloads that contradict
+themselves, not on architectural decisions the validator settled.)
+
+## L-12 — `NamedTuple` > frozen-dataclass for value-keyed set membership (S1-06)
+
+When a contract type's only requirement is to be a member of a
+`frozenset` / `dict` key (hashable, value-equality, immutable), reach for
+`typing.NamedTuple` before `@dataclass(frozen=True, eq=True)`. Why:
+
+- Auto-hashable via inherited `tuple.__hash__`; no explicit `eq=True` /
+  `frozen=True` decoration.
+- Value-equality out of the box (`(a, b) == (a, b)` via tuple `__eq__`).
+- `__slots__` for free → smaller per-instance memory.
+- Picklable + slotted by default.
+- One fewer place to drift a hashing convention.
+
+Frozen-dataclass earns its keep when (a) defaults matter, (b) inheritance
+matters, (c) `__post_init__` validation runs. None of those apply to a
+`(path, mtime_ns, size, content_hash)` value tuple. Choose the shape
+that matches the type's actual responsibilities — `NamedTuple` is a
+smart constructor for an immutable value record. (Reinforces the design-
+patterns lens: pick the narrowest pattern that fits.)
