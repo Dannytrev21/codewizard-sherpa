@@ -70,9 +70,9 @@ field below references the issue-tracker PR/notional-PR slot reserved for
 S5-02 close-out, backfilled post-merge if the workflow shifts to a PR-based
 model in Phase 1.
 
-- **Merged PR URL (S5-02 close-out):** https://github.com/Dannytrev21/codewizard-sherpa/pull/9 — *placeholder; backfill on first Phase-1 PR*
-- **`main` HEAD commit SHA at handoff:** `3d6b1fc4c79fcd055b401fb582891a9c6e41face` *(pre-S5-02 HEAD; the post-S5-02 commit SHA is the canonical handoff SHA — see the `git log -1` output on `master` after S5-02 lands and update this line in the same commit that brings the workflow-run URL below)*
-- **Workflow-run URL (CI green on `main`'s post-S5-02 HEAD, Python 3.11 and 3.12 across all six jobs):** https://github.com/Dannytrev21/codewizard-sherpa/actions/runs/0 — *placeholder; backfill once the post-S5-02 `main` run completes green on both `python-3.11` and `python-3.12` for `lint`, `typecheck`, `test`, `security`, `docs`, and `fence`*
+- **Merged PR URL (S5-02 close-out):** https://github.com/Dannytrev21/codewizard-sherpa/pull/9 — *placeholder; Phase 0 commits land direct-to-`master` per established convention (every `feat(phase-0): … green` commit on `master`; see `git log`). Backfill with the first PR-shaped merge once Phase 1 adopts a PR workflow.*
+- **`main` HEAD commit SHA at handoff:** `15048c608a466e9cd2fd7d0dde13522f42564134` (S5-02 commit on `master`).
+- **Workflow-run URL (CI on `main`'s post-S5-02 HEAD; jobs `lint`, `typecheck`, `test`, `security`, `docs`, `fence` across Python 3.11 and 3.12):** https://github.com/Dannytrev21/codewizard-sherpa/actions/runs/25835860665
 - **Phase 1 milestone:** https://github.com/Dannytrev21/codewizard-sherpa/milestone/1
 - **Phase 1 issues** (5 Layer A probes + 3 follow-ups per
   `phase-arch-design.md §Integration with Phase 1`):
