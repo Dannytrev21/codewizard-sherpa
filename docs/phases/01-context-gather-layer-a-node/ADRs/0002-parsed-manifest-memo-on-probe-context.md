@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-12
-**Last amended:** 2026-05-14 (S1-06 — add `input_snapshot` + `InputFingerprint`)
+**Last amended:** 2026-05-14 (S1-08 — Gap 1 landed, additive `content_hash` key shape via `compute_input_snapshot`)
 **Tags:** coordinator · probe-context · performance · chokepoint-preservation · toctou
 **Related:** ADR-0008, [Phase 0 ADR-0009](../../00-bullet-tracer-foundations/ADRs/0009-cache-hit-pass-through-coordinator-output.md), [Phase 0 ADR-0010](../../00-bullet-tracer-foundations/ADRs/0010-pydantic-probe-output-validator.md), [Phase 0 ADR-0008](../../00-bullet-tracer-foundations/ADRs/0008-output-sanitizer-two-pass-chokepoint.md)
 
@@ -43,7 +43,7 @@ class InputFingerprint(NamedTuple):
 
 ### `ParsedManifestMemo` semantics
 
-- **Key:** `(absolute_path, mtime_ns, size)` for TOCTOU safety. A file changed mid-gather re-parses.
+- **Key (dual-shape, additive — S1-08):** when the coordinator's adapter passes a snapshot-derived `content_hash`, the cache key is the single-element tuple `(content_hash,)` and a file edited mid-gather cannot poison the parse of the snapshotted bytes (Gap-1 closure). When `content_hash` is omitted (`None`), the cache key is the legacy `(str(path.resolve()), mtime_ns, size)` tuple from S1-07 — preserved for non-coordinator callers (Phase 14 tests, ad-hoc CLI usage) so the S1-07 test surface lands unmodified. Sentinel `content_hash` values (`"<oversize>"`, `"<refused>"`, or any leading-`"<"` prefix) bypass the cache entirely (return `None`, no entry written) — the downstream parse would fail anyway and a cached sentinel only serves confusion.
 - **Allowlist:** Phase 1 allows only `{"package.json"}`. Future allowlist additions are additive.
 - **Lifetime:** per-gather. The memo is discarded at gather end. Phase 14's Temporal Activities re-parse per Activity (correct — Activities are independent units of work).
 - **Immutability:** parsed dicts returned wrapped in `types.MappingProxyType` at the top level; nested dicts/lists are returned by reference with `Mapping`-typed signatures (mutation is a mypy error).
@@ -75,7 +75,7 @@ class InputFingerprint(NamedTuple):
 - Phase 2's `IndexHealthProbe` reuses the memo at zero implementation cost.
 - The audit anchor (Phase 0 ADR-0004) gains a sibling event family `probe.memo.hit` / `probe.memo.miss` for instrumentation; cache-key derivation is unaffected.
 - `tests/unit/probes/test_parsed_manifest_memo.py` covers first-call parses, subsequent-call returns memoized, `mtime` change re-parses, and the falsy-memo fallback path.
-- **Resolved in this ADR (2026-05-14 amendment):** the Gap #1 improvement in `phase-arch-design.md` (pre-dispatch input-snapshot pass) is no longer deferred; it is implemented under `input_snapshot` + `InputFingerprint` as part of this ADR's scope (S1-06 declares the seam; S1-08 lands the coordinator pass). Cache-key derivation moves to `content_hash` per-input rather than live `os.stat`.
+- **Resolved in S1-08 (2026-05-14):** the Gap #1 improvement is landed via `compute_input_snapshot` + `make_parsed_manifest_adapter` in `src/codegenie/coordinator/input_snapshot.py`. The memo's signature gained an additive `content_hash: str | None = None` parameter (departure from arch line 990's prescribed full-flip, recorded per Rule 7) — when the coordinator's adapter passes a snapshot-derived `content_hash`, the cache key is `(content_hash,)`; when omitted, S1-07's `(absolute_path, mtime_ns, size)` key is used unchanged. Sentinels (`"<oversize>"`, `"<refused>"`) bypass the memo. Rationale for the additive shape: (a) preserves S1-07's hardened test suite — the executor doesn't rewrite ~16 tests inside the S1-08 PR; (b) supports non-coordinator callers (test paths that construct `memo` directly without first running `compute_input_snapshot`); (c) the coordinator's adapter always passes `content_hash=...` for snapshotted paths, so the on-the-warm-path behavior is the arch-prescribed shape — no observable regression.
 - `tests/unit/test_probe_contract.py` gains the ADR-0002 sentinel test `test_probe_context_field_list_matches_adr_0002_amendment` (hard-coded 7-field tuple) plus an `InputFingerprint` mutation-killer tier and doc-grep tests on `localv2.md §4` and this ADR. Adding a third field to `ProbeContext` fails CI with a message naming this ADR.
 - The stdlib-only fence on `base.py` is widened by exactly `"collections"` (admits `from collections.abc import Callable, Mapping`); `ALLOWED_BASE_PY_IMPORTS` is pinned by `test_allowed_base_py_imports_includes_collections` so a future revert is a loud regression.
 

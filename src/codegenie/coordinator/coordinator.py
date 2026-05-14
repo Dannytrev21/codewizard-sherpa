@@ -72,10 +72,14 @@ from codegenie.coordinator.budget import (
     BudgetingContext,
     ResourceBudget,
 )
+from codegenie.coordinator.input_snapshot import (
+    compute_input_snapshot,
+    make_parsed_manifest_adapter,
+)
 from codegenie.coordinator.parsed_manifest_memo import ParsedManifestMemo
 from codegenie.errors import ProbeBudgetExceeded
 from codegenie.output.sanitizer import OutputSanitizer, SanitizedProbeOutput
-from codegenie.probes.base import Probe, ProbeOutput, RepoSnapshot, Task
+from codegenie.probes.base import InputFingerprint, Probe, ProbeOutput, RepoSnapshot, Task
 
 if TYPE_CHECKING:
     pass
@@ -233,6 +237,7 @@ def _make_probe_context(
     raw_artifact_mb: int,
     *,
     parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None,
+    input_snapshot: frozenset[InputFingerprint] | None = None,
 ) -> BudgetingContext:
     """Construct the per-dispatch context object the probe receives.
 
@@ -241,12 +246,17 @@ def _make_probe_context(
     plain :class:`Path` (ADR-0007). S1-07 (ADR-0002) threads
     ``parsed_manifest`` — the per-gather :class:`ParsedManifestMemo`'s
     ``.get`` bound method — onto the ctx so allowlisted JSON manifests
-    parse once per gather.
+    parse once per gather. S1-08 threads ``input_snapshot`` — the
+    pre-dispatch fingerprint set computed by
+    :func:`codegenie.coordinator.input_snapshot.compute_input_snapshot` —
+    so the cache-key/parse coherence required by Gap 1 holds across the
+    full gather.
     """
     return BudgetingContext(
         workspace=workspace,
         raw_artifact_mb=raw_artifact_mb,
         parsed_manifest=parsed_manifest,
+        input_snapshot=input_snapshot,
     )
 
 
@@ -303,13 +313,21 @@ async def _dispatch_one(
             _log.info("probe.cache_hit", probe=name, cache_key=key, run_id=run_id)
             return name, sanitized, CacheHit(output=sanitized, key=key)
 
-        # 3) dispatch.
+        # 3) dispatch. Pin the per-probe input snapshot BEFORE constructing
+        #    the runtime ctx — Gap 1 (TOCTOU) closure: the adapter keys the
+        #    memo by ``content_hash`` from the snapshot rather than by live
+        #    ``os.stat``. ``parsed_manifest`` falls back to the memo's own
+        #    ``get`` for non-snapshotted paths (defensive — the adapter
+        #    already routes through ``memo.get`` for both branches).
         budget: ResourceBudget = getattr(probe, "declared_resource_budget", DEFAULT_RESOURCE_BUDGET)
         timeout = min(probe.timeout_seconds, budget.wall_clock_s)
+        input_snapshot = compute_input_snapshot(probe, per_probe_snap.root)
+        adapter = make_parsed_manifest_adapter(input_snapshot, memo)
         ctx = _make_probe_context(
             workspace=per_probe_snap.root,
             raw_artifact_mb=budget.raw_artifact_mb,
-            parsed_manifest=memo.get,
+            parsed_manifest=adapter,
+            input_snapshot=input_snapshot,
         )
 
         _log.info("probe.start", probe=name, run_id=run_id)
