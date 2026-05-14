@@ -12,19 +12,19 @@ This document sequences the work from a local bullet tracer through to a multi-t
 
 ## Phase summary
 
-**Design pipeline status legend:** ✅ = full design pipeline complete (`final-design.md` + `phase-arch-design.md` + per-phase ADRs + `High-level-impl.md` + stories backlog under `docs/phases/NN-<slug>/`). Empty = not yet designed.
+**Design pipeline status legend:** ✅ = full design pipeline complete (`final-design.md` + `phase-arch-design.md` + per-phase ADRs + `High-level-impl.md` + stories backlog under `docs/phases/NN-<slug>/`). Empty = not yet designed. *(pending plugin-architecture redesign)* = had a complete design pipeline that was removed because [ADRs 0029–0032](production/adrs/) (TCCMs, graph-aware queries, plugin architecture, language search adapters) materially changed how the phase will ship; the next design pipeline run must absorb the plugin framing.
 
 | # | Title | Task classes | First-time introduction of | Design |
 |---|---|---|---|---|
 | 0 | Bullet tracer + project foundations | — | CLI shell, `pyproject.toml`, CI, docs site, mypy, ruff, pytest, pre-commit | ✅ [00-bullet-tracer-foundations](phases/00-bullet-tracer-foundations/) |
 | 1 | Context gathering — Layer A (Node.js) | — | Probe contract, coordinator, content-addressed cache, schema validation | ✅ [01-context-gather-layer-a-node](phases/01-context-gather-layer-a-node/) |
-| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | ✅ [02-context-gather-layers-b-g](phases/02-context-gather-layers-b-g/) |
-| 3 | **Vuln remediation — deterministic recipe path** | vuln | First end-to-end transform; OpenRewrite / AST; writes a real diff | ✅ [03-vuln-deterministic-recipe](phases/03-vuln-deterministic-recipe/) |
-| 4 | Vuln remediation — LLM fallback + solved-example RAG | vuln | Leaf LLM agents, local vector DB, recipe → RAG → LLM-fallback decision chain | ✅ [04-vuln-llm-fallback-rag](phases/04-vuln-llm-fallback-rag/) |
+| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | *(pending plugin-architecture redesign)* |
+| 3 | **Vuln remediation — deterministic recipe path** | vuln | First plugin (`vulnerability-remediation--node--npm`); OpenRewrite / AST; writes a real diff | *(pending plugin-architecture redesign)* |
+| 4 | Vuln remediation — LLM fallback + solved-example RAG | vuln | Leaf LLM agents, local vector DB, recipe → RAG → LLM-fallback decision chain | *(pending plugin-architecture redesign)* |
 | 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default | ✅ [05-sandbox-trust-gates](phases/05-sandbox-trust-gates/) |
-| 6 | SHERPA-style state machine for the vuln loop | vuln | LangGraph runtime, Pydantic state ledger, `interrupt()` + SQLite checkpointer | ✅ [06-sherpa-state-machine](phases/06-sherpa-state-machine/) |
+| 6 | SHERPA-style state machine for the vuln loop | vuln | LangGraph runtime, Pydantic state ledger, `interrupt()` + SQLite checkpointer | *(pending plugin-architecture redesign)* |
 | 6.5 | **Per-task-class eval harness + first benches** *(preamble to Phase 7)* | vuln | `eval/` package, `@register_task_class` registry, `BenchScore` model, `bench/{task-class}/` directory contract, fence-CI gate, backfilled `bench/vuln-remediation/` | ✅ [06.5-per-task-class-eval-harness](phases/06.5-per-task-class-eval-harness/) |
-| 7 | **Add migration task class (Chainguard distroless)** | vuln + migration | Extension by addition — proves contracts extend without edits | ✅ [07-migration-task-class](phases/07-migration-task-class/) |
+| 7 | **Add migration task class (Chainguard distroless)** | vuln + migration | Second plugin (`distroless-migration--node--npm`); diff touches only the new plugin directory — extension-by-addition test | *(pending plugin-architecture redesign)* |
 | 8 | Hierarchical Planner + pre-rendered hot views | vuln + migration | Planning supervisor, Redis hot views, MCP-style stdio Skills server |
 | 9 | Durable workflow envelope — Temporal | vuln + migration | Temporal workflows + activities, Postgres checkpointer, temporal-ui |
 | 10 | Stage 0 Discovery + Stage 1 Assessment | vuln + migration | Multi-repo discovery (GitHub API), assessment scoring, eligibility filtering |
@@ -61,6 +61,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Exit criteria.** A useful `repo-context.yaml` is produced on a real Node.js repo. Cache hits on second run (no probe re-executes). All probes pass schema validation.
 
+**Domain modeling discipline.** Phase 1 adopts [ADR-0033](production/adrs/0033-domain-modeling-discipline.md) (newtype + smart constructor + sum type + illegal-states-unrepresentable) for all new code from the date of that ADR. Domain identifiers — `RepoId`, `ProbeId`, `SkillId`, `RecipeId`, `WorkflowId`, `BundleId`, `SignalKind`, etc. — use `typing.NewType`; external-boundary values (YAML, JSON, env, CLI) go through smart-constructor parsing returning `Result`; state machines (probe outcomes, gate decisions, build outcomes) use Pydantic discriminated unions with exhaustive `match` handling. Phase 0 code already shipped (raw `str` for identifiers, `Optional[X]` / `bool` for state) is allowed to remain temporarily; opportunistic retrofit happens as files are touched, with a planned focused retrofit pass tracked as a backlog item.
+
 ---
 
 ## Phase 2 — Context gathering — Layers B–G
@@ -82,6 +84,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Tooling & setup.** External: `npm`, `jq`, `git`. OpenRewrite recipes for npm dependency updates (or `npm-check-updates` as a simpler first cut for cases where OpenRewrite is overkill). CVE data ingestion: parsers for NVD JSON 2.0, GHSA, and OSV feeds.
 
 **Testing.** A library of fixture repos with known vulnerable lockfiles. Before/after assertions: lockfile diff is the expected one; `package.json` diff is the expected one; the test suite still passes; no semantic regression in entrypoints. Edge cases get their own fixtures: peer-dep conflicts, transitive vulns that can't be patched at the surface, semver-range resolution corner cases.
+
+**Plugin framing.** This is also the **first plugin** to ship — `plugins/vulnerability-remediation--node--npm/` — which doubles as the proof that the plugin loader works ([ADR-0031](production/adrs/0031-plugin-architecture.md)). The plugin bundles its own subgraph, TCCM ([ADR-0029](production/adrs/0029-task-class-context-manifests.md)), npm-and-Node-specific probes, the four language search adapters ([ADR-0032](production/adrs/0032-language-search-adapters.md)) wrapping the structural probes Phase 2 built (the npm/Node implementations of `dep_graph.consumers`, `import_graph.reverse_lookup`, `scip.refs`, `test_inventory.tests_exercising`), Skills, and OpenRewrite recipes. A universal `(*, *, *)` fallback plugin also ships in this phase (HITL escalation when no concrete plugin matches a workflow — never silently fail).
 
 **Exit criteria.** Given a Node.js repo with a known npm CVE, the system writes a working patch diff on a local branch that — when applied — installs cleanly and passes the repo's own tests.
 
@@ -118,6 +122,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Tooling & setup.** `langgraph`, `pydantic`, `aiosqlite` for the checkpointer, `langgraph-cli` for graph inspection.
 
 **Testing.** State-transition tests assert every conditional edge is exercised at least once. Replay tests use the checkpointer to kill a mid-run workflow, resume it, and assert the same final state. HITL interrupt tests inject mocked human responses and verify the workflow continues correctly.
+
+**Plugin framing.** The subgraph topology lives in `plugins/vulnerability-remediation--node--npm/subgraph/` per [ADR-0031](production/adrs/0031-plugin-architecture.md); Phase 7's migration plugin will ship its own subgraph without touching this one. Subgraph topology is intentionally NOT inherited across plugins — graph behavior must be explicit per plugin, with reuse happening at the node level via shared Python modules in `src/codewizard_sherpa/nodes/`.
 
 **Exit criteria.** The vuln-remediation loop runs as a LangGraph state machine. Mid-run kill + resume works without state loss. HITL interrupt fires when trust gates fail twice in a row, and a mocked human approval continues the run.
 
@@ -156,13 +162,15 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Testing.** The full vuln-remediation regression suite runs as a hard gate before merging this phase — proving that adding the new task class did not break the old one. New tests cover the distroless recipes specifically. An end-to-end test migrates a Node.js service with a vulnerable base image to a Chainguard distroless image.
 
-**Exit criteria.** Both task classes run from the same orchestration. The diff for this phase touches *only* new files — no Phase 0–6 source code is modified.
+**Plugin framing.** The extension-by-addition invariant is made concrete by the plugin architecture ([ADR-0031](production/adrs/0031-plugin-architecture.md)): **the diff for this phase touches only `plugins/distroless-migration--node--npm/`** (plus the new files in `bench/migration-chainguard-distroless/cases/` per Phase 6.5). No edits to the existing `vulnerability-remediation--node--npm` plugin, no edits to any Phase 0–6 source code, no edits to existing TCCMs or adapters. If anything outside the new plugin directory had to change, the plugin contract was wrong and the fix is to amend the contract — never to "just edit one line because it's easier."
+
+**Exit criteria.** Both task classes run from the same orchestration. The diff for this phase touches *only* the new plugin directory (and the bench cases added to the seed `bench/migration-chainguard-distroless/cases/`) — no Phase 0–6 source code is modified, and no existing plugin is touched.
 
 ---
 
 ## Phase 8 — Hierarchical Planner + pre-rendered hot views
 
-**Scope.** A planning supervisor layer sits above the state machine. Given a new workflow, it consults the pre-rendered hot views and routes work between recipe lookup, solved-example RAG, and LLM-fallback. The Redis hot views ([ADR-0013](production/adrs/0013-pre-rendered-redis-hot-views.md)) — `available_skills`, `entrypoint`, `risk_flags`, `confidence_summary` — pre-compute the agent context so the planner never has to do expensive lookups inline. The Skills server runs as a local MCP stdio process, prefiguring the eventual MCP topology.
+**Scope.** A planning supervisor layer sits above the state machines. Given a new workflow, the Supervisor **resolves the matching plugin** for the `(task × language × build-tool)` tuple from the repo's gathered context ([ADR-0031](production/adrs/0031-plugin-architecture.md)) — walking the `extends` inheritance chain, validating manifests via Pydantic, falling back to the universal `(*, *, *)` HITL plugin if no concrete plugin matches. The dispatched plugin's TCCM ([ADR-0029](production/adrs/0029-task-class-context-manifests.md)) is then used to build the Context Bundle via graph-aware queries ([ADR-0030](production/adrs/0030-graph-aware-context-queries.md)) routed through the plugin's language search adapters ([ADR-0032](production/adrs/0032-language-search-adapters.md)). Inside the plugin's subgraph, the planner routes work between recipe lookup, solved-example RAG, and LLM-fallback. The Redis hot views ([ADR-0013](production/adrs/0013-pre-rendered-redis-hot-views.md)) — `available_skills`, `entrypoint`, `risk_flags`, `confidence_summary` — pre-compute the agent context so the planner never has to do expensive lookups inline; the slices pre-rendered are derived from the union of `must_read` entries across the active plugins' TCCMs. The Skills server runs as a local MCP stdio process, prefiguring the eventual MCP topology.
 
 **Tooling & setup.** `redis` in docker-compose. `redis-py` for the client. The `mcp` Python SDK (stdio mode). View pre-rendering runs as a background asyncio task triggered off probe re-runs.
 
@@ -181,6 +189,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Testing.** Temporal's `WorkflowEnvironment` runs workflow tests in-process. Activity-level unit tests use mocked side effects so the durability layer can be tested independently. Durability tests: kill the worker mid-activity, restart, assert the workflow continues to completion.
 
 **Exit criteria.** Workflows survive process restarts without state loss. The temporal-ui shows live workflow inspection. All retries are framework-level — application code contains no retry loops.
+
+**Canonical event log anchored here.** Phase 9 is where [ADR-0034](production/adrs/0034-event-sourcing-canonical-primitive.md) (event sourcing as canonical primitive) lands operationally. Temporal's workflow history is the workflow-scoped event store natively; this phase adds a typed side-channel **Postgres event log** for workflow-spanning concerns (cost rollups, KG writes, portfolio-level signals — things that don't fit inside a single workflow's history). Events are typed Pydantic models per [ADR-0033](production/adrs/0033-domain-modeling-discipline.md). Existing append-only structures — attempt logs from `phase-story-executor`, draft cost ledgers, plugin-resolution records — migrate to event-stream projections from this point. Phases 11 (Stage 7 Learning), 13 (cost ledger + ROI dashboard) become projections rather than independent stores; their implementations read from this canonical event log.
 
 ---
 
