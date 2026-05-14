@@ -1,7 +1,8 @@
 # Story S3-01 — `_pnpm` lockfile parser
 
 **Step:** Step 3 — Ship `NodeManifestProbe` and the three lockfile parsers
-**Status:** Ready (HARDENED)
+**Status:** Done (2026-05-14)
+**Evidence:** [`_attempts/S3-01.md`](_attempts/S3-01.md) — 16 unit tests in `tests/unit/probes/_lockfiles/test_pnpm.py`; full suite 1031 passed / 1 xfail; coverage 94.27%; ruff / ruff-format / mypy --strict / lint-imports clean. Two TDD-plan deviations (alias-chain → flow-style deep nesting; os.fstat → safe_yaml.load monkey-patch) documented in the attempt log; cross-story lesson **L-29** recorded for S3-02 / S3-03.
 **Effort:** S
 **Depends on:** S1-03 (`safe_yaml.load`), S1-01 (Phase 1 marker exceptions)
 **ADRs honored:** ADR-0008 (in-process caps, not per-probe sandbox), ADR-0009 (no new C-extension parser deps), ADR-0007 (`WarningId` constructed at catch site)

@@ -519,3 +519,65 @@ materialise after the cold gather.
   granularity — ADR-0002 routes cache keys through `content_hash`, not
   live `os.stat`, so there is no mtime-race to wait out. Sleep masks
   real bugs (a content-hash mismatch on identical bytes).
+
+
+## L-29 — Story-prescribed YAML-alias-amplification fixture does NOT raise `DepthCapExceeded` (S3-01)
+
+**Symptom (S3-01 GREEN):** The S3-01 story TDD plan prescribed a YAML
+fixture of the shape
+
+```yaml
+a0: &a0 {x: 1}
+a1: &a1 {x: *a0, y: *a0}
+a2: &a2 {x: *a1, y: *a1}
+...
+a69: &a69 {x: *a68, y: *a68}
+```
+
+and asserted `_pnpm.parse(lockfile)` raises `DepthCapExceeded`. The
+phase-story-validator hardening report doubled down on this shape as
+"the canonical billion-laughs vector that the `id()`-memoized walker
+catches as a logical-depth violation." Both wrong against the actual
+walker implementation.
+
+**Cause:** `parsers/_depth.py::_walk` is `id()`-memoized — once a
+container is in `seen`, the walker returns without descending. The
+loader builds all 70 anchor dicts as direct values of the top-level
+mapping, so the walker visits them in insertion order: `a0` first
+(scalar value `1`, no recursion), then `a1`..`a69` each at depth 1
+with their `*a{i-1}` references already in `seen` (skipped). Max
+walked depth = 2. `safe_yaml.load` returns the parsed mapping — no
+`DepthCapExceeded` raised. Empirically confirmed by loading the
+fixture under `parsers.safe_yaml.load(p, max_bytes=1MB, max_depth=64)`
+and observing a successful return with 70 top-level keys.
+
+The `id()` memoization is the **correct** defense per arch §"Edge
+cases" row 1 (an alias chain of `k` physical nodes is walked in
+`O(k)`, regardless of logical-expansion factor). What it does NOT do
+is convert alias amplification into a depth-cap violation — it
+prevents the depth from ever growing past the physical-DAG depth.
+
+**Apply to:** every future lockfile-parser story (S3-02 `_npm`, S3-03
+`_yarn`, any hypothetical `_bun`) whose AC names "re-raises
+`DepthCapExceeded` unchanged from `safe_*.load`". The pass-through
+test must use plain deep nesting — flow-style `{k: {k: ... v}}` × 70
+matches the proven trigger in
+`tests/unit/parsers/test_safe_yaml.py::_nest_dict(70)` (already shipping
+in S1-03 and exercising the same `assert_max_depth` walker). The
+alias-chain fixture is the right shape for `test_safe_yaml.py`'s
+amplification-defense test (where the assertion is *successful parse
+under bounded memory*), not for depth-cap re-raise tests.
+
+**Don't:** repeat the alias-chain shape for any future
+`DepthCapExceeded` re-raise test. Don't try to "fix" the walker to
+raise on alias amplification — id() memoization is the load-bearing
+defense; making it cap on logical depth would break arch §"Edge
+cases" row 1's stated O(physical) guarantee.
+
+**Carry forward to S3-02 / S3-03:** the depth-cap pass-through test
+should reuse the `_nest_dict(70)` shape (or equivalent flow-style
+deep nesting) verbatim. The story TDD plans for those stories likely
+prescribe the same alias-chain shape (S3-01's plan was inherited
+from the validator's S1-03-era reading of arch §"Edge cases"); the
+implementer should substitute the deep-nesting fixture and cite L-29
+in the attempt log.
