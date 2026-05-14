@@ -2,18 +2,37 @@
 
 Sources:
 - ``docs/phases/00-bullet-tracer-foundations/phase-arch-design.md`` §Agentic
-  best practices — enumerates the nine ``CodegenieError`` subclasses.
+  best practices — enumerates the eleven Phase 0 ``CodegenieError`` subclasses.
 - ``docs/phases/00-bullet-tracer-foundations/ADRs/0008-output-sanitizer-two-pass-chokepoint.md``
   — names ``SecretLikelyFieldNameError`` and ``SymlinkRefusedError``.
 - ``docs/phases/00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md``
   — names ``DisallowedSubprocessError`` and ``ToolMissingError``.
+- ``docs/phases/01-context-gather-layer-a-node/phase-arch-design.md`` §Error
+  escalation — adds six Phase 1 marker subclasses for ``parsers/`` and
+  ``catalogs/`` raise sites (S1-01).
+- ``docs/phases/01-context-gather-layer-a-node/ADRs/0007-warnings-id-pattern.md``
+  — the structured ``WarningId`` is constructed at the catch site (the
+  calling probe), not embedded on the exception class.
 """
 
 from __future__ import annotations
 
+import pytest
+
 import codegenie.errors as e
 
+# Phase 1 — six new marker subclasses (this story: S1-01).
+PHASE1_NEW = {
+    "SizeCapExceeded",
+    "DepthCapExceeded",
+    "MalformedJSONError",
+    "MalformedYAMLError",
+    "MalformedLockfileError",
+    "CatalogLoadError",
+}
+
 EXPECTED_SUBCLASSES = {
+    # Phase 0 — eleven (corrected count; the prior draft of S1-01 listed 9).
     "ConfigError",
     "ToolMissingError",
     "ProbeError",
@@ -25,7 +44,8 @@ EXPECTED_SUBCLASSES = {
     "DisallowedSubprocessError",
     "SymlinkRefusedError",
     "AllProbesFailedError",
-}
+} | PHASE1_NEW
+
 DOCUMENTED_MODULE_SLUGS = {
     "exec",
     "cache",
@@ -36,6 +56,9 @@ DOCUMENTED_MODULE_SLUGS = {
     "config",
     "tool_check",
     "schema",
+    # Phase 1 additions (S1-01) — additive only; no Phase 0 slug removed.
+    "parsers",
+    "catalogs",
 }
 MARKER_ALLOWED_DICT_KEYS = {
     "__module__",
@@ -94,3 +117,66 @@ def test_subclasses_are_markers_only() -> None:
             f"{name} declares extra class attributes {cls.__dict__.keys()}; "
             f"subclasses must remain markers"
         )
+
+
+# --- Phase 1 / S1-01 ----------------------------------------------------------
+
+
+# AC-6 — every Phase-1 marker accepts a single positional message string,
+# round-trips it via .args[0], and exposes NO instance attributes (markers only).
+@pytest.mark.parametrize("name", sorted(PHASE1_NEW))
+def test_phase1_subclasses_accept_message_arg_and_expose_args0(name: str) -> None:
+    cls = getattr(e, name)
+    msg = f"/repo/file.ext: cap=64 detail=for {name}"
+    exc = cls(msg)
+    # Message round-trips via Exception.args (Phase 0 inherited shape).
+    assert exc.args == (msg,)
+    assert exc.args[0] == msg
+    assert str(exc) == msg  # Exception.__str__ delegates to args[0] when len==1.
+    # Markers expose NO instance state — these are deliberate negatives.
+    for forbidden_attr in ("path", "cap", "detail", "warning_id"):
+        assert not hasattr(exc, forbidden_attr), (
+            f"{name} must remain a marker; instance must not carry "
+            f"{forbidden_attr!r}. Path/cap/detail live in the message."
+        )
+
+
+# AC-6 — caught instance still exposes args[0]; semantics live in catch context.
+def test_caught_phase1_exception_recovers_via_args0() -> None:
+    with pytest.raises(e.CodegenieError) as exc_info:
+        raise e.SizeCapExceeded("/r/package.json: cap=5242880")
+    assert exc_info.value.args[0] == "/r/package.json: cap=5242880"
+    assert isinstance(exc_info.value, e.SizeCapExceeded)
+    assert isinstance(exc_info.value, e.CodegenieError)
+
+
+# AC-7 — root unchanged.
+def test_codegenie_error_root_init_unchanged() -> None:
+    assert e.CodegenieError.__init__ is Exception.__init__
+
+
+# AC-8 — class identity preserved (no shadow, no rename).
+def test_symlink_refused_class_identity_preserved() -> None:
+    assert e.SymlinkRefusedError.__module__ == "codegenie.errors"
+    assert e.SymlinkRefusedError is e.__dict__["SymlinkRefusedError"]
+    assert issubclass(e.SymlinkRefusedError, e.CodegenieError)
+
+
+# AC-5 — CatalogLoadError docstring records the hard-fail semantics
+# (arch §Edge cases row 9).
+def test_catalog_load_error_doc_marks_hard_fail() -> None:
+    doc = (e.CatalogLoadError.__doc__ or "").lower()
+    assert "hard fail" in doc, (
+        "CatalogLoadError docstring must mark the hard-fail-at-CLI-startup invariant "
+        "per arch §Edge cases row 9; downstream catches must not soft-degrade it."
+    )
+
+
+# AC-1, AC-2 — new subclasses inherit DIRECTLY from CodegenieError
+# (not transitively) and are exported via __all__.
+@pytest.mark.parametrize("name", sorted(PHASE1_NEW))
+def test_phase1_subclasses_inherit_codegenie_error_directly(name: str) -> None:
+    cls = getattr(e, name)
+    assert cls.__mro__[1] is e.CodegenieError
+    assert issubclass(cls, e.CodegenieError)
+    assert name in e.__all__
