@@ -25,6 +25,14 @@ EXPECTED_EVENT_NAMES = {
     "EVENT_PROBE_SUCCESS": "probe.success",
     "EVENT_PROBE_FAILURE": "probe.failure",
     "EVENT_PROBE_TIMEOUT": "probe.timeout",
+    # Phase 1 / S1-10: five new lifecycle event names lifted from
+    # scattered module-local literals to the single-source-of-truth
+    # registry in ``codegenie.logging``.
+    "EVENT_PROBE_PARSER_CAP_EXCEEDED": "probe.parser.cap_exceeded",
+    "EVENT_PROBE_MEMO_HIT": "probe.memo.hit",
+    "EVENT_PROBE_MEMO_MISS": "probe.memo.miss",
+    "EVENT_PROBE_CATALOG_LOAD": "probe.catalog.load",
+    "EVENT_PROBE_RAW_ARTIFACT_TRUNCATED": "probe.raw_artifact.truncated",
 }
 
 # S4-03: `.gitignore` mutation routine event-name family. Kept in a
@@ -67,6 +75,26 @@ def test_event_name_constant_closure() -> None:
         f"event-name closure drift: expected {set(EXPECTED_EVENT_NAMES)}, "
         f"got {discovered}; add an ADR amendment before extending"
     )
+
+
+def test_phase1_event_constants_exist_and_match_values() -> None:
+    """S1-10 AC-4 / AC-4b: the five new Phase-1 event-name constants exist on
+    ``codegenie.logging`` as plain ``str`` values with the documented event
+    strings. The existing closure check above pins that no spurious
+    ``EVENT_PROBE_*`` attribute slips in; this test pins the five values
+    explicitly so a typo in the registry surfaces immediately.
+    """
+    for name, value in [
+        ("EVENT_PROBE_PARSER_CAP_EXCEEDED", "probe.parser.cap_exceeded"),
+        ("EVENT_PROBE_MEMO_HIT", "probe.memo.hit"),
+        ("EVENT_PROBE_MEMO_MISS", "probe.memo.miss"),
+        ("EVENT_PROBE_CATALOG_LOAD", "probe.catalog.load"),
+        ("EVENT_PROBE_RAW_ARTIFACT_TRUNCATED", "probe.raw_artifact.truncated"),
+    ]:
+        attr = getattr(cgl, name)
+        assert attr == value
+        # Phase 13 cost-ledger contract: plain str, not StrEnum.
+        assert type(attr) is str
 
 
 def test_logging_module_all_closure() -> None:

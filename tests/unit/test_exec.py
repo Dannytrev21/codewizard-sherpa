@@ -309,6 +309,132 @@ async def test_env_extra_drops_sensitive_keys(
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# Phase 1 / S1-10 — ALLOWED_BINARIES extension to {"git", "node"}
+# ───────────────────────────────────────────────────────────────────────────
+
+
+def test_node_in_allowed_binaries() -> None:
+    """ADR-0001: Phase 1 extends ``ALLOWED_BINARIES`` from ``{"git"}`` to
+    ``{"git", "node"}``. The equality assertion catches a mutant that silently
+    widens the set (e.g. adds ``"bash"``).
+    """
+    from codegenie.exec import ALLOWED_BINARIES
+
+    assert "node" in ALLOWED_BINARIES
+    assert ALLOWED_BINARIES == frozenset({"git", "node"})
+
+
+@pytest.mark.parametrize(
+    "denied",
+    ["bash", "sh", "python", "curl", "wget", "ssh"],
+)
+def test_allowed_binaries_closed_set_regression(denied: str) -> None:
+    """Open/Closed regression: a PR that adds any of these six binaries MUST
+    land a Phase ADR first (Phase 0 ADR-0012 + Phase 1 ADR-0001). This test is
+    the structural guard pinning the closed-set discipline against drift.
+    """
+    from codegenie.exec import ALLOWED_BINARIES
+
+    assert denied not in ALLOWED_BINARIES
+
+
+async def test_node_invocation_env_keyset_subset_of_safe_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The env-by-omission invariant holds for ``node`` argv too — no
+    special-casing for the new allowlist entry.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-not-real")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-real")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp-not-real")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "AKIA-not-real")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/x")
+
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 99997
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"v20.11.1\n", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(["node", "--version"], cwd=tmp_path, timeout_s=5.0)
+
+    captured_env = spy.await_args.kwargs["env"]
+    allowed_baseline = {"PATH", "HOME", "LANG", "LC_ALL"}
+    leaked = set(captured_env) - allowed_baseline
+    assert not leaked, f"leaked keys for node argv: {leaked}"
+
+
+async def test_node_invocation_env_extra_drops_sensitive_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ``env_extra`` sanitization fires for ``node`` invocations too — a
+    sensitive key supplied by the caller is dropped from the child env AND a
+    ``subproc.env_extra.sensitive_key_dropped`` structlog event is emitted so
+    future callers can grep the audit trail.
+    """
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 99996
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"v20.11.1\n", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    with structlog.testing.capture_logs() as captured_events:
+        await run_allowlisted(
+            ["node", "--version"],
+            cwd=tmp_path,
+            timeout_s=5.0,
+            env_extra={"OPENAI_API_KEY": "leak", "NODE_OPTIONS": "--no-warnings"},
+        )
+
+    captured_env = spy.await_args.kwargs["env"]
+    assert "OPENAI_API_KEY" not in captured_env
+    assert captured_env.get("NODE_OPTIONS") == "--no-warnings"
+
+    drop_events = [
+        e for e in captured_events if e.get("event") == "subproc.env_extra.sensitive_key_dropped"
+    ]
+    assert {e["key"] for e in drop_events} == {"OPENAI_API_KEY"}
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["git", "--version"], ["node", "--version"]],
+)
+async def test_spawn_kwargs_pin_stdin_devnull_and_no_shell_for_each_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """The six chokepoint invariants (Phase 0 ADR-0012) hold for both
+    binaries — a mutant that special-cases the new entry by relaxing one of
+    the six invariants for ``node`` only would slip past Test 3.
+    """
+    from codegenie.exec import run_allowlisted
+
+    fake_proc = mock.MagicMock()
+    fake_proc.pid = 88888
+    fake_proc.returncode = 0
+    fake_proc.communicate = mock.AsyncMock(return_value=(b"", b""))
+    spy = mock.AsyncMock(return_value=fake_proc)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+
+    await run_allowlisted(argv, cwd=tmp_path, timeout_s=10.0)
+
+    kwargs = spy.await_args.kwargs
+    assert kwargs["stdin"] is asyncio.subprocess.DEVNULL
+    assert "shell" not in kwargs
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Test 10 — Weakref table: registered during run, cleared after
+# ───────────────────────────────────────────────────────────────────────────
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # Test 10 — Weakref table: registered during run, cleared after
 # ───────────────────────────────────────────────────────────────────────────
 
