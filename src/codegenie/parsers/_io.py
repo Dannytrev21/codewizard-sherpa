@@ -40,10 +40,10 @@ from typing import Final
 import structlog
 
 from codegenie.errors import SizeCapExceeded, SymlinkRefusedError
+from codegenie.logging import EVENT_PROBE_PARSER_CAP_EXCEEDED
 
 __all__ = ["open_capped"]
 
-_EVENT_CAP_EXCEEDED: Final[str] = "probe.parser.cap_exceeded"
 _CAP_KIND_SIZE: Final[str] = "size"
 
 _logger = structlog.get_logger(__name__)
@@ -91,7 +91,7 @@ def open_capped(path: Path, *, max_bytes: int, parser_kind: str) -> bytes:
 def _emit_size_cap_event(*, path: Path, cap: int, parser_kind: str) -> None:
     """Emit the single ``probe.parser.cap_exceeded`` event on size violation."""
     _logger.info(
-        _EVENT_CAP_EXCEEDED,
+        EVENT_PROBE_PARSER_CAP_EXCEEDED,
         cap_kind=_CAP_KIND_SIZE,
         cap=cap,
         path=str(path),

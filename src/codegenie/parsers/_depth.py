@@ -31,10 +31,10 @@ from typing import Final
 import structlog
 
 from codegenie.errors import DepthCapExceeded
+from codegenie.logging import EVENT_PROBE_PARSER_CAP_EXCEEDED
 
 __all__ = ["assert_max_depth"]
 
-_EVENT_CAP_EXCEEDED: Final[str] = "probe.parser.cap_exceeded"
 _CAP_KIND_DEPTH: Final[str] = "depth"
 
 _logger = structlog.get_logger(__name__)
@@ -112,7 +112,7 @@ def _walk(
 def _emit_depth_cap_event(*, path: Path, cap: int, parser_kind: str) -> None:
     """Emit the single ``probe.parser.cap_exceeded`` event on depth violation."""
     _logger.info(
-        _EVENT_CAP_EXCEEDED,
+        EVENT_PROBE_PARSER_CAP_EXCEEDED,
         cap_kind=_CAP_KIND_DEPTH,
         cap=cap,
         path=str(path),

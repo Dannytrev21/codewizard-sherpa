@@ -84,13 +84,13 @@ from codegenie.errors import (
     SizeCapExceeded,
     SymlinkRefusedError,
 )
+from codegenie.logging import EVENT_PROBE_PARSER_CAP_EXCEEDED
 from codegenie.parsers import JSONValue
 from codegenie.parsers._depth import assert_max_depth
 
 __all__ = ["JSONValue", "load"]
 
 _PARSER_KIND: Final[str] = "jsonc"
-_EVENT_CAP_EXCEEDED: Final[str] = "probe.parser.cap_exceeded"
 _CAP_KIND_SIZE: Final[str] = "size"
 _MAX_DECODE_DETAIL: Final[int] = 200
 
@@ -286,7 +286,7 @@ def _emit_size_cap_event(*, path: Path, cap: int) -> None:
     :func:`codegenie.parsers._depth.assert_max_depth`.
     """
     _logger.info(
-        _EVENT_CAP_EXCEEDED,
+        EVENT_PROBE_PARSER_CAP_EXCEEDED,
         cap_kind=_CAP_KIND_SIZE,
         cap=cap,
         path=str(path),

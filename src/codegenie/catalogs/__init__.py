@@ -66,6 +66,7 @@ import structlog
 from jsonschema import Draft202012Validator
 
 from codegenie.errors import CatalogLoadError, CodegenieError
+from codegenie.logging import EVENT_PROBE_CATALOG_LOAD
 from codegenie.parsers import safe_yaml
 
 __all__ = [
@@ -78,7 +79,6 @@ __all__ = [
 ]
 
 _logger = structlog.get_logger(__name__)
-_EVENT_CATALOG_LOAD: Final[str] = "probe.catalog.load"
 _MAX_CATALOG_BYTES: Final[int] = 1_000_000
 
 
@@ -190,7 +190,7 @@ def _load_catalog(
 
     catalog_version = int(data["catalog_version"])
     _logger.info(
-        _EVENT_CATALOG_LOAD,
+        EVENT_PROBE_CATALOG_LOAD,
         catalog_name=schema_subkey,
         entries=len(built),
         catalog_version=catalog_version,

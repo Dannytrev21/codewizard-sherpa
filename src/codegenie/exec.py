@@ -65,10 +65,8 @@ __all__ = [
     "run_allowlisted",
 ]
 
-# Phase 0 allowlist was exactly ``{"git"}``; Phase 1 ADR-0001 extends to
-# ``{"git", "node"}`` so ``NodeBuildSystemProbe`` can record the locally-resolved
-# Node version via ``node --version``. Every addition is a deliberate-PR change
-# with mandatory review (ADR-0012 §Decision).
+# Phase 0 allowlist was ``{"git"}``; Phase 1 ADR-0001 extends to add ``node``.
+# Every addition is a deliberate-PR change with mandatory review (ADR-0012 §Decision).
 ALLOWED_BINARIES: frozenset[str] = frozenset({"git", "node"})
 
 # Keys that must never reach a child process via ``env_extra``. ``AWS_*`` is

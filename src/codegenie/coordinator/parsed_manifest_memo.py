@@ -52,6 +52,7 @@ from typing import Any, Final
 
 import structlog
 
+from codegenie.logging import EVENT_PROBE_MEMO_HIT, EVENT_PROBE_MEMO_MISS
 from codegenie.parsers import safe_json
 
 __all__ = ["ParsedManifestMemo"]
@@ -133,11 +134,11 @@ class ParsedManifestMemo:
 
         hit = self._cache.get(key)
         if hit is not None:
-            _logger.info("probe.memo.hit", path=log_path, allowlist_match=path.name)
+            _logger.info(EVENT_PROBE_MEMO_HIT, path=log_path, allowlist_match=path.name)
             return hit
 
         parsed = safe_json.load(path, max_bytes=_MAX_BYTES)  # may raise; do not cache on failure
         wrapped: MappingProxyType[str, Any] = MappingProxyType(parsed)
         self._cache[key] = wrapped
-        _logger.info("probe.memo.miss", path=log_path, allowlist_match=path.name)
+        _logger.info(EVENT_PROBE_MEMO_MISS, path=log_path, allowlist_match=path.name)
         return wrapped
