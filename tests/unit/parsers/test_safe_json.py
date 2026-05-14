@@ -133,6 +133,12 @@ def test_short_read_translates_to_malformed_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # AC-7 — forced short read must raise MalformedJSONError; no silent retry.
+    # After S1-03 lifted the open+read primitive into ``parsers/_io``, a short
+    # ``os.read`` returns truncated bytes; ``json.loads`` then raises and is
+    # translated to ``MalformedJSONError``. The behavioural contract — short
+    # read surfaces as a typed parse error, not a silent partial dict — is
+    # preserved; the error message changed from "short read" to the underlying
+    # ``json.JSONDecodeError`` detail.
     p = tmp_path / "small.json"
     p.write_text(json.dumps({"k": "v"}))
     real_read = os.read
@@ -143,7 +149,6 @@ def test_short_read_translates_to_malformed_json(
     monkeypatch.setattr(os, "read", _short)
     with pytest.raises(e.MalformedJSONError) as exc_info:
         load(p, max_bytes=5_000)
-    assert "short read" in exc_info.value.args[0]
     assert str(p) in exc_info.value.args[0]
 
 
