@@ -1,0 +1,10 @@
+image:
+  repository: ghcr.io/example/node-typescript-helm
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80

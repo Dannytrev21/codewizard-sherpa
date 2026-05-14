@@ -402,3 +402,23 @@ parsed file. Relying on the parser alone leaves the happy path silent and a
   paths uselessly in callers that don't care, and creates a chatty trace at
   cold-gather scale. The probe knows which slice the parse belongs to and is
   the right emit site.
+
+## L-24 — `codegenie gather <fixture>` writes `.codegenie/` into the analyzed dir (S2-03)
+
+Smoke-running the CLI against a fixture creates `.codegenie/cache/` and
+`.codegenie/context/` *inside* the fixture tree (that's its on-disk output
+namespace, per CLAUDE.md "Conventions to follow"). For a fixture whose
+shape test enforces a closed-set invariant (AC-13 / AC-14 in S2-03), this
+**will** dirty the fixture on first developer run and fail the very next
+test invocation.
+
+- **Apply to:** S2-05 (cache-hit-on-real-repo), S5-04 (`node_monorepo_turbo/`
+  + `non_node_go/` fixture-shape stories), S5-05 (e2e). Any AC-style
+  "run `gather` on the fixture as a smoke check" needs a follow-up
+  cleanup step OR an `--output` redirect outside the fixture.
+- **Don't:** add `.codegenie/` to the fixture's allowlist — it dirties the
+  S6-01 golden and breaks the test-isolation invariant.
+- **Why this matters:** the smoke check is a developer affordance (AC-22
+  in S2-03), not a CI test; the real load-bearing assertions live in
+  S2-04 / S2-05 / S5-05 where the temp-dir / `tmp_path` fixture isolates
+  the output namespace.

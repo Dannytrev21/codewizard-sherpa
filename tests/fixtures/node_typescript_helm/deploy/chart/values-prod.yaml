@@ -1,0 +1,4 @@
+image:
+  tag: "prod-0.0.1"
+
+replicaCount: 3

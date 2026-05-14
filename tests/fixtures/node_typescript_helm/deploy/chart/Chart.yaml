@@ -1,0 +1,6 @@
+apiVersion: v2
+name: node-typescript-helm
+version: "0.0.1"
+description: Canonical Phase-1 fixture chart — minimal Helm shape consumed by DeploymentProbe.
+type: application
+appVersion: "0.0.1"
