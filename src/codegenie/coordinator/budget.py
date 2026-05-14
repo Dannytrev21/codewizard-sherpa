@@ -33,6 +33,20 @@ The boundary semantics are inclusive at the limit and exclusive above it:
 writing exactly 1 MB against ``raw_artifact_mb=1`` does NOT raise; one byte
 past it does. S3-05 AC-21 parametrizes ``[0.5, 1.0, 1.5]`` to pin both the
 ">" vs ">=" choice and the always-error mutant.
+
+S1-09 (ADR-0008 amendment) adds ``raw_artifact_truncate_mb: int = 5`` — the
+soft on-disk truncation threshold. It is **distinct** from
+``raw_artifact_mb``: the hard ceiling raises via
+:meth:`BudgetingContext.report_bytes` (defends against runaway probes,
+fires while the probe is still producing bytes), while the soft threshold
+is enforced at writer-marshalling time by
+:func:`codegenie.output.raw_truncation.apply_raw_artifact_truncation`,
+which replaces over-budget payloads with a ``__truncated_at_budget__``
+marker wrapper and emits ``probe.raw_artifact.truncated``. The two
+companions enforce the invariant ``raw_artifact_truncate_mb <=
+raw_artifact_mb`` at construction via :meth:`ResourceBudget.__post_init__`
+(fail loud, Rule 12) — otherwise the soft policy would be unreachable
+because the hard ceiling fires first.
 """
 
 from __future__ import annotations
@@ -60,18 +74,32 @@ class ResourceBudget:
     """Declared per-probe budget. Frozen so coordinator code can compare and
     reuse instances without defensive copies.
 
-    Defaults are pinned by S3-05 AC-20:
+    Defaults are pinned by S3-05 AC-20 and S1-09 AC-1:
 
     - ``rss_mb=200`` — RSS watermark for the advisory ``probe.rss.warn`` event.
-    - ``raw_artifact_mb=10`` — cumulative artifact-write ceiling enforced by
-      :meth:`BudgetingContext.report_bytes`.
+    - ``raw_artifact_mb=10`` — cumulative artifact-write **hard** ceiling
+      enforced by :meth:`BudgetingContext.report_bytes` (raises
+      :exc:`ProbeBudgetExceeded`).
     - ``wall_clock_s=30`` — coordinator-side wall-clock window combined with
       ``probe.timeout_seconds`` via ``min(...)`` in the dispatch path.
+    - ``raw_artifact_truncate_mb=5`` — **soft** on-disk truncation threshold
+      enforced at writer-marshalling time by
+      :func:`codegenie.output.raw_truncation.apply_raw_artifact_truncation`.
+      Invariant: ``raw_artifact_truncate_mb <= raw_artifact_mb`` (checked by
+      :meth:`__post_init__`); equality at the limit is allowed.
     """
 
     rss_mb: int = 200
     raw_artifact_mb: int = 10
     wall_clock_s: int = 30
+    raw_artifact_truncate_mb: int = 5
+
+    def __post_init__(self) -> None:
+        if self.raw_artifact_truncate_mb > self.raw_artifact_mb:
+            raise ValueError(
+                f"raw_artifact_truncate_mb={self.raw_artifact_truncate_mb} "
+                f"must be <= raw_artifact_mb={self.raw_artifact_mb}"
+            )
 
 
 DEFAULT_RESOURCE_BUDGET: ResourceBudget = ResourceBudget()

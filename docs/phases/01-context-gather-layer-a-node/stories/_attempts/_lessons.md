@@ -245,3 +245,26 @@ all follow this contract. The lifecycle-event run-id-coverage test
 (`tests/unit/test_coordinator.py::test_every_lifecycle_event_carries_run_id`)
 is the integration-tier guard for this discipline — adding a new event
 without the `run_id=` kwarg fails this test loudly.
+
+## L-17 — `json.loads(bytes)` raises `UnicodeDecodeError` before `JSONDecodeError` (S1-09)
+
+`json.loads(<bytes>)` auto-detects the encoding (utf-8 / utf-16) via the
+stdlib `detect_encoding` helper and decodes the buffer BEFORE the JSON
+tokenizer runs. When the input is bytes that aren't a valid encoding
+under the detected codec (e.g., `b"\xff..."` autodetected as utf-8),
+`json.loads` raises **`UnicodeDecodeError`**, not
+`json.JSONDecodeError`. A `try/except json.JSONDecodeError:` block
+that intends "parse-or-fallback" will let the `UnicodeDecodeError`
+escape — surprising for callers reasoning from the documented exception
+type only.
+
+S1-09's `apply_raw_artifact_truncation` widens the catch to
+`(json.JSONDecodeError, UnicodeDecodeError)` so the fallback
+(`prefix.decode("utf-8", errors="replace")`) is reachable for invalid-
+utf-8 prefixes. Rule 9 — tests verify intent: the AC says "non-JSON
+prefix → replacement-char string"; the literal exception identity in
+the story's outline was the implementation guidance, not the contract.
+Same family as L-9 (`MappingProxyType` mutation API mixes `TypeError`
+and `AttributeError`) — when the runtime exception identity is wider
+than the story's literal, widen the catch and preserve the behavioral
+intent.

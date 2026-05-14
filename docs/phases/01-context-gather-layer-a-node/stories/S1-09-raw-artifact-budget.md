@@ -1,9 +1,38 @@
 # Story S1-09 — Per-probe raw-artifact budget (Gap 2)
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready — Validated 2026-05-14 (HARDENED)
+**Status:** Done — 2026-05-14
 **Effort:** M
 **Depends on:** S1-08
+
+## Done — evidence block (2026-05-14)
+
+All 23 ACs verified in a single implementer attempt (RED → GREEN → REFACTOR
+clean). Full attempt log: [`_attempts/S1-09.md`](_attempts/S1-09.md). Cross-
+story lesson appended: L-17.
+
+### Code shipped
+
+- [src/codegenie/coordinator/budget.py](../../../../src/codegenie/coordinator/budget.py) — `ResourceBudget` gains `raw_artifact_truncate_mb: int = 5` + `__post_init__` invariant; module + class docstrings extended.
+- [src/codegenie/output/raw_truncation.py](../../../../src/codegenie/output/raw_truncation.py) — new pure module: tagged union `Untruncated | Truncated`, `apply_raw_artifact_truncation`. No I/O, no logging.
+- [src/codegenie/cli.py](../../../../src/codegenie/cli.py) — raw-artifact collection loop iterates `gather_result.outputs.items()`, looks up the per-probe `ResourceBudget`, applies the truncation helper, emits `probe.raw_artifact.truncated` with `run_id=` (L-16).
+- [docs/phases/01-context-gather-layer-a-node/ADRs/0008-in-process-parse-caps-not-per-probe-sandbox.md](../ADRs/0008-in-process-parse-caps-not-per-probe-sandbox.md) — appended "Amended (Phase 1, S1-09 — Soft truncation companion)" paragraph at end of §Consequences.
+
+### Tests
+
+- [tests/unit/output/test_raw_truncation.py](../../../../tests/unit/output/test_raw_truncation.py) — 12 cases (AC-7, AC-9, AC-14..AC-19).
+- [tests/unit/output/test_raw_truncation_purity.py](../../../../tests/unit/output/test_raw_truncation_purity.py) — 2 cases (AC-6, AC-8).
+- [tests/unit/coordinator/test_raw_artifact_truncation_integration.py](../../../../tests/unit/coordinator/test_raw_artifact_truncation_integration.py) — 3 cases (AC-10, AC-12, AC-20, AC-21, AC-22).
+- [tests/unit/test_coordinator_budget.py](../../../../tests/unit/test_coordinator_budget.py) — `test_resource_budget_defaults` extended for AC-1; new `test_resource_budget_field_set_pinned` (AC-5) and `test_resource_budget_invariant_truncate_le_hard_ceiling` (AC-2); `test_raw_artifact_budget_boundaries` updated to pass `raw_artifact_truncate_mb=1` under the new invariant.
+
+### Quality gates
+
+- 119/119 targeted tests pass (raw-truncation + cli + coordinator + budget).
+- Full suite: 865 passed, 3 deselected, 1 xfailed; **1 pre-existing failure carried from master** (`tests/unit/test_precommit_and_docs_config.py::test_pre_commit_run_all_files_exits_zero` — caused by S1-05 catalog loader's `yaml.load(` usage in `src/codegenie/catalogs/__init__.py:162`; verified unrelated via `git stash` reproducer; not touched per Rule 3).
+- `ruff check src tests`: PASS.
+- `ruff format --check src tests`: PASS.
+- `mypy --strict src/`: PASS (43 source files).
+
 **ADRs honored:** ADR-0007 (Phase 0 — preserved), ADR-0008 (extended — see Notes), ADR-0011 (Phase 0 — preserved)
 **ADRs NOT touched (despite original draft):** ADR-0002 — this story does not extend `ProbeContext`; the Phase-1 ADR-0002 amendment scope is unaffected.
 

@@ -41,11 +41,45 @@ def test_budgeting_context_workspace_stays_path(tmp_path):
 
 
 def test_resource_budget_defaults():
-    """AC-20 — ResourceBudget default values pinned by the story."""
+    """AC-20 — ResourceBudget default values pinned by the story.
+
+    S1-09 AC-1 — ``raw_artifact_truncate_mb`` default is 5 (soft on-disk
+    truncation threshold; sibling to the existing hard ceiling
+    ``raw_artifact_mb=10``).
+    """
     rb = ResourceBudget()
     assert rb.rss_mb == 200
     assert rb.raw_artifact_mb == 10
     assert rb.wall_clock_s == 30
+    assert rb.raw_artifact_truncate_mb == 5
+
+
+def test_resource_budget_field_set_pinned() -> None:
+    """S1-09 AC-5 — dataclass field tuple is exactly these four, in this order.
+
+    A fifth future field demands another ADR + a story; this test is the
+    trip-wire.
+    """
+    fields = tuple(f.name for f in dataclasses.fields(ResourceBudget))
+    assert fields == (
+        "rss_mb",
+        "raw_artifact_mb",
+        "wall_clock_s",
+        "raw_artifact_truncate_mb",
+    )
+
+
+def test_resource_budget_invariant_truncate_le_hard_ceiling() -> None:
+    """S1-09 AC-2 — __post_init__ rejects truncate_mb > raw_artifact_mb.
+
+    Kills mutant: __post_init__ omitted (silent acceptance of unreachable
+    soft policy because the hard ceiling fires first).
+    """
+    with pytest.raises(ValueError, match="raw_artifact_truncate_mb"):
+        ResourceBudget(raw_artifact_mb=10, raw_artifact_truncate_mb=11)
+    # Equality at the limit is allowed.
+    rb = ResourceBudget(raw_artifact_mb=10, raw_artifact_truncate_mb=10)
+    assert rb.raw_artifact_truncate_mb == 10
 
 
 # ─────────────── S1-07 BudgetingContext extension (AC-15) ──────────────────
@@ -88,7 +122,12 @@ async def test_raw_artifact_budget_boundaries(
         return ProbeOutput({"ok": True}, [], "high", 1, [], [])
 
     probe = FakeProbe(name="bg", _run=write_n)
-    probe.declared_resource_budget = ResourceBudget(rss_mb=200, raw_artifact_mb=1, wall_clock_s=30)
+    # ``raw_artifact_truncate_mb`` must be <= ``raw_artifact_mb`` (S1-09
+    # AC-2 invariant). When this test shrinks the hard ceiling to 1 MB it
+    # must also shrink the soft truncation companion to stay legal.
+    probe.declared_resource_budget = ResourceBudget(
+        rss_mb=200, raw_artifact_mb=1, wall_clock_s=30, raw_artifact_truncate_mb=1
+    )
     snap, task = make_snapshot(tmp_path), make_task()
 
     result = await gather(snap, task, [probe], fresh_config, fresh_cache, fresh_sanitizer)

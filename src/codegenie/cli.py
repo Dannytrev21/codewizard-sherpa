@@ -430,11 +430,42 @@ def _run_gather_pipeline(
     _seam_shallow_merge(envelope, gather_result.outputs)
 
     # Raw-artifact collection (Phase 0: LanguageDetectionProbe produces none).
+    # S1-09 (Gap 2) — apply the soft per-probe raw-artifact truncation policy
+    # at this writer-marshalling boundary. The Writer chokepoint (ADR-0011)
+    # stays unchanged; the pure helper lives in
+    # ``codegenie.output.raw_truncation``. Phase-0 probes have zero raw
+    # artifacts so the policy is inert until Phase-1 lockfile parsers ship.
+    budget_mod = importlib.import_module("codegenie.coordinator.budget")
+    truncation_mod = importlib.import_module("codegenie.output.raw_truncation")
+    default_resource_budget = budget_mod.DEFAULT_RESOURCE_BUDGET
+    apply_truncation = truncation_mod.apply_raw_artifact_truncation
+    truncated_marker = truncation_mod.Truncated
+    budgets_by_probe: dict[str, Any] = {
+        p.name: getattr(p, "declared_resource_budget", default_resource_budget) for p in probes
+    }
+    structlog_mod = importlib.import_module("structlog")
+    raw_log = structlog_mod.get_logger("codegenie.cli")
+    run_id = structlog_mod.contextvars.get_contextvars().get("run_id")
+
     raw_artifacts: list[tuple[str, bytes]] = []
-    for output in gather_result.outputs.values():
+    for probe_name, output in gather_result.outputs.items():
+        budget = budgets_by_probe.get(probe_name, default_resource_budget)
         for raw_path in getattr(output, "raw_artifacts", []) or []:
             if isinstance(raw_path, Path) and raw_path.is_file():
-                raw_artifacts.append((raw_path.name, raw_path.read_bytes()))
+                payload_bytes = raw_path.read_bytes()
+                out_bytes, outcome = apply_truncation(
+                    payload_bytes, budget.raw_artifact_truncate_mb
+                )
+                if isinstance(outcome, truncated_marker):
+                    raw_log.info(
+                        "probe.raw_artifact.truncated",
+                        probe=probe_name,
+                        original_bytes=outcome.original_bytes,
+                        budget_bytes=outcome.budget_bytes,
+                        path=str(raw_path),
+                        run_id=run_id,
+                    )
+                raw_artifacts.append((raw_path.name, out_bytes))
 
     output_dir = path / ".codegenie" / "context"
 
