@@ -59,7 +59,7 @@ import os
 import secrets
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -72,6 +72,7 @@ from codegenie.coordinator.budget import (
     BudgetingContext,
     ResourceBudget,
 )
+from codegenie.coordinator.parsed_manifest_memo import ParsedManifestMemo
 from codegenie.errors import ProbeBudgetExceeded
 from codegenie.output.sanitizer import OutputSanitizer, SanitizedProbeOutput
 from codegenie.probes.base import Probe, ProbeOutput, RepoSnapshot, Task
@@ -227,16 +228,26 @@ def _isolated_snapshot(snap: RepoSnapshot) -> RepoSnapshot:
     )
 
 
-def _make_probe_context(workspace: Path, raw_artifact_mb: int) -> BudgetingContext:
+def _make_probe_context(
+    workspace: Path,
+    raw_artifact_mb: int,
+    *,
+    parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None,
+) -> BudgetingContext:
     """Construct the per-dispatch context object the probe receives.
 
     Phase 0 passes the :class:`BudgetingContext` directly so a probe can
     call ``ctx.report_bytes(n)``. The ``workspace`` attribute remains a
-    plain :class:`Path` (ADR-0007). Phase 1+ probes that need
-    ``cache_dir``/``output_dir``/``logger``/``config`` will see those wired
-    when the harness grows that surface.
+    plain :class:`Path` (ADR-0007). S1-07 (ADR-0002) threads
+    ``parsed_manifest`` — the per-gather :class:`ParsedManifestMemo`'s
+    ``.get`` bound method — onto the ctx so allowlisted JSON manifests
+    parse once per gather.
     """
-    return BudgetingContext(workspace=workspace, raw_artifact_mb=raw_artifact_mb)
+    return BudgetingContext(
+        workspace=workspace,
+        raw_artifact_mb=raw_artifact_mb,
+        parsed_manifest=parsed_manifest,
+    )
 
 
 def _extract_language_counts(schema_slice: dict[str, Any]) -> dict[str, int] | None:
@@ -259,6 +270,7 @@ async def _dispatch_one(
     sem: asyncio.Semaphore,
     cache: CacheStore,
     sanitizer: OutputSanitizer,
+    memo: ParsedManifestMemo,
 ) -> tuple[str, SanitizedProbeOutput | None, ProbeExecution]:
     """Run a single probe end-to-end. Returns ``(name, output_or_none, execution)``.
 
@@ -295,7 +307,9 @@ async def _dispatch_one(
         budget: ResourceBudget = getattr(probe, "declared_resource_budget", DEFAULT_RESOURCE_BUDGET)
         timeout = min(probe.timeout_seconds, budget.wall_clock_s)
         ctx = _make_probe_context(
-            workspace=per_probe_snap.root, raw_artifact_mb=budget.raw_artifact_mb
+            workspace=per_probe_snap.root,
+            raw_artifact_mb=budget.raw_artifact_mb,
+            parsed_manifest=memo.get,
         )
 
         _log.info("probe.start", probe=name, run_id=run_id)
@@ -439,6 +453,10 @@ async def gather(
         if not probes:
             return GatherResult(outputs={}, executions={})
 
+        # One memo per gather() (S1-07 / ADR-0002). Default allowlist =
+        # frozenset({"package.json"}); Phase 2 widens by construction.
+        memo = ParsedManifestMemo()
+
         cpu = os.cpu_count() or 1
         bound = min(cpu, config.max_concurrent_probes, 8)
         sem = asyncio.Semaphore(bound)
@@ -450,7 +468,7 @@ async def gather(
         executions: dict[str, ProbeExecution] = {}
 
         prelude_results = await asyncio.gather(
-            *(_dispatch_one(p, snapshot, task, sem, cache, sanitizer) for p in base)
+            *(_dispatch_one(p, snapshot, task, sem, cache, sanitizer, memo) for p in base)
         )
         prelude_errors: list[str] = []
         prelude_skipped: list[str] = []
@@ -480,7 +498,7 @@ async def gather(
         enriched_snapshot = dataclasses.replace(snapshot, detected_languages=dict(merged_counts))
 
         rest_results = await asyncio.gather(
-            *(_dispatch_one(p, enriched_snapshot, task, sem, cache, sanitizer) for p in rest)
+            *(_dispatch_one(p, enriched_snapshot, task, sem, cache, sanitizer, memo) for p in rest)
         )
         for name, out, exe in rest_results:
             executions[name] = exe

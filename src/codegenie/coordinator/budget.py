@@ -1,5 +1,13 @@
 """Per-probe resource budget contract (S3-05 / Gap 3 — ADR-0007 + ADR-0009).
 
+S1-07 (ADR-0002) extends :class:`BudgetingContext` with two additive
+``None``-defaulted fields, ``parsed_manifest`` and ``input_snapshot``,
+that mirror the S1-06 :class:`codegenie.probes.base.ProbeContext`
+contract-type extension. The runtime ctx every probe receives via
+``probe.run(snap, ctx)`` is still :class:`BudgetingContext`; mirroring
+the field set closes the structural gap so probes reading
+``ctx.parsed_manifest`` do not hit ``AttributeError`` at runtime.
+
 This module exposes three names:
 
 - :class:`ResourceBudget` — the frozen per-probe declared budget. Probes set
@@ -29,10 +37,15 @@ past it does. S3-05 AC-21 parametrizes ``[0.5, 1.0, 1.5]`` to pin both the
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from codegenie.errors import ProbeBudgetExceeded
+
+if TYPE_CHECKING:
+    from codegenie.probes.base import InputFingerprint
 
 __all__ = [
     "DEFAULT_RESOURCE_BUDGET",
@@ -78,6 +91,10 @@ class BudgetingContext:
     workspace: Path
     raw_artifact_mb: int
     bytes_written: int = field(default=0)
+    # S1-07 (ADR-0002) — additive ``None``-default fields mirroring the
+    # S1-06 :class:`codegenie.probes.base.ProbeContext` extension.
+    parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
+    input_snapshot: frozenset[InputFingerprint] | None = None
 
     def report_bytes(self, n: int) -> None:
         """Account ``n`` newly written bytes and raise if the budget is exceeded.
