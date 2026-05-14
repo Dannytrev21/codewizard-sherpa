@@ -35,12 +35,13 @@ _RULES: list[tuple[str, Pattern[str], str]] = [
     ),
     (
         "yaml.load( without Loader=",
-        # Matches a bare yaml.load(...) call when 'Loader=' does not appear
-        # inside. The leading \b anchors so `safe_yaml.load(...)` (project
-        # wrapper, an underscore precedes `yaml`) does NOT match — `_` is a
-        # word char, `y` is a word char, so there's no boundary between them.
-        # A bare `yaml.load(` (start-of-line, whitespace, or punctuation
-        # before `y`) keeps the boundary and is still caught.
+        # Catches the literal `yaml.load(` call when `Loader=` does not appear
+        # inside. The leading \b excludes wrapper-shaped names — `safe_yaml`,
+        # `_yaml`, `my_yaml` — by design: this is defense-in-depth, not a
+        # security guarantee. The rule's job is to catch the common slip
+        # (someone typing `yaml.load(x)` literally); aliased-import evasion
+        # (`import yaml as my_yaml; my_yaml.load(s)`) is out of scope and
+        # belongs to import-linter + code review, not this regex.
         re.compile(r"\byaml\.load\((?:(?!Loader=).)*?\)", re.DOTALL),
         "ADR-0008: yaml.load requires Loader=yaml.CSafeLoader (or SafeLoader).",
     ),
