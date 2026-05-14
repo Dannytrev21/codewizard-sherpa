@@ -37,6 +37,9 @@
       "properties": {
         "language_detection": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/language_detection/v0.1.1.json"
+        },
+        "node_build_system": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/node_build_system/v0.1.0.json"
         }
       }
     }

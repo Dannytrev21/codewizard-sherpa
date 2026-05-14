@@ -342,3 +342,63 @@ grows.
   per-key assertions in new tests; reserve strict equality for the
   smallest invariant (e.g., "the slice contains *exactly* these
   required keys at this moment", as an explicit shape contract).
+
+## L-21 — `codegenie.exec.run_allowlisted` is `async def` (S2-02)
+
+The allowlist subprocess wrapper is an `async def` (`src/codegenie/exec.py:175`),
+not a sync function. Stories that prescribe `monkeypatch.setattr(codegenie.exec,
+"run_allowlisted", lambda argv, **kw: SimpleNamespace(...))` are incorrect —
+the probe must `await _exec.run_allowlisted(...)`, and awaiting a sync return
+raises `TypeError`. The seam contract is still correct (monkeypatch the
+attribute on `codegenie.exec`); only the stub shape needs to be awaitable —
+`async def _stub(...)` returning the same `ProcessResult`-shaped object.
+
+- **Apply to:** every Phase 1 / Phase 2 probe that invokes an allowlisted
+  binary (S3-05, S4-01, S4-02, S5-01..S5-03, S6-01..S6-02, S7-09 …). Each
+  story's test stubs need the `async def` shape, not a `lambda`.
+- **Don't:** wrap the call in `asyncio.run` inside the probe to "make
+  the test stub sync" — the probe is already inside an `async def`; introducing
+  a nested event loop is wrong.
+
+## L-22 — `run_allowlisted` exception surface is NOT the literal story set (S2-02)
+
+The story for S2-02 named `(FileNotFoundError, TimeoutExpired, ExecError)` as
+the "absent / timeout / exec-error" set for `node --version`. The **actual**
+wrapper raises:
+
+- `FileNotFoundError` — only when `cwd` doesn't exist (via `Path.resolve(strict=True)`)
+- `ToolMissingError` — when the binary is missing from PATH
+- `ProbeTimeoutError` — on timeout
+- `DisallowedSubprocessError` — on allowlist miss
+
+Non-zero exit is **not** an exception: the wrapper returns a `ProcessResult`
+with `returncode != 0`, so the caller has to check `returncode` to treat it
+as a failure. `subprocess.TimeoutExpired` is never raised by the wrapper.
+
+- **Apply to:** any probe that catches "exec failed" — catch
+  `(FileNotFoundError, ToolMissingError, ProbeTimeoutError,
+  DisallowedSubprocessError)` plus a `returncode != 0` check. Don't import
+  `subprocess.TimeoutExpired` unless calling `subprocess` directly (which
+  the forbidden-patterns hook will block anyway).
+- **Why this hurts:** a `except subprocess.TimeoutExpired:` arm next to the
+  real wrapper is dead code; the test stub raising `TimeoutExpired` would
+  pass while a real-world timeout (raising `ProbeTimeoutError`) would
+  escape the probe and turn `node --version unreachable` into a probe failure.
+
+## L-23 — `parser_kind` field needs a per-probe emit, not only the parser's cap event (S2-02)
+
+`codegenie.parsers.jsonc` emits `parser_kind="jsonc"` only on
+`probe.parser.cap_exceeded`. A normal (happy-path) parse logs nothing with
+`parser_kind` at all. When a story's AC says "every parse-related log line
+includes `parser_kind`", the **probe** must emit the anchor line (e.g.,
+`_log.info("probe.tsconfig.parse", path=..., parser_kind="jsonc")`) per
+parsed file. Relying on the parser alone leaves the happy path silent and a
+`structlog.testing.capture_logs` test asserting `parser_kind` will fail.
+
+- **Apply to:** every Phase 1 / Phase 2 probe that parses via `jsonc.load`
+  / `safe_json.load` / `safe_yaml.load`. Emit a `probe.<probe>.parse` line
+  per parsed file with the `parser_kind` and `path` fields.
+- **Don't:** modify the parser to log on every parse — that pollutes happy
+  paths uselessly in callers that don't care, and creates a chatty trace at
+  cold-gather scale. The probe knows which slice the parse belongs to and is
+  the right emit site.
