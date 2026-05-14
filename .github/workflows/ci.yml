@@ -155,7 +155,12 @@ jobs:
           for name, version in pkgs:
               print(f"{name}=={version}")
           PY
-          pip-audit --strict --disable-pip --requirement /tmp/requirements-from-uv.txt
+          # ``--no-deps`` is required alongside ``--disable-pip`` per
+          # pip-audit's CLI contract (otherwise pip-audit refuses to skip
+          # pip resolution unless the requirements file is hashed). We
+          # extract concrete name==version pairs from uv.lock above, so
+          # there's nothing for pip to re-resolve.
+          pip-audit --strict --disable-pip --no-deps --requirement /tmp/requirements-from-uv.txt
       - name: osv-scanner (uv.lock)
         # v1.9.1: the action lives at the ``osv-scanner-action`` subpath,
         # NOT the repo root (the root ``action.yml`` has no ``runs:``
