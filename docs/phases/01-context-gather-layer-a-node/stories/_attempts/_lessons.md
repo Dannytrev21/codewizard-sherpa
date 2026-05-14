@@ -268,3 +268,32 @@ Same family as L-9 (`MappingProxyType` mutation API mixes `TypeError`
 and `AttributeError`) — when the runtime exception identity is wider
 than the story's literal, widen the catch and preserve the behavioral
 intent.
+
+## L-18 — Single-source-of-truth registry beats N module-local constants (S1-10)
+
+When the same event-name literal appears as a module-local
+`_EVENT_*: Final[str] = "probe.foo.bar"` in three separate modules,
+plus as two raw `logger.info("probe.foo.baz", ...)` literals
+elsewhere, the right structural fix is **lift to `codegenie.logging`
+once** and have every emitter import the constant. Trade-off shape:
+
+- **Before:** five edit sites if you rename the event string. Each
+  module rediscovers the convention.
+- **After:** one edit site in `logging.py` + a lightweight
+  `Path.rglob` test (`tests/unit/test_no_event_literal_drift.py`)
+  that pins zero literal redeclarations outside `logging.py`. The
+  registry is now closed for modification, open for extension
+  (Open/Closed at the file boundary).
+
+The structural guard does not need to be AST-grade; `f'"{lit}"' in
+text` catches every realistic regression. If false positives surface
+in Phase 2+ (e.g., a legitimate test fixture needs the literal), the
+test note tells the next reader to upgrade to an AST scan in S6-03's
+adversarial sweep rather than weakening the discipline.
+
+Generalization: when N modules each define a `Final[str]` for the same
+string, the constants want to live in a registry module. Apply the
+same lens whenever you spot module-local copies of a hard-coded
+identifier (catalog kind, error code, lifecycle phase, etc.) — the
+registry pattern catches drift early and turns a multi-file rename
+into a one-file rename + a green CI gate.
