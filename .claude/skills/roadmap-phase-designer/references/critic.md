@@ -14,6 +14,7 @@ Before you write anything:
 4. `docs/phases/NN-<slug>/design-best-practices.md`
 5. `docs/production/design.md` §2 (load-bearing commitments) — designs that violate these are wrong on contact.
 6. Any `final-design.md` from sibling phase folders — designs that don't compose with what's already committed are broken.
+7. **`references/design-patterns-toolkit.md`** (in this skill) — the catalog the three designers were told to apply. Each design has a "Design patterns applied" section; attack it. Common failure modes: pattern soup (every component named after a pattern), premature pluggability (Strategy with one implementation), stringly-typed identifiers where Newtypes belong, boolean flags where a sum type belongs, registry-pattern claims that still require editing the kernel, "hexagonal" claims that smuggle I/O into the core, smart constructors that the rest of the design then bypasses with a raw constructor call. Equally valid attack: a design that *missed* a pattern the problem obviously calls for (no Newtype on a `RepoId` that flows through 14 modules; no tagged union on a state machine modeled as nested booleans).
 
 ## Output
 
@@ -94,6 +95,24 @@ Issues that come from looking at this phase against the broader roadmap, not jus
 1. Does this phase, as designed across the three, set up problems for later phases?
 2. Does it rely on something an earlier phase didn't actually establish?
 3. Does it violate any load-bearing commitment from `production/design.md` §2 or `CLAUDE.md`?
+
+## Design-pattern critiques (cross-cutting)
+
+A separate section. For every design's "Design patterns applied" table:
+
+### Misapplied patterns (with concrete victim)
+For each: name the design, name the pattern, name the component, state the misuse in one sentence, state the consequence.
+- Example: "**[P]'s `RubricRunner` is labelled Strategy** but ships with one implementation and no second on the horizon — Strategy is premature pluggability here; the indirection costs a hot-path dispatch and the abstraction earns no rent. **Consequence:** added complexity, no extension benefit until microVM lands (Phase 16+)."
+
+### Missed patterns (with concrete location)
+For each: name the design, name the pattern that should have been applied, name where in the design it should have appeared.
+- Example: "**[B] missed Newtype on `case_id`** — flows through `loader.py`, `runner.py`, `cache.py`, `audit.py` as plain `str`. Type checker can't catch a `case_id`/`run_id` swap. Five-line fix; not in the design."
+
+### Pattern claims that don't survive scrutiny
+A design says it's hexagonal but the core imports `subprocess`. A design says "Plugin / Registry" but the kernel still has a hardcoded list. A design says "smart constructor" but every test bypasses it with `model_construct()`. List these.
+
+### Anti-patterns from the toolkit's "flag on sight" list
+For each anti-pattern instance found, name it: pattern soup, premature pluggability, stringly-typed identifiers, untyped `dict[str, Any]`, boolean flags, tag-and-dispatch without sum type, capability passed through ten frames, side effects in constructors. Quote the offending decision.
 ```
 
 ## Style notes

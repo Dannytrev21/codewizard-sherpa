@@ -29,6 +29,7 @@ Before you write anything:
 6. `docs/production/design.md` §2 (load-bearing commitments)
 7. The ADRs named in the phase's Scope or Tooling sections
 8. Any `final-design.md` from sibling phase folders (already-committed designs)
+9. **`references/design-patterns-toolkit.md`** (in this skill) — the catalog every designer was told to apply and the critic was told to attack. The synthesized `final-design.md` must itself carry a "Design patterns applied" section that supersedes the three competing ones. Pattern-fit is a tied scoring criterion (Step 3 below) — not veto-strength, but ties go to the pattern-aligned choice. **Designs that are pattern-light but commitment-aligned can win; designs that are pattern-heavy but ceremonious lose.**
 
 ## The Graph-of-Thought algorithm — concretely
 
@@ -62,12 +63,13 @@ A "dimension" is a single architectural concern. Examples: *which caching layer 
 
 ### Step 3 — Score
 
-For each `CONFLICT` edge (and for any `AGREE` vertex that the critic flagged as a shared blind spot), score every candidate vertex against these four criteria:
+For each `CONFLICT` edge (and for any `AGREE` vertex that the critic flagged as a shared blind spot), score every candidate vertex against these **five** criteria:
 
 1. **Phase exit-criteria fit (0–3).** Does this choice make the phase's `roadmap.md` exit criteria more or less likely to be met? 3 = clearly helps, 0 = clearly hurts.
 2. **Broader roadmap fit (0–3).** Does this choice respect what prior phases established and support what later phases need?
 3. **Load-bearing commitments fit (0–3).** Does this choice honor the invariants in `production/design.md` §2 and `CLAUDE.md`? Violations score 0 (these are non-negotiable).
 4. **Critic-survivability (0–3).** Did the critic flag this vertex as broken? Did the critic's attacks on this dimension favor one position?
+5. **Pattern-fit (0–3)** — from `references/design-patterns-toolkit.md`. Does this choice apply the pattern the problem actually calls for? Does it avoid premature pluggability, ceremony, stringly-typed identifiers, boolean-flag soup? Does it make illegal states harder to construct? 3 = clearly aligned (and the critic agreed); 0 = clearly ceremonious or fights the language. Pattern-fit is **not** veto-strength — only commitments-fit is — but ties between equally-scoring vertices go to the pattern-aligned choice.
 
 Sum each candidate. Show the scores in a small table inside `final-design.md` for every conflict you resolved. **A vertex that scores 0 on commitments-fit cannot win**, regardless of the other scores. Commitments are veto-strength.
 
@@ -148,6 +150,22 @@ Concrete numbers. Note where security or best-practices controls trade off again
 
 The unified test plan combining the three designs' approaches.
 
+## Design patterns applied
+
+Synthesized list (not a copy of any one design's). For each significant decision in the final design, name the pattern from `references/design-patterns-toolkit.md`, why it fits *here*, and which input design (if any) it came from. **This section supersedes the three competing designs' pattern tables — when an implementer asks "which patterns govern this phase," they read this section, not the per-lens drafts.**
+
+| Decision (component or interface) | Pattern applied | Why this pattern *here* | Source design | Pattern *not* applied (and why) |
+|---|---|---|---|---|
+| ... | ... | ... | `[P]` / `[S]` / `[B]` / `[synth]` | ... |
+
+### Patterns considered and deliberately rejected
+
+A short list (3–6 items). Patterns the problem *seemed* to call for that the synthesis decided to skip, with one sentence each on why. (E.g., "No Visitor over the AST — the existing dispatch is exhaustive and adding a Visitor would be ceremony." "No Strategy on `RubricRunner` — there's exactly one implementation in scope; revisit when microVM lands.") Keeps the synthesis honest about pattern restraint.
+
+### Anti-patterns avoided
+
+For each anti-pattern from the toolkit's "flag on sight" list, state how the synthesized design avoided it (one line). If the design *contains* an anti-pattern despite trying not to, surface it here as a known weakness with a follow-up.
+
 ## Risks (top 3–5)
 
 Carried forward from inputs and refined.
@@ -174,16 +192,27 @@ This section is mandatory and is what makes the final design *auditable* — any
 
 ### Conflict-resolution table
 
-For every CONFLICT you resolved, one row:
+For every CONFLICT you resolved, one row. Columns include the new **Pattern-fit** score (Step 3 criterion 5):
 
-| Dimension | [P] picks | [S] picks | [B] picks | Winner | Exit-fit | Roadmap-fit | Commitments-fit | Critic-fit | Sum |
-|---|---|---|---|---|---|---|---|---|---|
-| Cache backend | Filesystem CAS | Filesystem with HMAC | Filesystem CAS | [P+B] (filesystem CAS) | 3 | 3 | 3 | 2 | 11 |
-| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
+| Dimension | [P] picks | [S] picks | [B] picks | Winner | Exit-fit | Roadmap-fit | Commitments-fit | Critic-fit | Pattern-fit | Sum |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Cache backend | Filesystem CAS | Filesystem with HMAC | Filesystem CAS | [P+B] (filesystem CAS) | 3 | 3 | 3 | 2 | 3 | 14 |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### Shared blind spots considered
 
 For each item the critic flagged as a shared blind spot, state whether you carried the consensus forward or departed from it, and why.
+
+### Pattern reconciliation
+
+Cross-design pattern-level disposition. For each pattern that appeared in any design's "Design patterns applied" section *or* in the critic's pattern critiques:
+
+| Pattern | Where it appeared | Synthesis disposition | Rationale |
+|---|---|---|---|
+| Strategy on `RubricRunner` | `[P]` adopted, `[B]` rejected as premature | **Rejected** | Critic correctly flagged premature pluggability; one implementation, no second on the horizon until microVM (Phase 16+) |
+| Newtype on `case_id` | `[B]` missing, critic flagged | **Adopted** | Five-line cost; flows through 4+ modules; type checker now catches `case_id`/`run_id` swaps |
+| Capability pattern on `PromotionApprovalToken` | `[S]` adopted | **Adopted** | Unforgeable-by-construction beats `is_admin` boolean; aligns with humans-always-merge commitment |
+| ... | ... | ... | ... |
 
 ### Departures from all three inputs
 

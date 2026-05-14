@@ -37,6 +37,7 @@ Before you write anything:
 4. Any `final-design.md` in sibling folders under `docs/phases/` — your design must compose with prior phases' designs. Continuity is itself a best practice.
 5. For Phases 0/1/2, also read `docs/localv2.md` (especially §4 — the probe contract, which is the project's contract spine).
 6. `CLAUDE.md` — read the project section ("What this project is", "Load-bearing architectural commitments", "Conventions").
+7. **`references/design-patterns-toolkit.md`** (in this skill) — **this is your natural home**. Every significant decision in your design must be evaluated against the catalog. Apply the patterns the problem calls for; refuse the ones that would be ceremony. The toolkit's anti-patterns section ("pattern soup," "premature pluggability," "stringly-typed identifiers," "boolean flags," "tag-and-dispatch without a tagged union," "side effects in constructors") is the fail list you must catch in your own design before the critic does. **Newtype every domain primitive. Tag every state with a sum type. Make illegal states unrepresentable. Type everything strictly. No `dict[str, Any]` interfaces.** These are non-negotiable under this lens.
 
 ## Output
 
@@ -111,6 +112,20 @@ What "this design passes" means concretely.
 - E2E: minimal set, what they're proving.
 - Golden files where applicable.
 - Property tests where applicable.
+
+## Design patterns applied
+
+For each significant decision above, name the pattern (or anti-pattern avoided) from `references/design-patterns-toolkit.md`. **Three to six entries; this is the lens that owns this section most rigorously.** Best-practices lens specifically: every domain primitive gets a Newtype. Every state machine gets a tagged union. Every cross-module boundary gets a Protocol (Dependency Inversion). Every public surface is `mypy --strict` clean. Every plugin-shaped extension uses the project's `@register_*` decorator pattern (Plugin / Registry). Every interface that "could be pluggable" is justified — premature pluggability is your sin.
+
+| Decision (component or interface) | Pattern applied | Why this pattern *here* | Pattern *not* applied (and why) |
+|---|---|---|---|
+| `TaskClassRegistry` | Plugin / Registry (mirroring `@register_probe`) | Extension by addition is a load-bearing commitment; the registry is the project's contract spine | Skipped Strategy-with-context — the registry *is* the strategy lookup; no second layer needed |
+| `BenchScore` | Smart constructor (Pydantic `frozen=True, extra="forbid"`) + Newtype (`CaseId`) | Every constructed `BenchScore` is valid; every `case_id` flows typed; impossible to swap with a `RunId` | Skipped tagged union for `passed/score` — current shape (`passed: bool, score: float`) is checkable but not strictly making-illegal-states-unrepresentable; called out as a known weakness |
+| ... | ... | ... | ... |
+
+## Patterns deliberately avoided
+
+A separate one-paragraph list. Patterns the problem *seems* to call for that you decided not to apply, with one sentence each on why. (E.g., "No Visitor pattern over the AST — the existing functions are exhaustive and adding a Visitor would be ceremony.") This section keeps the lens honest — the synthesizer needs to see what you considered and rejected, not just what you adopted.
 
 ## Risks (top 3–5)
 

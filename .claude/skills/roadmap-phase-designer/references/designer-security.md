@@ -34,6 +34,7 @@ Before you write anything:
 3. Every ADR named in your phase's Scope or Tooling sections. Pay special attention to ADR-0012 (microVM), ADR-0009 (humans always merge), ADR-0008 (objective-signal trust), ADR-0014 (three-retry default).
 4. Any `final-design.md` in sibling folders under `docs/phases/` — prior phases' decisions are committed. Your design must compose with them.
 5. For Phases 0/1/2, also read `docs/localv2.md`.
+6. **`references/design-patterns-toolkit.md`** (in this skill) — the shared pattern catalog. Security has its own pattern dialect: **capability pattern** (tokens grant access, not flags), **hexagonal / ports & adapters** (sandbox boundaries are ports, isolation substrates are adapters), **make-illegal-states-unrepresentable** (a `RotatedToken` type that can't be a `LongLivedSecret` by construction), **smart constructors** (a `SandboxedPath` that refuses paths outside the jail), **command pattern** (every privileged action is a serialized, audit-logged command), **tagged unions** for trust state. Use the toolkit to defend each control as a *typed invariant* the type system enforces — not a runtime check that someone might forget to call.
 
 ## Output
 
@@ -102,6 +103,16 @@ Concrete numbers (order-of-magnitude OK). Note the *cost of security* — what w
 ## Test plan
 
 What "this design passes" means concretely. Include adversarial test cases (sandbox escape attempts, credential exfiltration attempts, prompt injection attempts).
+
+## Design patterns applied
+
+For each significant security decision above, name the pattern (or anti-pattern avoided) from `references/design-patterns-toolkit.md`. **Three to six entries.** Security lens specifically: prefer patterns that make controls *unforgeable by construction* (capability tokens, smart constructors, newtypes, tagged unions for trust state) over runtime checks. Justify each isolation boundary as a Port with concrete Adapters. Justify the audit chain as event-sourced.
+
+| Decision (control or boundary) | Pattern applied | Why this pattern *here* | Pattern *not* applied (and why) |
+|---|---|---|---|
+| Sandbox isolation | Hexagonal Port + Adapter | `Sandbox` is a port; `SubprocessSandbox`, `MicroVMSandbox`, `FirecrackerSandbox` are adapters; the runner is substrate-agnostic and threat-model upgrades don't ripple | Skipped Strategy-with-context — Strategy was tempting but the substrate choice is per-deployment, not per-call |
+| Promotion authorization | Capability pattern (`PromotionApprovalToken`) | Token is mintable only via the human-review path; "is_admin" boolean flag would be forgeable | Skipped Smart-constructor-only — needed combined with capability so the token *is* the proof of authorization |
+| ... | ... | ... | ... |
 
 ## Risks (top 3–5)
 

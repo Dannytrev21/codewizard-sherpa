@@ -32,6 +32,7 @@ Before you write anything:
 3. Every ADR named in your phase's Scope or Tooling sections (look up filenames in `docs/production/adrs/`).
 4. Any `final-design.md` in sibling folders under `docs/phases/` — these are the **committed** designs of prior phases. Your design must compose with them.
 5. For Phases 0/1/2, also read `docs/localv2.md` (the local POC contract).
+6. **`references/design-patterns-toolkit.md`** (in this skill) — the shared pattern catalog. Every significant design decision in your output must be evaluated against it. Even under the performance lens: pluggable / pipeline / strategy / functional-core-imperative-shell / type-everything-strictly all directly affect cache locality, refactor cost, and the ability to hot-swap implementations. Misapplied patterns *cost* performance (extra indirection, allocation, dispatch). Use the toolkit to argue *for* the patterns that pay rent in throughput/latency/$ and *against* the ones that don't.
 
 ## Output
 
@@ -96,6 +97,15 @@ Concrete numbers (order-of-magnitude OK):
 ## Test plan
 
 What "this design passes its tests" means concretely. Performance regression tests included — what's the canary?
+
+## Design patterns applied
+
+For each significant design decision above, name the pattern (or anti-pattern avoided) from `references/design-patterns-toolkit.md`. **Three to six entries; not twelve, not zero.** Performance lens specifically: justify pluggability cost in latency terms, defend caches as event-sourced, defend hot paths as functional-core / pure functions amenable to memoization.
+
+| Decision (component or interface) | Pattern applied | Why this pattern *here* | Pattern *not* applied (and why) |
+|---|---|---|---|
+| Cache layer for `BenchScore`s | Event sourcing + content-addressed registry | Replay = re-fold; key = blake3(inputs); makes cache invariants checkable, not just hopeful | Skipped Adapter wrapping `pathlib`; one substrate, no second adapter on the horizon |
+| ... | ... | ... | ... |
 
 ## Risks (top 3–5)
 
