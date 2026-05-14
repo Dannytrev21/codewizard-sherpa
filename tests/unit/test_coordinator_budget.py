@@ -1,6 +1,14 @@
-"""S3-05 Section H — resource budget (Gap 3): raw_artifact_mb + advisory RSS."""
+"""S3-05 Section H — resource budget (Gap 3): raw_artifact_mb + advisory RSS.
+
+Also pins the S1-07 :class:`BudgetingContext` extension (AC-15) — two new
+``None``-defaulted fields (``parsed_manifest``, ``input_snapshot``)
+mirroring the S1-06 :class:`codegenie.probes.base.ProbeContext` additions.
+"""
 
 from __future__ import annotations
+
+import dataclasses
+from pathlib import Path
 
 import pytest
 import structlog
@@ -38,6 +46,29 @@ def test_resource_budget_defaults():
     assert rb.rss_mb == 200
     assert rb.raw_artifact_mb == 10
     assert rb.wall_clock_s == 30
+
+
+# ─────────────── S1-07 BudgetingContext extension (AC-15) ──────────────────
+
+
+def test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields() -> None:
+    """AC-15 — five-field shape pinned in order, both new fields default None.
+
+    The BudgetingContext field tuple is the *runtime ctx contract* every
+    probe accessing ``ctx.parsed_manifest`` / ``ctx.input_snapshot`` reads
+    against; reordering or renaming would break S2-04 / S1-08 downstream.
+    """
+    names = tuple(f.name for f in dataclasses.fields(BudgetingContext))
+    assert names == (
+        "workspace",
+        "raw_artifact_mb",
+        "bytes_written",
+        "parsed_manifest",
+        "input_snapshot",
+    )
+    bc = BudgetingContext(workspace=Path("/tmp"), raw_artifact_mb=10)
+    assert bc.parsed_manifest is None
+    assert bc.input_snapshot is None
 
 
 # ─────────────── Coordinator-level enforcement ─────────────────────────────
