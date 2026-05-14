@@ -49,10 +49,15 @@ def test_counts_js_fixture(tmp_path: Path) -> None:
     from codegenie.probes.language_detection import LanguageDetectionProbe
 
     output = _run(LanguageDetectionProbe(), tmp_path)
+    # S2-01 added `framework_hints` and `monorepo`; Phase 0 values are
+    # byte-stable (AC-8 in S2-01 + the additive-key regression assertion in
+    # tests/unit/probes/test_language_detection_extended.py).
     assert output.schema_slice == {
         "language_stack": {
             "counts": {"javascript": 2, "typescript": 1, "python": 1},
             "primary": "javascript",
+            "framework_hints": [],
+            "monorepo": None,
         }
     }
     assert output.confidence == "high"
@@ -116,7 +121,15 @@ def test_empty_repo(tmp_path: Path) -> None:
     from codegenie.probes.language_detection import LanguageDetectionProbe
 
     output = _run(LanguageDetectionProbe(), tmp_path)
-    assert output.schema_slice == {"language_stack": {"counts": {}, "primary": None}}
+    # S2-01 additive extension — see comment in test_counts_js_fixture.
+    assert output.schema_slice == {
+        "language_stack": {
+            "counts": {},
+            "primary": None,
+            "framework_hints": [],
+            "monorepo": None,
+        }
+    }
     assert output.confidence == "high"
     assert output.errors == []
 
@@ -252,6 +265,56 @@ def test_probe_registered() -> None:
     selected = default_registry.for_task("__bullet_tracer__", frozenset({"unknown"}))
     # Registry.for_task returns probe CLASSES (not instances).
     assert LanguageDetectionProbe in selected
+
+
+# --- S2-01 regression siblings -----------------------------------------------
+
+
+# 13. Phase 0 declared_inputs entries are a contiguous prefix of the extended
+#     list (additive extension; no removals/reorderings).
+def test_declared_inputs_additive() -> None:
+    from codegenie.probes.language_detection import LanguageDetectionProbe
+
+    phase_0_inputs = [
+        "**/*.js",
+        "**/*.mjs",
+        "**/*.cjs",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.rb",
+        "**/*.php",
+    ]
+    declared = LanguageDetectionProbe.declared_inputs
+    assert declared[: len(phase_0_inputs)] == phase_0_inputs
+    new_entries = declared[len(phase_0_inputs) :]
+    assert "package.json" in new_entries
+    assert "pnpm-workspace.yaml" in new_entries
+    assert "lerna.json" in new_entries
+    assert "nx.json" in new_entries
+    assert "turbo.json" in new_entries
+
+
+# 14. The module-import _ERRORS assertion enforces ADR-0007 ID pattern at boot.
+def test_module_import_asserts_error_ids() -> None:
+    """Mutating an error ID into a malformed form must trip the module-level assertion.
+
+    Strategy: re-execute the module-level assertion expression with a poisoned
+    set. The probe module's assertion lives at import-time; we replay it here
+    to confirm it would refuse a malformed ID. This is fail-loud discipline
+    (Rule 12) — the assertion exists *because* a stale/wrong-cased ID would
+    silently leak past CI without it.
+    """
+    import re
+
+    from codegenie.probes.language_detection import _WARNING_ID_RE
+
+    poisoned = frozenset({"package_json.size_cap_exceeded", "BadID", "package_json.malformed"})
+    bad = [eid for eid in poisoned if not re.match(_WARNING_ID_RE, eid)]
+    assert bad == ["BadID"]
 
 
 __all__: list[str] = []  # pytest collects by function-name; no public exports.

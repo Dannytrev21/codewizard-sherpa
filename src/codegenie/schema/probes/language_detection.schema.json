@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codewizard-sherpa.dev/schemas/probes/language_detection/v0.1.1.json",
   "title": "LanguageDetection probe output",
-  "description": "Slice of repo-context produced by the LanguageDetection probe (Layer A, S4-01). Wrapped under `language_stack` to match localv2 §5.1 A1 and the arch §Gap 4 prelude-pass shape; primary may be null for an empty repo. Strict at the slice — sets the precedent Phase 1 probes inherit (ADR-0013).",
+  "description": "Slice of repo-context produced by the LanguageDetection probe (Layer A). Wrapped under `language_stack` to match localv2 §5.1 A1 and the arch §Gap 4 prelude-pass shape; primary may be null for an empty repo. Strict at the slice — sets the precedent Phase 1 probes inherit (ADR-0013). S2-01 (Phase 1) extends the slice with `framework_hints` and `monorepo`; `warnings[]` and `errors[]` are declared optional with the ADR-0007 ID pattern constraint on item strings (typed-exception IDs go in `ProbeOutput.errors`, not in the slice — the slice's arrays exist for forward-compatible soft-degrade signals).",
   "type": "object",
   "additionalProperties": false,
   "required": ["language_stack"],
@@ -10,7 +10,7 @@
     "language_stack": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["counts", "primary"],
+      "required": ["counts", "primary", "framework_hints", "monorepo"],
       "properties": {
         "counts": {
           "type": "object",
@@ -23,6 +23,40 @@
         "primary": {
           "type": ["string", "null"],
           "description": "The language with the highest count (ties broken by alphabetical order); null when no files were detected."
+        },
+        "framework_hints": {
+          "type": "array",
+          "description": "Sorted, deduped list of detected Node-framework names (from a fixed seed dict over dependencies + devDependencies).",
+          "items": {"type": "string"}
+        },
+        "monorepo": {
+          "type": ["object", "null"],
+          "description": "Monorepo detection block — null when no marker hit. `tool` is the highest-precedence hit; `markers` is the sorted union of all hit marker filenames (basenames only).",
+          "additionalProperties": false,
+          "required": ["tool", "markers"],
+          "properties": {
+            "tool": {"type": "string"},
+            "markers": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Forward-compatible soft-degrade signals. Each item must match the ADR-0007 ID pattern. Phase 1 emits no values here; the slice exists for future probes / phases.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "description": "Forward-compatible typed-exception IDs. Each item must match the ADR-0007 ID pattern. Phase 1 emits typed IDs on `ProbeOutput.errors` (not here); the slice exists for future probes that may carry per-slice error context.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
         }
       }
     }

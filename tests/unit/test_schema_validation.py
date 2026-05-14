@@ -50,13 +50,21 @@ def test_unknown_probe_namespace_key_passes() -> None:
 
 
 def test_language_detection_slice_valid_payload_passes() -> None:
-    """`$ref` resolution to the sub-schema wires up (catches un-wired-resolver mutant)."""
+    """`$ref` resolution to the sub-schema wires up (catches un-wired-resolver mutant).
+
+    S2-01 added `framework_hints` and `monorepo` to the slice's required keys.
+    """
     validate(
         {
             **_MINIMAL,
             "probes": {
                 "language_detection": {
-                    "language_stack": {"counts": {"javascript": 3}, "primary": "javascript"}
+                    "language_stack": {
+                        "counts": {"javascript": 3},
+                        "primary": "javascript",
+                        "framework_hints": [],
+                        "monorepo": None,
+                    }
                 },
             },
         }
@@ -68,7 +76,16 @@ def test_language_detection_slice_invalid_primary_type_fails() -> None:
         validate(
             {
                 **_MINIMAL,
-                "probes": {"language_detection": {"language_stack": {"counts": {}, "primary": 42}}},
+                "probes": {
+                    "language_detection": {
+                        "language_stack": {
+                            "counts": {},
+                            "primary": 42,
+                            "framework_hints": [],
+                            "monorepo": None,
+                        }
+                    }
+                },
             }
         )
 
@@ -84,6 +101,8 @@ def test_language_detection_slice_invalid_counts_shape_fails() -> None:
                         "language_stack": {
                             "counts": ["javascript"],
                             "primary": "javascript",
+                            "framework_hints": [],
+                            "monorepo": None,
                         }
                     },
                 },
@@ -102,6 +121,8 @@ def test_language_detection_unknown_sub_key_fails_when_subschema_is_strict() -> 
                         "language_stack": {
                             "counts": {"javascript": 1},
                             "primary": "javascript",
+                            "framework_hints": [],
+                            "monorepo": None,
                         },
                         "unknown_extra_field": "should reject",
                     },
@@ -115,7 +136,16 @@ def test_language_detection_primary_null_is_valid_for_empty_repo() -> None:
     validate(
         {
             **_MINIMAL,
-            "probes": {"language_detection": {"language_stack": {"counts": {}, "primary": None}}},
+            "probes": {
+                "language_detection": {
+                    "language_stack": {
+                        "counts": {},
+                        "primary": None,
+                        "framework_hints": [],
+                        "monorepo": None,
+                    }
+                }
+            },
         }
     )
 
