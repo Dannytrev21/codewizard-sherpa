@@ -68,4 +68,28 @@ A parity test (`tests/unit/probes/test_yarn_parser_oracle.py`, per `phase-arch-d
 
 ## Implementer's land-time selection
 
-_(To be filled in at Phase 1 implementation time.)_
+### Implementer's land-time selection (2026-05-14): chose hand-rolled
+
+**Date:** 2026-05-14 (Phase 1, story S3-03)
+
+**Selection:** **hand-rolled** (~80-line line-by-line state machine in `_lockfiles/_yarn.py::_parse_handrolled`).
+
+**Heuristic check results:**
+
+- **`pyarn` last release:** `0.3.0` on **2024-10-30** (verified via PyPI JSON API at https://pypi.org/pypi/pyarn/json). The 18-month-vs-2026-05-14 cutoff is **2024-11-14**; `pyarn 0.3.0` is **15 days outside** that window. **FAILS** the freshness criterion.
+- **Open CVE scan:** OSV.dev `POST /v1/query {"package":{"name":"pyarn","ecosystem":"PyPI"}}` returned `{}` (no advisories). **PASSES** the CVE criterion.
+- **Fixture-suite confirmation:** Not exercised. The S3-03 hand-rolled scanner parses `tests/fixtures/node_yarn_legacy/yarn.lock` (the lone Phase 1 yarn fixture) directly — confirmed by `tests/unit/probes/_lockfiles/test_yarn.py::test_parse_happy_path_handrolled_yields_entries` and the local fuzz harness `tools/fuzz_yarn_lock.py`. Two-direction parity is **S3-04's** contract; deferred.
+- **License compatibility:** `pyarn 0.3.0` is **GPLv3+** (see wheel `pyarn-0.3.0.dist-info/METADATA` `Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)`). `codewizard-sherpa` is `pyproject.toml -> license = { text = "Proprietary" }`. **HARD INCOMPATIBILITY.** This blocker alone disqualifies `pyarn` independent of every other criterion.
+- **Verified `pyarn` API surface (per AC-13):** `pyarn.lockfile.Lockfile.from_str(lockfile_str) -> Lockfile`; the parsed dict is `Lockfile.data` (`dict[str, dict[str, Any]]` keyed by raw entry header). The `_pyarn_parse(body: bytes) -> YarnLock` adapter in `_yarn.py` calls `Lockfile.from_str(body.decode("utf-8"))` and casts `lock.data` into `YarnLock["entries"]`. Recorded for the case where a future revision of this ADR (a) re-licenses `pyarn` permissively or (b) re-licenses `codewizard-sherpa` GPL-compatible — the adapter is ready.
+
+**Rationale (one sentence):** The license incompatibility is a hard blocker (Rule 12: a "close call" is a decision, not a deferral); the borderline release-age (15 days outside the freshness window) reinforces the decision per Notes-for-implementer §13 ("default to hand-rolled and document the borderline decision"); the hand-rolled scanner is ~80 lines of pure-Python state-machine code with no regex over the full body, locally fuzz-tested per AC-16 before this PR.
+
+**Consequences for `pyproject.toml`:** `pyarn` is **not** added to `[project.optional-dependencies] gather` (AC-14). The `_pyarn_parse` adapter still ships behind `_HAS_PYARN: bool`, so a developer who manually `pip install pyarn` locally for parity-test work in S3-04 picks up the dispatch automatically. The S3-04 parity test installs `pyarn` in a CI-only matrix slot per its own ADR.
+
+**Reversibility:** A future revision flipping this selection to `pyarn` is mechanically `pip install pyarn` (which flips `_HAS_PYARN` via `find_spec`) plus this ADR's land-time block being amended; the wire contract (`YarnLock` `TypedDict`) is parser-agnostic. The license blocker would need an independent resolution (either upstream re-license or a fork under a permissive license).
+
+**Evidence:**
+
+- `tests/unit/probes/_lockfiles/test_yarn.py::test_adr_0003_land_time_selection_block_is_filled` — pins the dated header pattern in this ADR text.
+- `tools/fuzz_yarn_lock.py` (S3-03 AC-16) — local 1000-iteration byte-mutation fuzz of `_parse_handrolled`; worst-case wall-clock pasted in PR body.
+- `_lockfiles/_yarn.py` — `_PARSER_KIND: Final[str] = "yarn_lockfile"` discriminates the cap-exceeded event for downstream observability per the registry pattern.

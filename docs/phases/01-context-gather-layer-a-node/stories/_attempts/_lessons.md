@@ -618,3 +618,50 @@ on variant (`yarn-classic` → `pyarn`; `yarn-berry` → `safe_yaml.load`).
 That's a different operation (selection, not comparison) and should use
 a small `Mapping[str, Parser]` with the variant strings as keys — no
 family-strip needed, because dispatch is exact-match by design.
+
+## L-31 — Use `structlog.testing.capture_logs()`, not ad-hoc `structlog.configure(...)`, in unit tests (S3-03)
+
+For tests that capture structured-log events emitted by code under
+test, use `structlog.testing.capture_logs()` as a context manager —
+it swaps in a capture chain for the duration of the `with` block and
+restores cleanly. Do **not** call `structlog.configure(processors=[...])`
+inside a test. The codebase's default `PrintLogger` rejects
+`event_dict` kwargs, so ad-hoc reconfiguration with a single
+list-appending processor trips on the first structured event with
+`TypeError: PrintLogger.msg() got an unexpected keyword argument …`.
+
+**Apply to:** any future structured-event-surfacing test (S3-04
+parity divergence events, S3-05 `NodeManifestProbe` warning events,
+S4-* probe-lifecycle event capture, S5-* adversarial event capture).
+
+**Don't:** copy/paste the `def capture(logger, method_name, event_dict)`
+processor pattern from a story TDD plan into a test verbatim — it
+looks idiomatic but breaks against `PrintLogger`. The capture-as-
+context-manager pattern is the codebase precedent
+(`tests/smoke/conftest.py`, `tests/unit/test_audit_anchors.py`,
+`tests/unit/parsers/test_safe_yaml.py`).
+
+**Carry forward:** the S3-03 story TDD plan itself prescribed the
+broken processor-replacement pattern. If a future story copies that
+TDD shape verbatim, swap to `structlog.testing.capture_logs()` first.
+
+## L-32 — Land-time license check for conditional dependencies (S3-03)
+
+When a phase ADR (e.g., ADR-0003) defers a dependency-adoption
+decision to land-time and lists "no open CVE" + "release age" as
+heuristic checks, **also verify license compatibility**. The
+adopt-or-not heuristic in ADR-0003 omitted license; a real-world
+adoption attempt of `pyarn 0.3.0` (GPLv3+) into a `Proprietary`
+project is a hard blocker independent of release age or CVE state.
+
+**Apply to:** every future "if maintained at land-time" ADR (ADR-0003
+is the only Phase 1 instance; future phases may add more). The
+land-time-decision-template ADR shape should include a license-
+compatibility row alongside release-age and CVE-scan.
+
+**Don't:** assume "permissively licensed" by default. Read the wheel
+`METADATA`'s `Classifier: License :: ...` line; verify the project's
+own `pyproject.toml -> license` field; reject incompatibilities loud
+(Rule 12). The `_attempts/` log records the verified pyarn API
+surface anyway so a future re-adoption (after upstream re-license or
+own-project re-license) doesn't repeat the API verification work.

@@ -1,7 +1,8 @@
 # Story S3-03 — `_yarn` lockfile parser + ADR-0003 finalization
 
 **Step:** Step 3 — Ship `NodeManifestProbe` and the three lockfile parsers
-**Status:** Ready (HARDENED)
+**Status:** Done (2026-05-14)
+**Evidence:** [`_attempts/S3-03.md`](_attempts/S3-03.md) — 18 named unit tests in `tests/unit/probes/_lockfiles/test_yarn.py`; full suite 1124 passed / 1 xfail (pre-existing); coverage 94.11%; ruff / ruff-format / mypy --strict / lint-imports / fence all clean. Land-time pyarn evaluation completed; **selection: hand-rolled** (GPLv3+-vs-Proprietary license blocker + 15-day-borderline release age); ADR-0003 "Implementer's land-time selection (2026-05-14)" block filled. Local fuzz 1000 iter / seed=42 / 0 unexpected / 0 timeouts / worst 0.0000 s. Two TDD-plan deviations documented in attempt log (`structlog.testing.capture_logs` instead of in-test `structlog.configure`; per-line `# noqa: T201` for the CLI fuzz harness).
 **Effort:** L
 **Depends on:** S3-01 (`_pnpm.py` + inert `_lockfiles/__init__.py`), S3-02 (`_npm.py` + reinforced inert-`__init__` invariant), S1-01 (Phase 1 marker exceptions), the `parsers/_io.open_capped` primitive already on disk from S1-02/S1-03
 **ADRs honored:** ADR-0003 (`pyarn` if maintained, else hand-rolled — **finalized in this PR**), ADR-0007 (`WarningId` constructed at catch site), ADR-0008 (in-process caps via the shared `open_capped` kernel), ADR-0009 (`pyarn` is the single Phase 1 conditional dep)
