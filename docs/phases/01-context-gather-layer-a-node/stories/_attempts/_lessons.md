@@ -297,3 +297,48 @@ same lens whenever you spot module-local copies of a hard-coded
 identifier (catalog kind, error code, lifecycle phase, etc.) — the
 registry pattern catches drift early and turns a multi-file rename
 into a one-file rename + a green CI gate.
+
+## L-19 — `jsonschema` errors use **dotted** json_path, not JSON-Pointer (S2-01)
+
+The project's `codegenie.schema.validator.validate(...)` re-raises
+`jsonschema.ValidationError` with `err.json_path` in the message. That
+`json_path` attribute is *not* RFC-6901 JSON Pointer (`/probes/foo`)
+— it is `jsonschema`'s dotted/bracket form
+(`$.probes.language_detection.language_stack`). Story drafts and ADRs
+that say "JSON Pointer" are using the term loosely; the actual error
+string is dotted.
+
+- **Apply to:** any test that asserts on a slice path in a
+  `SchemaValidationError` message. Match the dotted substring
+  (`probes.language_detection.language_stack`) plus the rogue key.
+- **Don't:** rewrite the validator to emit RFC-6901 pointers just to
+  satisfy a story's wording (Rule 3 — surgical changes). The dotted
+  form is what jsonschema gives us; preserve it.
+
+## L-20 — A new required slice field breaks every strict-equality test across phases (S2-01)
+
+When S2-01 added `framework_hints` and `monorepo` to the
+`language_detection.schema.json` slice's `required` list, two
+otherwise-unrelated test files failed (`tests/unit/test_language_detection_probe.py`
+and `tests/unit/test_schema_validation.py`) because they asserted
+`output.schema_slice == {"language_stack": {"counts": ..., "primary":
+...}}` — a strict-equality form that breaks the moment the slice
+grows.
+
+- **Apply to:** any story that adds a required field to a probe slice
+  or sub-schema. Before GREEN, `git grep -F 'language_stack' tests/`
+  (substitute your slice's key) to enumerate every strict-equality
+  site. Update them additively in the same commit — don't let the
+  full suite be the discovery mechanism.
+- **Why this hurts most when slices grow:** the strict equality test
+  is the most natural way to encode "the Phase 0 shape" and the test
+  was correct *at the time*. The brittleness only emerges when a
+  later story extends the slice. The Phase 0 AC for the slice may say
+  "exactly these keys" — re-read it; the right fix is usually to
+  loosen the test to "these keys plus whatever later phases add"
+  (subset assertion) rather than re-pin to the new shape every time.
+- **For Phase 1 / S2-02..S4-04:** every probe slice that grows in
+  later phases is going to hit this. Prefer subset assertions or
+  per-key assertions in new tests; reserve strict equality for the
+  smallest invariant (e.g., "the slice contains *exactly* these
+  required keys at this moment", as an explicit shape contract).
