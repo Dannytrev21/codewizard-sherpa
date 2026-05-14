@@ -159,9 +159,13 @@ def test_fence_job_install_is_two_step_and_excludes_dev_extras() -> None:
         assert forbidden not in runs, (
             f"AC-3: fence job MUST NOT install {forbidden} — contaminates closure scope"
         )
-    assert "pytest -q tests/unit/test_pyproject_fence.py" in runs, (
-        "AC-3: fence job must invoke `pytest -q tests/unit/test_pyproject_fence.py`"
+    # The fence step invokes pytest with an empty ``addopts`` override
+    # so pyproject's ``--cov=...`` switches (which require ``pytest-cov``,
+    # not installed in the standalone harness — ADR-0006) are ignored.
+    assert "tests/unit/test_pyproject_fence.py" in runs, (
+        "AC-3: fence job must invoke `pytest ... tests/unit/test_pyproject_fence.py`"
     )
+    assert "pytest -q" in runs, "AC-3: fence pytest invocation must use `-q`"
 
 
 # ---------------------------------------------------------------------------

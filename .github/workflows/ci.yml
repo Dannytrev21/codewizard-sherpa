@@ -157,7 +157,11 @@ jobs:
           PY
           pip-audit --strict --disable-pip --requirement /tmp/requirements-from-uv.txt
       - name: osv-scanner (uv.lock)
-        uses: google/osv-scanner-action@daa2c68f50d845057895a9c300e42478481c1d26  # v1.9.1
+        # v1.9.1: the action lives at the ``osv-scanner-action`` subpath,
+        # NOT the repo root (the root ``action.yml`` has no ``runs:``
+        # section by design — see ``CONTRIBUTING.md`` upstream). The SHA
+        # remains pinned per ADR-0002.
+        uses: google/osv-scanner-action/osv-scanner-action@daa2c68f50d845057895a9c300e42478481c1d26  # v1.9.1
         with:
           scan-args: |-
             --lockfile=uv.lock
@@ -186,4 +190,8 @@ jobs:
       - name: Install pytest (harness, STANDALONE)
         run: pip install pytest
       - name: Run fence test
-        run: pytest -q tests/unit/test_pyproject_fence.py
+        # ``-o "addopts="`` overrides pyproject's ``--cov=...`` switches
+        # which require ``pytest-cov`` — the fence job deliberately
+        # installs ``pytest`` STANDALONE (no [dev]) per ADR-0006 so the
+        # gather-pipeline closure measurement stays uncontaminated.
+        run: pytest -q -o "addopts=" tests/unit/test_pyproject_fence.py

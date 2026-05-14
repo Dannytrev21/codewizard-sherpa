@@ -11,6 +11,7 @@ import asyncio
 import os
 import re
 from dataclasses import asdict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -424,8 +425,16 @@ async def test_gather_is_order_invariant(tmp_path, fresh_cache, fresh_sanitizer,
         snap, task, [mk("c"), mk("a"), mk("b")], fresh_config, cache2, fresh_sanitizer
     )
 
-    assert {k: asdict(v) for k, v in r1.outputs.items()} == {
-        k: asdict(v) for k, v in r2.outputs.items()
+    # ``duration_ms`` is wall-clock noise — exclude it from the
+    # order-invariance comparison (the asserted invariant is semantic
+    # output equality, not timing parity).
+    def _semantic(v: SanitizedProbeOutput) -> dict[str, Any]:
+        d = asdict(v)
+        d.pop("duration_ms", None)
+        return d
+
+    assert {k: _semantic(v) for k, v in r1.outputs.items()} == {
+        k: _semantic(v) for k, v in r2.outputs.items()
     }
     assert set(r1.executions.keys()) == set(r2.executions.keys())
 
