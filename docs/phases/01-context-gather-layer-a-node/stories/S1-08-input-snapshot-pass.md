@@ -1,10 +1,38 @@
 # Story S1-08 — Pre-dispatch input-snapshot pass (Gap 1)
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (validator-hardened 2026-05-14)
+**Status:** Done — 2026-05-14
 **Effort:** M
 **Depends on:** S1-06, S1-07
 **ADRs honored / amended:** ADR-0002 (amended in this story, see AC-22)
+
+## Done — evidence block (2026-05-14)
+
+All 23 ACs verified. Implementation landed in a single attempt; the harness's RED → GREEN → REFACTOR cycle ran clean. Full attempt log: [`_attempts/S1-08.md`](_attempts/S1-08.md). Lessons appended: L-15, L-16.
+
+### Code shipped
+
+- [src/codegenie/coordinator/input_snapshot.py](../../../../src/codegenie/coordinator/input_snapshot.py) — new module; `__all__ = ["compute_input_snapshot", "make_parsed_manifest_adapter"]`; sentinel constants `_CONTENT_HASH_OVERSIZE = "<oversize>"`, `_CONTENT_HASH_REFUSED = "<refused>"`; pure `_fingerprint_from_fd` + impure `compute_input_snapshot` (functional core / imperative shell split); `_canonical_abs_path(matched) = str(matched.parent.resolve() / matched.name)` helper preserves the symlink's own name in the refused branch.
+- [src/codegenie/coordinator/parsed_manifest_memo.py](../../../../src/codegenie/coordinator/parsed_manifest_memo.py) — `get(self, path, *, content_hash: str | None = None)` additive signature; sentinel-bypass branch (`content_hash.startswith("<")` → `None`); dual key shapes coexist (`(content_hash,)` vs S1-07's `(absolute_path, mtime_ns, size)`).
+- [src/codegenie/coordinator/coordinator.py](../../../../src/codegenie/coordinator/coordinator.py) — `_dispatch_one` computes the per-probe snapshot before constructing `ctx`, builds the adapter via `make_parsed_manifest_adapter`, and threads both onto the runtime `BudgetingContext` via the extended `_make_probe_context` keyword-only signature.
+- [docs/phases/01-context-gather-layer-a-node/ADRs/0002-parsed-manifest-memo-on-probe-context.md](../ADRs/0002-parsed-manifest-memo-on-probe-context.md) — amended per AC-22 (key-bullet rewritten to the dual-shape form; Consequences §"Resolved in S1-08"; `**Last amended:**` line updated).
+
+### Tests
+
+- [tests/unit/coordinator/test_input_snapshot.py](../../../../tests/unit/coordinator/test_input_snapshot.py) — 20 tests covering AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11 (5-way parametrize), AC-12, AC-13 (present + missing + roundtrip), AC-20, AC-21.
+- [tests/unit/coordinator/test_coordinator_threads_input_snapshot.py](../../../../tests/unit/coordinator/test_coordinator_threads_input_snapshot.py) — 4 tests covering AC-16, AC-17, AC-18, AC-19.
+- [tests/unit/coordinator/test_parsed_manifest_memo.py](../../../../tests/unit/coordinator/test_parsed_manifest_memo.py) — appended `test_memo_dual_keys_coexist` (AC-14) + `test_memo_sentinel_content_hash_returns_none` (AC-15); S1-07's 20 prior tests remain green.
+- [tests/unit/coordinator/test_coordinator_injects_memo.py](../../../../tests/unit/coordinator/test_coordinator_injects_memo.py) — minimal update: `ctx.parsed_manifest.__self__` → `ctx.parsed_manifest.__memo__` (the closure adapter exposes the memo on `__memo__` so S1-07's same-gather-sharing / cross-gather-isolation invariants stay testable).
+- [tests/unit/test_adr_0002_records_s1_08_amendment.py](../../../../tests/unit/test_adr_0002_records_s1_08_amendment.py) — doc-grep AC-22.
+
+### Gates
+
+- `pytest tests/unit/coordinator/ tests/unit/test_adr_0002_records_s1_08_amendment.py` → 53 passed
+- Full suite: 843 passed, 3 failed (pre-existing — `lint-imports` not on PATH; `pre-commit` hook catches an unrelated `yaml.load(` without `Loader=` in [src/codegenie/catalogs/\_\_init\_\_.py](../../../../src/codegenie/catalogs/__init__.py) — both reproduce on master before S1-08).
+- `ruff check src tests` → clean
+- `ruff format --check src tests` → clean
+- `mypy --strict src` → 42 source files, no issues
+- No new direct `blake3` import anywhere under `src/codegenie/`.
 
 ## Validation notes (added 2026-05-14 by phase-story-validator)
 

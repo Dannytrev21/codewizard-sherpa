@@ -205,3 +205,43 @@ matters, (c) `__post_init__` validation runs. None of those apply to a
 that matches the type's actual responsibilities — `NamedTuple` is a
 smart constructor for an immutable value record. (Reinforces the design-
 patterns lens: pick the narrowest pattern that fits.)
+
+## L-15 — Closure adapters break `__self__` accessor (S1-08)
+
+When a story replaces a bound-method seam on the runtime ctx
+(`ctx.parsed_manifest = memo.get`) with a closure adapter
+(`ctx.parsed_manifest = make_..._adapter(snapshot, memo)`), every existing
+test that pokes through `ctx.parsed_manifest.__self__` to identify the
+underlying instance silently breaks: the closure has no `__self__`. The
+load-bearing invariant is the underlying instance identity (same memo
+within a gather, different memos across), not the accessor name.
+
+Resolution pattern: attach a labelled attribute to the closure
+(`_adapter.__memo__ = memo`) and replace the existing accessor in the
+test sites. Minimal diff; the instance-identity contract is preserved.
+Reinforces L-13 — when the test's literal identity probe disagrees with
+the new runtime structure, widen the probe to the underlying object,
+not the surface accessor. Same idea, new surface.
+
+## L-16 — Every new `probe.*` log event must pass `run_id=` explicitly (S1-08)
+
+`structlog.testing.capture_logs` (used by every event-assertion test in
+this codebase) skips the `merge_contextvars` processor — the ambient
+`run_id` bound by `gather()` via `structlog.contextvars.bind_contextvars`
+does NOT auto-attach to events at log time under test. The CLI module
+calls this out at `src/codegenie/cli.py:579` ("Bind contextvars so child
+events inherit `run_id`; ALSO pass it explicitly").
+
+The contract for every new event-emitting site:
+
+```python
+run_id = structlog.contextvars.get_contextvars().get("run_id")
+_logger.info("probe.foo.bar", probe=name, ..., run_id=run_id)
+```
+
+S1-08's three new events (`probe.input_snapshot.computed`,
+`probe.input_snapshot.oversize`, `probe.input_snapshot.symlink_refused`)
+all follow this contract. The lifecycle-event run-id-coverage test
+(`tests/unit/test_coordinator.py::test_every_lifecycle_event_carries_run_id`)
+is the integration-tier guard for this discipline — adding a new event
+without the `run_id=` kwarg fails this test loudly.
