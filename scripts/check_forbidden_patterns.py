@@ -35,9 +35,13 @@ _RULES: list[tuple[str, Pattern[str], str]] = [
     ),
     (
         "yaml.load( without Loader=",
-        # Matches yaml.load( ... ) when 'Loader=' does not appear inside the
-        # call. Permits yaml.load(s, Loader=SafeLoader).
-        re.compile(r"yaml\.load\((?:(?!Loader=).)*?\)", re.DOTALL),
+        # Matches a bare yaml.load(...) call when 'Loader=' does not appear
+        # inside. The leading \b anchors so `safe_yaml.load(...)` (project
+        # wrapper, an underscore precedes `yaml`) does NOT match — `_` is a
+        # word char, `y` is a word char, so there's no boundary between them.
+        # A bare `yaml.load(` (start-of-line, whitespace, or punctuation
+        # before `y`) keeps the boundary and is still caught.
+        re.compile(r"\byaml\.load\((?:(?!Loader=).)*?\)", re.DOTALL),
         "ADR-0008: yaml.load requires Loader=yaml.CSafeLoader (or SafeLoader).",
     ),
     (

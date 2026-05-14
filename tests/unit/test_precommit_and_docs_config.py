@@ -66,6 +66,19 @@ ALLOWED_DUMPER_CONSTRUCTS: list[tuple[str, str]] = [
     ("yaml.SafeDumper", "import yaml\nyaml.dump(x, Dumper=yaml.SafeDumper)\n"),
 ]
 
+# Phase 1 / S1-05 regression — `safe_yaml.load(...)` is the project's wrapper
+# (under `codegenie.parsers.safe_yaml`); blocking it would break every caller
+# in the codebase including the catalog loader and the config loader. The
+# `\b` anchor on the `yaml.load(` rule keeps these out, because `_` is a word
+# char so there is no boundary between `safe_` and `yaml`.
+ALLOWED_LOAD_CONSTRUCTS: list[tuple[str, str]] = [
+    ("safe_yaml.load_call", "from codegenie.parsers import safe_yaml\nsafe_yaml.load(path)\n"),
+    (
+        "qualified_safe_yaml.load_call",
+        "import codegenie.parsers.safe_yaml as sy\nsy.load(p)\n",
+    ),
+]
+
 # Mirrors AC-4. All 13 entries are line-parse-verified.
 REQUIRED_GITIGNORE_ENTRIES: frozenset[str] = frozenset(
     {
@@ -230,6 +243,42 @@ def test_yaml_dumper_regex_does_not_reject_csafedumper_or_safedumper(
         f"stdout={result.stdout!r} stderr={result.stderr!r}. "
         "The yaml.Dumper regex must be anchored "
         "(e.g., (?<!CSafe)(?<!Safe)yaml\\.Dumper)."
+    )
+
+
+@pytest.mark.parametrize(
+    "label,source",
+    ALLOWED_LOAD_CONSTRUCTS,
+    ids=[t[0] for t in ALLOWED_LOAD_CONSTRUCTS],
+)
+def test_yaml_load_regex_does_not_reject_safe_yaml_wrapper(
+    label: str, source: str, tmp_path: Path
+) -> None:
+    """Regression — the `yaml.load(` rule must NOT match `safe_yaml.load(...)`.
+
+    `safe_yaml` is the project's hardened wrapper around `yaml.safe_load`
+    (under `codegenie.parsers.safe_yaml`). The rule is anchored with a
+    leading `\\b` so the underscore-then-`y` transition in `safe_yaml.load(`
+    is not a word boundary and the false match disappears, while a bare
+    `yaml.load(...)` (whitespace/punctuation before `y`) is still caught
+    (covered by `BANNED_CONSTRUCTS` above).
+    """
+    script = _forbidden_patterns_entry_script()
+    if script == Path("__INLINE__"):
+        pytest.skip("inline-grep entry; covered by Test 7 + manual review")
+    fixture = tmp_path / f"allowed_{label}.py"
+    fixture.write_text(source)
+    result = subprocess.run(
+        [str(script), str(fixture)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"forbidden-patterns hook WRONGLY rejected project-internal `{label}`; "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}. "
+        "The yaml.load( regex must be anchored with \\b so safe_yaml.load(...) is not flagged."
     )
 
 
