@@ -13,7 +13,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from structlog.testing import capture_logs
@@ -268,6 +268,22 @@ def test_block_comment_containing_double_quote_is_inert(tmp_path: Path) -> None:
 # --- Stripper — unterminated paths -----------------------------------------
 
 
+# Wall-clock budget for the two unterminated-input regression tests.
+#
+# S1-04 AC-16's stated intent is "O(n) wall-clock — no quadratic recovery,
+# no EOF re-scan." On a 1 MB input an O(n²) implementation is ~10¹² ops →
+# minutes, not sub-second. The original 0.5 s budget was tuned to fast dev
+# hardware; shared GitHub CI runners reliably land at 0.6–0.9 s for the
+# same workload (5–8× slower under contention), so 0.5 s flaked the suite.
+#
+# 2.0 s preserves the AC's contract — any realistic O(n²) regression on
+# 1 MB would blow past this by orders of magnitude — while absorbing CI
+# variance. If finer-grained signal is needed for sub-quadratic regressions
+# (O(n log n) → O(n^1.5), say), that's the job of the pathological-input
+# adversarial tests, not this wall-clock canary.
+_UNTERMINATED_PARSE_BUDGET_S: Final[float] = 2.0
+
+
 def test_unterminated_string_raises_typed_in_bounded_time(tmp_path: Path) -> None:
     # AC-16 + TQ11 — typed error + wall-clock budget.
     p = tmp_path / "x.json"
@@ -278,7 +294,10 @@ def test_unterminated_string_raises_typed_in_bounded_time(tmp_path: Path) -> Non
     elapsed = time.monotonic() - t0
     assert "unterminated string" in exc_info.value.args[0]
     assert str(p) in exc_info.value.args[0]
-    assert elapsed <= 0.5, f"unterminated-string detection took {elapsed:.3f}s; expected ≤ 0.5s"
+    assert elapsed <= _UNTERMINATED_PARSE_BUDGET_S, (
+        f"unterminated-string detection took {elapsed:.3f}s; "
+        f"expected ≤ {_UNTERMINATED_PARSE_BUDGET_S}s (AC-16: no O(n²) recovery)"
+    )
 
 
 def test_unterminated_block_comment_raises_typed_in_bounded_time(tmp_path: Path) -> None:
@@ -291,7 +310,10 @@ def test_unterminated_block_comment_raises_typed_in_bounded_time(tmp_path: Path)
     elapsed = time.monotonic() - t0
     assert "unterminated block comment" in exc_info.value.args[0]
     assert str(p) in exc_info.value.args[0]
-    assert elapsed <= 0.5, f"unterminated-block detection took {elapsed:.3f}s; expected ≤ 0.5s"
+    assert elapsed <= _UNTERMINATED_PARSE_BUDGET_S, (
+        f"unterminated-block detection took {elapsed:.3f}s; "
+        f"expected ≤ {_UNTERMINATED_PARSE_BUDGET_S}s (AC-16: no O(n²) recovery)"
+    )
 
 
 # --- Decode / shape --------------------------------------------------------
