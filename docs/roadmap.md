@@ -18,7 +18,7 @@ This document sequences the work from a local bullet tracer through to a multi-t
 |---|---|---|---|---|
 | 0 | Bullet tracer + project foundations | — | CLI shell, `pyproject.toml`, CI, docs site, mypy, ruff, pytest, pre-commit | ✅ [00-bullet-tracer-foundations](phases/00-bullet-tracer-foundations/) |
 | 1 | Context gathering — Layer A (Node.js) | — | Probe contract, coordinator, content-addressed cache, schema validation | ✅ [01-context-gather-layer-a-node](phases/01-context-gather-layer-a-node/) |
-| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | *(pending plugin-architecture redesign)* |
+| 2 | Context gathering — Layers B–G | — | IndexHealthProbe (B2 — the critical one), traces, depgraph, security, conventions, skills loader | ✅ [02-context-gather-layers-b-g](phases/02-context-gather-layers-b-g/) |
 | 3 | **Vuln remediation — deterministic recipe path** | vuln | First plugin (`vulnerability-remediation--node--npm`); OpenRewrite / AST; writes a real diff | *(pending plugin-architecture redesign)* |
 | 4 | Vuln remediation — LLM fallback + solved-example RAG | vuln | Leaf LLM agents, local vector DB, recipe → RAG → LLM-fallback decision chain | *(pending plugin-architecture redesign)* |
 | 5 | Sandbox + Trust-Aware gates | vuln | microVM isolation, build/test/runtime gates, three-retry default | ✅ [05-sandbox-trust-gates](phases/05-sandbox-trust-gates/) |
