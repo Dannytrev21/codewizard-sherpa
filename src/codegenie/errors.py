@@ -94,7 +94,9 @@ class DisallowedSubprocessError(CodegenieError):
 
 
 class SymlinkRefusedError(CodegenieError):
-    """Raised by the writer / sanitizer walker when a symlink would escape the analyzed repo."""
+    """Raised by the writer / sanitizer walker when a symlink would escape the
+    analyzed repo, and by parsers/safe_json (O_NOFOLLOW open) when a path's
+    final component is itself a symlink."""
 
 
 class AllProbesFailedError(CodegenieError):
