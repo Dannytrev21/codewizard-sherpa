@@ -24,6 +24,7 @@ Architecture Decision Records for Phase 1, in Nygard format. Each ADR captures o
 | [0010](0010-layer-a-slices-optional-at-envelope.md) | Layer A slices declared optional at the envelope's `probes.*` level | schema · multi-language · extension · envelope-shape |
 | [0011](0011-no-helm-render-no-hcl-no-npm-ls.md) | No Helm template rendering, no HCL parsing, no `npm ls` invocation in Phase 1 | scope · determinism · supply-chain · cve-surface · facts-not-judgments |
 | [0012](0012-multi-environment-helm-as-list-with-nullable-primary.md) | Multi-environment Helm emitted as `environments: list` with nullable primary `image_reference` | schema · additive-extension · localv2-conformance · contract-shape |
+| [0013](0013-yarn-variants-as-distinct-package-managers.md) | Yarn Classic and Yarn Berry as distinct `package_manager` values | schema · package-manager · plugin-dispatch · extension-by-addition |
 
 ## Conventions
 
