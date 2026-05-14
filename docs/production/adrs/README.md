@@ -47,6 +47,12 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0026](0026-roi-kpi-model.md) | ROI KPI model — what we measure and how | roi · metrics |
 | [0027](0027-cost-attribution-model.md) | Cost attribution model — mapping costs to workflows, repos, and task classes | cost · attribution |
 | [0028](0028-task-class-introduction-order.md) | Task class introduction order — vulnerability remediation before migration | task-class · sequencing |
+| [0029](0029-task-class-context-manifests.md) | Task-Class Context Manifests — context selection as data | context · task-class · skills |
+| [0030](0030-graph-aware-context-queries.md) | Graph-aware context queries — dep graph + tree-sitter + SCIP power TCCMs | context · graph-analysis · scip |
+| [0031](0031-plugin-architecture.md) | Plugin architecture — granular (task × language × build-tool) units of work | architecture · plugins · extension-by-addition |
+| [0032](0032-language-search-adapters.md) | Language search adapters — bridging generic queries to language-specific indexers | adapters · code-search · scip · plugins |
+| [0033](0033-domain-modeling-discipline.md) | Domain modeling discipline — newtype + smart constructor + sum type + illegal-states-unrepresentable | typing · correctness · discipline |
+| [0034](0034-event-sourcing-canonical-primitive.md) | Event sourcing as canonical primitive for agent runs | event-sourcing · audit · replay · observability |
 
 ## Index — Deferred decisions
 
