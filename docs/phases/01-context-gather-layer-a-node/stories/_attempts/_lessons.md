@@ -89,6 +89,32 @@ re-read doesn't re-litigate. (Sibling to L-4: "TDD parametrize values
 are contract, not guidance"; L-7 is the inverse — when the payload
 itself is impossible, the *intent* is the contract.)
 
+## L-9 — `MappingProxyType` mutation API mix `TypeError` + `AttributeError` (S1-05)
+
+`types.MappingProxyType` raises `TypeError` for `__setitem__` and
+`__delitem__` but **`AttributeError`** for `.update`, `.pop`, `.clear`,
+and `.setdefault` — those methods don't exist on the proxy at all.
+Stories prescribing `TypeError` uniformly across all six mutation APIs
+will see four of six tests fail at green-run. Resolution: widen the
+test's `pytest.raises` to `(TypeError, AttributeError)` — both shapes
+mean "mutation rejected", which is the AC's behavioral intent. Identical
+shape to L-7: when the story's literal exception identity disagrees with
+runtime reality, preserve the AC's behavioral contract; widen the
+payload. Surface as a deviation in the attempt log so re-reads don't
+re-litigate. (Rule 9: tests verify intent, not implementation strings.)
+
+## L-10 — `typing.get_type_hints` returns fresh parametrized generics each call (S1-05)
+
+`typing.get_type_hints(N)['x'] is tuple[str, ...]` returns **`False`**
+even when `N` is `class N(NamedTuple): x: tuple[str, ...]`. Each
+parameterized generic (`tuple[str, ...]`, `list[int]`, `dict[str, int]`)
+is a fresh PEP-585 / 604 object created at evaluation time. Identity
+comparison fails; equality (`==`) succeeds. When introspecting
+annotations to drive runtime coercion (e.g., `list -> tuple` for
+NamedTuple sequence fields), use `target == tuple[str, ...]`, never
+`target is tuple[str, ...]`. Story author's intent (the coercion runs)
+is the contract; the comparison operator is implementation detail.
+
 ## L-8 — Shared kernel modules can have hidden short-read silences (S1-04)
 
 `parsers/_io.open_capped` returns `os.read(fd, size)` without verifying

@@ -1,7 +1,7 @@
 # Story S1-05 — Catalog loader with self-schema + `native_modules.yaml` + `ci_providers.yaml` seed
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (hardened by phase-story-validator)
+**Status:** Done — 2026-05-14 (phase-story-executor attempt 1, GREEN). All 23 ACs verified; 35/35 new unit tests green; full suite 778/778 (pre-existing `test_lint_imports_canary` failures excluded — local venv lacks `lint-imports` console script); `codegenie.catalogs` 100% line + branch coverage; ruff + ruff-format + mypy --strict + pre-commit clean. Attempt log: [`_attempts/S1-05.md`](_attempts/S1-05.md). Implementation: [`src/codegenie/catalogs/__init__.py`](../../../../src/codegenie/catalogs/__init__.py), [`src/codegenie/catalogs/_schema.json`](../../../../src/codegenie/catalogs/_schema.json), [`src/codegenie/catalogs/native_modules.yaml`](../../../../src/codegenie/catalogs/native_modules.yaml), [`src/codegenie/catalogs/ci_providers.yaml`](../../../../src/codegenie/catalogs/ci_providers.yaml). Tests: [`tests/unit/catalogs/test_catalog_loader.py`](../../../../tests/unit/catalogs/test_catalog_loader.py). Deviations: AC-12 mutation expectation widened to `(TypeError, AttributeError)` per lesson L-9 (preserves AC intent; `MappingProxyType.{update,pop,clear,setdefault}` raise `AttributeError`, not `TypeError`).
 **Effort:** M
 **Depends on:** S1-02 (consumes `parsers/safe_json` chokepoint precedent), S1-03 (consumes `parsers/safe_yaml` — the actual YAML reader the catalog routes through)
 **ADRs honored:** ADR-0006 (catalog versioning), ADR-0008 (in-process parse caps; catalogs route through `safe_yaml.load`); Phase-0 markers-only contract (S1-01)
