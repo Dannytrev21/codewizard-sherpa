@@ -490,3 +490,32 @@ correct behavior in production but a flake in tests that assert
 - **Don't:** monkeypatch `codegenie.exec.run_allowlisted` globally; that
   mutates the shared module and any test running in the same process that
   needs `git rev-parse` will lose its allowlist seam.
+
+## L-28 — Fixture-immutability snapshots must exclude `<root>/.codegenie/` (S2-05)
+
+Integration tests that run two successive gathers against the same fixture
+and want a belt-and-suspenders "fixture inputs did not drift" invariant
+need a `_stat_snapshot(root)` pre- and post-gather. The naive `rglob("*")`
+walk includes `<root>/.codegenie/{cache,context,runs}` — the codegenie
+output namespace, which the gather *legitimately* writes to on every
+run. Without an exclusion filter, the invariant always fires (false-RED)
+because `cache/index.jsonl`, `cache/blobs/<digest>.json`,
+`context/repo-context.yaml`, and `context/runs/<run-id>.json` all
+materialise after the cold gather.
+
+- **Apply to:** every integration test that walks the fixture tree for
+  drift detection — S2-05's two-probe cache-hit pair, future S5-05's
+  six-probe extension, and any S6-* tests asserting fixture invariance.
+- **Fix pattern:** in `_stat_snapshot(root)`, compute
+  `output_ns = (root / ".codegenie").resolve()` and skip any
+  `p` whose `p.resolve().parents` contains `output_ns`. Keys remain
+  POSIX-form resolved strings (ADR-0002 macOS Path-equality foot-gun).
+- **Don't:** rely on the cache-key byte-equality assertion alone — that
+  proves the cache *key* is invariant under identical inputs, not that
+  the fixture tree itself stayed put (a flaky filesystem or a
+  background `.git` write would still produce a false-positive cache
+  hit on warm). The two signals are complementary, not redundant.
+- **Don't:** add a `time.sleep()` between gathers to mask mtime
+  granularity — ADR-0002 routes cache keys through `content_hash`, not
+  live `os.stat`, so there is no mtime-race to wait out. Sleep masks
+  real bugs (a content-hash mismatch on identical bytes).

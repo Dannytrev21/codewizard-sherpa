@@ -30,6 +30,22 @@ Helpers exposed:
   ``codegenie.exec``) following the
   :func:`tests.smoke.conftest._install_scandir_counter` precedent — the
   global ``codegenie.exec`` module is never mutated.
+- :func:`_install_scandir_counter` — re-exported from
+  :mod:`tests.smoke.conftest` (one source of truth, no copy-paste).
+  Used by S2-05's two-probe warm-path cache-hit test to count
+  ``os.scandir`` invocations inside ``codegenie.probes.language_detection``
+  *only* — the global :mod:`os` is untouched.
+- :func:`_stat_snapshot` — captures ``{POSIX-resolved-path-str:
+  (mtime_ns, size)}`` for every regular file under a root. Used by
+  S2-05 as belt-and-suspenders fixture-immutability invariant; not
+  the cache-key proof (ADR-0002 derives cache keys from
+  ``content_hash``, not live ``os.stat``). Keys are POSIX-form
+  resolved strings to dodge the macOS case-insensitive-FS Path-equality
+  foot-gun documented in ADR-0002.
+- :data:`WARM_PATH_CACHE_HIT_PROBES` — frozenset of probe names whose
+  warm-path cache invariant is exercised by ``tests/integration/probes/
+  test_cache_hit_on_real_repo.py``. S5-05 extends to all six probes by
+  adding entries here — **zero** edits to any test function body.
 
 The ``_disable_cli_configure_logging`` autouse fixture below is the
 load-bearing seam disablement: ``click.testing.CliRunner.invoke``
@@ -50,21 +66,37 @@ import shutil
 import types
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 import yaml
 
 import codegenie.exec as _exec_mod
 import codegenie.probes.node_build_system as _nbs_mod
+from tests.smoke.conftest import _install_scandir_counter
 
 __all__ = [
+    "WARM_PATH_CACHE_HIT_PROBES",
     "_copy_tree",
     "_count_memo_events",
+    "_install_scandir_counter",
     "_load_envelope",
     "_minimal_valid_envelope",
+    "_stat_snapshot",
     "_stub_node_version_check",
 ]
+
+
+WARM_PATH_CACHE_HIT_PROBES: Final[frozenset[str]] = frozenset(
+    {"language_detection", "node_build_system"}
+)
+"""Probes whose warm-path cache invariant is asserted by S2-05's
+metamorphic pair. S5-05 extends to all six Layer-A probes by adding
+entries here — the test bodies parametrize over this frozenset, so no
+test-function-body edits are required.
+
+(Open/Closed at the file boundary; CLAUDE.md "Extension by addition".)
+"""
 
 
 def _copy_tree(src: Path, dst: Path) -> Path:
@@ -129,6 +161,33 @@ def _minimal_valid_envelope() -> dict[str, Any]:
         "generated_at": "2026-05-14T00:00:00Z",
         "repo": {"root": "test-repo", "git_commit": None},
         "probes": {},
+    }
+
+
+def _stat_snapshot(root: Path) -> dict[str, tuple[int, int]]:
+    """Return ``{POSIX-resolved-path-str: (mtime_ns, size)}`` for every
+    regular file under ``root``, **excluding** the codegenie output
+    namespace ``<root>/.codegenie/`` (which the gather legitimately
+    writes to on every run).
+
+    Keys are POSIX-form resolved strings — *not* :class:`pathlib.Path` —
+    to dodge the macOS case-insensitive-FS Path-equality foot-gun
+    documented in ADR-0002 (two distinct Path instances on a
+    case-insensitive volume compare equal even when their bytes differ,
+    silently masking drift between cold and warm gathers).
+
+    Used as a belt-and-suspenders fixture-immutability invariant: the
+    **fixture inputs** must not drift between two successive gathers.
+    The actual cache-key invariance proof lives in the structlog
+    ``probe.success``/``probe.cache_hit`` ``cache_key`` byte-equality
+    assertion (ADR-0002 routes cache keys through ``content_hash``, not
+    live ``os.stat``, so this snapshot is *not* the cache-key proof).
+    """
+    output_ns = (root / ".codegenie").resolve()
+    return {
+        str(p.resolve()): (p.stat().st_mtime_ns, p.stat().st_size)
+        for p in root.rglob("*")
+        if p.is_file() and output_ns not in p.resolve().parents
     }
 
 
