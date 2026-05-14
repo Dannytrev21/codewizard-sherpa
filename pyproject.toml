@@ -148,6 +148,17 @@ disallow_untyped_decorators = false
 module = "codegenie.probes.base"
 disable_error_code = ["empty-body"]
 
+[[tool.mypy.overrides]]
+# `pyarn` is an optional Phase 1 dependency gated by ADR-0003's land-time
+# selection (S3-03 chose hand-rolled). When it IS installed (parity-test
+# CI matrix job per S3-04 AC-2), mypy reports `import-untyped` because
+# pyarn ships no `py.typed` marker; when NOT installed it reports
+# `import-not-found`. `ignore_missing_imports` covers both states with
+# one declaration so `_yarn._pyarn_parse` does not need a brittle
+# per-line ignore that flips on every install-state toggle.
+module = ["pyarn", "pyarn.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # asyncio_mode = "auto" lets coroutine tests run without @pytest.mark.asyncio
 # — S3-05's coordinator tests depend on this.

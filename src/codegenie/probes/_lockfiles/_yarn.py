@@ -94,6 +94,24 @@ class YarnLock(TypedDict, total=False):
     entries: dict[str, YarnLockEntry]
 
 
+def _dequote_entry_header(header: str) -> str:
+    """Normalize a yarn-classic entry-header to the post-adapter shape.
+
+    Single-spec headers (``lodash@^4.17.21``) round-trip with no change.
+    Quoted single-spec headers (``"@types/node@^20"``) strip the outer
+    quotes. Comma-joined multi-spec headers (``"foo@^1", "foo@^2"``)
+    split on the inner ``", "`` separator and re-join with bare ``, `` so
+    parser output matches the ``_pyarn_parse`` adapter shape exercised by
+    the S3-04 parity test. Without this, the parity test fails on the
+    ``multi_spec_shared_header`` fixture because the hand-rolled path
+    leaves the embedded quote-comma-quote intact.
+    """
+    if header.startswith('"'):
+        parts = [piece.strip().strip('"') for piece in header.split('", "')]
+        return ", ".join(parts)
+    return header.strip('"')
+
+
 def _parse_handrolled(body: bytes) -> YarnLock:
     """Line-by-line state machine; no regex over the full body.
 
@@ -123,7 +141,7 @@ def _parse_handrolled(body: bytes) -> YarnLock:
                 entries[current_key] = cast(YarnLockEntry, current_entry)
             if not line.endswith(":"):
                 raise ValueError(f"expected entry header ending in ':', got {line!r}")
-            current_key = line[:-1].strip().strip('"')
+            current_key = _dequote_entry_header(line[:-1].strip())
             current_entry = {}
             current_subblock = None
         elif line.startswith("    ") and current_subblock is not None:
@@ -140,8 +158,14 @@ def _parse_handrolled(body: bytes) -> YarnLock:
 
     if current_key is not None:
         entries[current_key] = cast(YarnLockEntry, current_entry)
-    if not entries:
-        raise ValueError("no yarn.lock entries parsed")
+    # S3-04 fix: a comments-only / blank yarn.lock parses to an empty
+    # entries map (not a MalformedLockfileError). Yarn never emits a
+    # truly-empty lockfile in practice, but the oracle test's empty
+    # corpus fixture pins invariant 3 at the zero-boundary — without
+    # it, a parser that always emits one phantom entry would slip
+    # invariants 1 and 2 trivially on every non-empty fixture.
+    # Malformed bytes (non-comment, non-header lines) still raise
+    # ValueError via the "expected entry header" branch above.
     return {"entries": entries}
 
 
@@ -159,7 +183,7 @@ def _pyarn_parse(body: bytes) -> YarnLock:
     Any exception from pyarn propagates and is translated to
     :class:`MalformedLockfileError` by :func:`parse`.
     """
-    import pyarn.lockfile  # type: ignore[import-not-found]
+    import pyarn.lockfile
 
     lock = pyarn.lockfile.Lockfile.from_str(body.decode("utf-8"))
     return cast(YarnLock, {"entries": cast(dict[str, YarnLockEntry], lock.data)})

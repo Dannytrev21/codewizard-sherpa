@@ -665,3 +665,51 @@ own `pyproject.toml -> license` field; reject incompatibilities loud
 (Rule 12). The `_attempts/` log records the verified pyarn API
 surface anyway so a future re-adoption (after upstream re-license or
 own-project re-license) doesn't repeat the API verification work.
+
+## L-33 — Property-based oracles ship parser bugs on first run (S3-04)
+
+A property-based oracle derived from input bytes (not from the
+parser's implementation) is load-bearing precisely because both
+parsers can drift together. S3-04's oracle + parity tests landed on
+the curated yarn corpus and immediately caught **two** real S3-03
+bugs at first parametrize: (1) the hand-rolled scanner raised
+`ValueError("no yarn.lock entries parsed")` on comments-only bodies
+— the empty fixture pinned the zero-boundary on invariant 3; (2) the
+hand-rolled scanner left embedded `", "` separators inside
+multi-spec quoted entry-headers — the parity test caught a literal
+key-string divergence from pyarn.
+
+**Apply to:** every future parser story (npm package-lock, pnpm
+lockfile, Helm chart manifests, etc.). The fixture-based parity test
+is necessary but not sufficient — without a bytes-derived oracle,
+two parser implementations that share a bug also share a green CI.
+
+**Don't:** patch the oracle invariant to "tolerate" the bug. Per
+S3-04's story-text Implementation-outline step 3 ("fix S3-03 — do
+not relax the invariant"), bytes-derived invariants are immutable
+contracts. If a future yarn-berry locator shape surfaces, add a new
+anchor position to `_name_appears_anchored` — do not drop anchoring.
+
+## L-34 — Optional dependencies belong in `mypy.overrides`, not per-line ignores (S3-04)
+
+`# type: ignore[import-not-found]` works only when the optional
+package is **uninstalled**. The instant it gets installed (S3-04's
+parity-test sanity-check installed `pyarn` locally; CI's parity
+matrix job will install it permanently), mypy switches to
+`import-untyped` (no `py.typed` marker → still untyped, but the
+package resolves). The per-line ignore flips between
+`[import-not-found]` and `[import-untyped]` on every install-state
+change, and the `[import-not-found,import-untyped]` tuple-form is
+treated as a single unit, leaving an "unused" diagnostic on whichever
+arm doesn't match.
+
+**Apply to:** any conditional dependency (Phase 1 has `pyarn` only;
+future phases may add SCIP/LSIF clients, container-build SDKs,
+etc.). Use `[[tool.mypy.overrides]]` with `module = ["pkg", "pkg.*"]`
++ `ignore_missing_imports = true` — one declaration covers both
+states.
+
+**Don't:** rely on the per-line ignore round-tripping through
+install-state changes. Don't add both ignores at once
+(`# type: ignore[import-not-found,import-untyped]`); mypy's
+unused-ignore logic flags whichever isn't currently triggering.
