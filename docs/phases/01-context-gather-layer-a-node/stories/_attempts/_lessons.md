@@ -422,3 +422,71 @@ test invocation.
   in S2-03), not a CI test; the real load-bearing assertions live in
   S2-04 / S2-05 / S5-05 where the temp-dir / `tmp_path` fixture isolates
   the output namespace.
+
+## L-25 — Story slice-path ACs sometimes outdrift the schema (S2-04)
+
+Hardened-story ACs for cross-probe integration tests can reference flat
+slice paths (`probes.<name>.errors`, `probes.<name>.confidence`) that the
+production schema actually nests one level deeper (`probes.<name>.<wrapper>.warnings`,
+where `<wrapper>` is `language_stack` for LD and `build_system` for NBS).
+ProbeOutput's `errors[]` / `warnings[]` / `confidence` aren't shallow-merged
+into the envelope — only `schema_slice` is. Verify the assertion against the
+**rendered envelope shape** (open one YAML before writing the test), not
+the field names on `ProbeOutput`.
+
+- **Apply to:** S2-05 (asserting cache-hit slice content), S5-05 (six-probe
+  end-to-end), every future cross-probe integration test that consumes the
+  envelope.
+- **Workaround:** for "no silent degradation" intent, assert via captured
+  structlog events — no `probe.failure` events for the probe under test,
+  and the probe-emitted `probe.success` event (filter out the
+  coordinator-emitted variant that carries `cache_key`) reports
+  `confidence == "high"`.
+- **Don't:** silently change the schema to flatten the slice — that's an
+  ADR-amendable shape change, not an in-story fix. Adapt the test instead
+  and document the deviation in the attempt log.
+
+## L-26 — CLI seam `for_task(..., {"unknown"})` excludes language-filtered probes (S2-04)
+
+Phase 0's `_seam_registry_for_task` calls `default_registry.for_task(
+"__bullet_tracer__", frozenset({"unknown"}))` — but any probe declaring
+`applies_to_languages = ["javascript", "typescript"]` (e.g., `NodeBuildSystemProbe`)
+is filtered out at the seam *before* the coordinator runs the Wave-1
+language-detection prelude. The coordinator's prelude pass produces
+`enriched_snapshot.detected_languages`, but it dispatches the
+probes-passed-in list as-is; the seam pre-filter is the wrong place to
+gate language applicability.
+
+- **Fix applied (S2-04):** seam returns `default_registry.all_probes()`;
+  per-probe `applies()` / no-op-on-missing-inputs is the in-probe gate
+  (e.g., NBS without `package.json` emits a minimal slice with
+  `package_manager: null`). The coordinator's prelude + topological order
+  remains the dispatch authority.
+- **Apply to:** every future Phase 1+ probe with non-`["*"]`
+  `applies_to_languages`. Phase 1's six Layer A probes (LD, NBS,
+  NodeManifest, CI, Deployment, TestInventory) all dispatch through this
+  seam.
+- **Don't:** rebuild a two-pass seam that runs LD, reads detected
+  languages, then re-queries `for_task` — the coordinator already owns the
+  Wave-1/Wave-2 model (`phase-arch-design.md §"Control flow"`).
+
+## L-27 — `node --version` cross-check is environment-dependent (S2-04)
+
+`NodeBuildSystemProbe` runs `node --version` via the allowlist exec seam
+and compares against the fixture's `.nvmrc`. When the dev/CI machine's
+installed Node differs (dev: v25.x; CI ubuntu-24.04 default: v20.x.y), the
+probe emits the soft `node.version_declared_resolved_disagree` warning —
+correct behavior in production but a flake in tests that assert
+"no warnings".
+
+- **Apply to:** every Phase 1 integration test that asserts NBS warnings or
+  confidence — S2-05, S5-05, S6-01 (golden regen).
+- **Fix pattern:** module-locally rebind `codegenie.probes.node_build_system._exec`
+  to a `types.SimpleNamespace` shim whose `run_allowlisted` raises
+  `ToolMissingError`. The global `codegenie.exec` is never mutated. Helper:
+  `_stub_node_version_check(monkeypatch)` in
+  `tests/integration/probes/conftest.py`. Mirrors `_install_scandir_counter`
+  from `tests/smoke/conftest.py` (L-14).
+- **Don't:** monkeypatch `codegenie.exec.run_allowlisted` globally; that
+  mutates the shared module and any test running in the same process that
+  needs `git rev-parse` will lose its allowlist seam.

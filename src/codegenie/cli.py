@@ -237,13 +237,24 @@ def _seam_git_rev_parse(repo_root: Path) -> str | None:
 
 
 def _seam_registry_for_task() -> list[Any]:
-    """Step 6 — resolve the probes the bullet tracer dispatches."""
-    # Importing the probe module triggers its ``@register_probe`` decorator.
-    importlib.import_module("codegenie.probes.language_detection")
+    """Step 6 — resolve the probes the gather dispatches.
+
+    Returns every probe registered at import time. The registry's
+    ``for_task`` filter is bypassed at the seam because pre-gather we only
+    know ``detected_languages = {"unknown"}``; the
+    :func:`codegenie.coordinator.coordinator.gather` prelude pass enriches
+    the snapshot with real language counts after Wave 1 runs, and the
+    coordinator dispatches every passed-in probe regardless. Per-probe
+    "is this applicable" lives in each probe's :meth:`Probe.applies` / its
+    no-op-on-missing-inputs branch (e.g.,
+    :class:`NodeBuildSystemProbe` emits a minimal slice with
+    ``package_manager: null`` when ``package.json`` is absent).
+    """
+    # Importing the probes package triggers every concrete probe module's
+    # ``@register_probe`` decorator (see ``codegenie/probes/__init__.py``).
+    importlib.import_module("codegenie.probes")
     registry_mod = importlib.import_module("codegenie.probes.registry")
-    probe_classes = registry_mod.default_registry.for_task(
-        "__bullet_tracer__", frozenset({"unknown"})
-    )
+    probe_classes = registry_mod.default_registry.all_probes()
     return [cls() for cls in probe_classes]
 
 
