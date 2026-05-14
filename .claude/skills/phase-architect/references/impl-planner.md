@@ -15,6 +15,7 @@ This is **not** another design document. The design is done. You are sequencing 
 2. `docs/phases/NN-<slug>/final-design.md` — for context, especially the Synthesis ledger (so you understand which decisions are settled vs. which are tradeoffs that affect sequencing).
 3. `docs/roadmap.md` — Phase NN section. The Exit criteria are the acceptance test for this phase. Every Step must trace to at least one exit criterion (or to "set up later step that closes criterion X").
 4. `docs/phases/NN-<slug>/ADRs/` (if it exists yet by the time you run) — read the index. ADRs that affect *order* (e.g., "this decision means component X must exist before Y") are sequencing constraints.
+5. **`references/design-patterns-toolkit.md`** (in this skill) — skim, then re-read the "Anti-patterns to flag explicitly" section and the entries the Architect committed to in `phase-arch-design.md` § Design patterns applied. Patterns dictate sequencing in two ways: (a) **contracts-first ordering** flows from Newtype + Smart constructor + Tagged union — domain primitives and wire types must land before the components that consume them; (b) **registry-and-plugin decorators register at import time**, so the registry module must land before any module that uses `@register_*`, and import-side-effect tests (`test_eval_package_imports_no_llm_sdk`, fence-CI assertions) belong in the same step that introduces the registry, not at the end.
 
 You don't need to read the production reference docs or earlier-phase final designs for this stage — those decisions are already encoded in `phase-arch-design.md`.
 
@@ -61,6 +62,14 @@ A one-paragraph rationale for *why this sequence*. Steps are usually ordered by:
 6. **CI gates last only where they have to be.** Most gates land with their step.
 
 Use this rationale, or replace it with the actual ordering principle that fits *this* phase. State the principle explicitly so a reader knows the heuristic.
+
+**Pattern-driven sequencing.** When the Architect committed to specific patterns in `phase-arch-design.md` § Design patterns applied, those patterns impose ordering constraints — surface them here:
+
+- **Newtypes + Smart constructors land in Step 1.** Every domain primitive (`RepoId`, `RunId`, `CaseId`, etc.) needs its newtype + Pydantic model + smart constructor before any consumer can be typed. Skipping this means everything downstream gets typed as `str` and refactored later — three to five days of pain that sequencing avoids.
+- **Plugin / Registry kernels land before their plugins.** `@register_*` decorators only work if the registry module imports first. The registry's import-side-effect tests (no-LLM-SDK guard, no-banned-substring guard) belong in the same step that introduces the registry.
+- **Hexagonal Ports land before Adapters.** The Protocol gets a step; each substrate-specific adapter (subprocess / microVM / Firecracker) gets its own. This is what lets later phases swap substrates by addition.
+- **Tagged unions for state precede the state machine that uses them.** State enum / discriminated union → state machine → tests of state transitions, in that order, in one step or three depending on phase shape.
+- **Type-strict from day 1.** `mypy --strict` and `ruff check` belong in Step 1's done criteria, not "added later" — the cost of retrofitting strict typing across an established package is much higher than the cost of starting strict.
 
 ## Step 1 — <imperative name>
 

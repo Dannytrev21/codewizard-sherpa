@@ -12,6 +12,7 @@ You also write `ADRs/README.md` as the phase's ADR index.
 4. `docs/production/adrs/README.md` — read this for **format and tone**. The phase ADRs match the production ADRs' shape exactly. The production ADRs are your style guide.
 5. A couple of representative production ADRs end-to-end (e.g., `docs/production/adrs/0011-recipe-first-rag-llm-fallback-planning.md` and `docs/production/adrs/0025-per-workflow-cost-cap.md`) — read these to internalize tone, length, and the level of concreteness expected.
 6. `docs/roadmap.md` — Phase NN's section, for the goals these ADRs serve.
+7. **`references/design-patterns-toolkit.md`** (in this skill) — the pattern catalog the Architect committed to. Every ADR you extract should name the pattern it implements (Plugin / Registry, Strategy, Smart constructor, Hexagonal Port + Adapter, Capability, Newtype, Tagged union, Make-illegal-states-unrepresentable, etc.). The pattern name goes in the **Tags** field; the rationale for choosing *that* pattern over alternatives goes in **Options considered** + **Tradeoffs**. ADRs that document *anti-decisions* — "we deliberately did not introduce Strategy on `RubricRunner` because there's exactly one implementation" — are first-class and often more valuable than positive ones; the Architect's "Patterns considered and deliberately rejected" subsection is your richest source of these.
 
 ## What constitutes a phase-level ADR
 
@@ -37,6 +38,8 @@ Sources of ADRs, in priority order:
 4. **Harness-engineering choices** from `phase-arch-design.md` § Harness engineering — logging strategy, idempotence guarantees, replay model.
 5. **Testing strategy choices** that have downstream implications (e.g., "we don't write integration tests in this phase because…").
 6. **Integration contracts** with the next phase that crystallize a commitment.
+7. **Design-pattern commitments** from `phase-arch-design.md` § Design patterns applied — every row in that table is a candidate ADR. The decision is "which pattern, and why this one over the alternatives." Especially ADR-worthy: Newtype-on-domain-primitive (the pattern flows through the codebase and is hard to retrofit), Hexagonal-Port-vs-direct-coupling (locks in substitutability), Plugin/Registry-vs-hardcoded-dispatch (locks in extension-by-addition), Smart-constructor-vs-validate-on-use (locks in invariant enforcement), Tagged-union-vs-boolean-flags (locks in make-illegal-states-unrepresentable).
+8. **Pattern anti-decisions** from `phase-arch-design.md` § Patterns considered and deliberately rejected — these are some of the most useful ADRs because they document *restraint*. An ADR titled "Why we did not introduce a Strategy for `RubricRunner` in Phase 6.5" prevents future contributors from re-introducing premature pluggability.
 
 ## Numbering and naming
 
@@ -64,7 +67,7 @@ Every phase ADR uses this exact shape (matches the production ADR template):
 
 **Status:** Accepted
 **Date:** YYYY-MM-DD
-**Tags:** tag · tag · tag
+**Tags:** <pattern name from toolkit> · tag · tag · tag
 **Related:** ADR-NNNN, [production ADR-NNNN](../../../production/adrs/NNNN-...md), ...
 
 ## Context
@@ -73,15 +76,15 @@ What situation triggered this decision? What forces are in play? Cite specific s
 
 ## Options considered
 
-- **Option A** — one-paragraph summary. What it is, why it was attractive.
-- **Option B** — one-paragraph summary.
-- **Option C** — one-paragraph summary.
+- **Option A** — one-paragraph summary. What it is, why it was attractive. **Pattern:** which pattern from `references/design-patterns-toolkit.md` it implements (or which anti-pattern it would commit).
+- **Option B** — one-paragraph summary. **Pattern:** ...
+- **Option C** — one-paragraph summary. **Pattern:** ...
 
 (2–4 options per ADR. If there really was only one option, this isn't an ADR — it's a description.)
 
 ## Decision
 
-What we chose, stated unambiguously in 1–2 sentences. The reader should be able to read this sentence alone and know what's in the system.
+What we chose, stated unambiguously in 1–2 sentences. The reader should be able to read this sentence alone and know what's in the system. **Name the pattern explicitly** (e.g., "We adopt a Hexagonal Port + Adapter for the sandbox boundary; the kernel depends on the `Sandbox` Protocol, and the substrate (`SubprocessSandbox` initially, `MicroVMSandbox` in Phase 16) implements it.").
 
 ## Tradeoffs
 
@@ -90,6 +93,10 @@ What we chose, stated unambiguously in 1–2 sentences. The reader should be abl
 | ... | ... |
 
 3–6 rows. Be specific. "Cleaner code" is not a gain; "callers don't have to construct ProbeContext manually" is.
+
+## Pattern fit
+
+One short paragraph. Why this pattern *here* — what about the problem makes it the right fit, what would be wrong about applying it (or not) — referencing `references/design-patterns-toolkit.md` by section name. If this ADR is an *anti-decision* ("we did NOT apply Strategy"), state which pattern was tempting and which anti-pattern (premature pluggability, pattern soup, ceremony) it would have created.
 
 ## Consequences
 

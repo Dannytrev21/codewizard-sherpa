@@ -19,6 +19,7 @@ Before writing anything:
 6. `docs/production/adrs/` — read the README index; then read every ADR cited in your phase's section of `roadmap.md` and every ADR referenced in `final-design.md`.
 7. Any `final-design.md` from *prior* phase folders under `docs/phases/` — these are the *committed* architectures of preceding phases. Your design must compose with them.
 8. `CLAUDE.md` — project conventions, especially "Load-bearing architectural commitments" and "Conventions to follow when writing the POC".
+9. **`references/design-patterns-toolkit.md`** (in this skill) — the canonical pattern catalog. Architecture work is where patterns become *committed structure*: a Component-design entry that says "Strategy on `RubricRunner`" lands as classes in the codebase that can't easily be unwound. Apply patterns deliberately. Refuse premature pluggability (Strategy with one implementation), stringly-typed identifiers (newtype every domain primitive — `RepoId`, `RunId`, `CaseId`, `CommitSha`), boolean-flag soup (use sum types), and untyped `dict[str, Any]` interfaces (Pydantic models, always). Honor the toolkit's anti-patterns list; the ADR extractor and impl planner downstream will inherit your pattern choices, so getting them right at architecture time is load-bearing.
 
 Your job is to *synthesize* this context, not to summarize it. The output should read like an architect's spec, not a literature review.
 
@@ -183,6 +184,25 @@ Patterns we apply because they are known to work with LLM agents (even though Ph
 - **Confidence handling:** for any decision that touches the future Trust-Aware gates (ADR-0008), capture how confidence signals will flow.
 - **Error escalation:** when a deterministic component fails, what does it return / raise / log so the next layer can decide whether to retry, fall back, or escalate.
 
+## Design patterns applied
+
+Walk the catalog at `references/design-patterns-toolkit.md` and explicitly name the patterns this architecture commits to. **Three to six entries; not twelve, not zero.** Architecture is where patterns become committed structure — the `Component design` table above already implied them; this table makes them auditable by the ADR extractor and visible to the impl planner.
+
+| Decision (component or interface) | Pattern applied | Why this pattern *here* | Pattern *not* applied (and why) |
+|---|---|---|---|
+| `TaskClassRegistry` | Plugin / Registry (mirrors `@register_probe`) | Extension by addition is a load-bearing project commitment; the registry *is* the kernel-knows-nothing contract | Skipped Strategy-with-context — the registry lookup is the only dispatch needed; one layer, not two |
+| `Sandbox` boundary | Hexagonal Port + Adapter | Substrate (subprocess, microVM, Firecracker) is a deployment-time choice; the Port keeps the runner substrate-agnostic | Skipped Adapter-of-Adapter — direct ports to substrate adapters; no second wrapping layer |
+| `BenchScore` / `BenchCase` | Smart constructor (Pydantic `frozen=True, extra="forbid"`) + Newtype (`CaseId`) | Every constructed instance is valid; every `case_id` is distinguishable from `run_id`/`probe_id` at type-check time | Skipped tagged-union for `(passed, score)` — current shape allows illegal combo `(passed=True, score=None)`; flagged in Gap analysis as a known weakness to revisit |
+| ... | ... | ... | ... |
+
+### Patterns considered and deliberately rejected
+
+A short list (3–6 items). Patterns the problem *seemed* to call for that the architecture decided to skip, with one sentence each on why. (E.g., "No Visitor over the AST — the existing exhaustive `match` dispatch is fine; Visitor would be ceremony." "No Strategy on `RubricRunner` — exactly one implementation lands this phase; revisit when microVM substrate ships in Phase 16+.") This section keeps the architecture honest about pattern restraint and gives the ADR extractor *anti-decisions* to capture (an ADR titled "Why we did not introduce a Strategy for RubricRunner" is sometimes more valuable than the positive ADR).
+
+### Anti-patterns avoided
+
+For each anti-pattern from the toolkit's "flag on sight" list (pattern soup, premature pluggability, stringly-typed identifiers, untyped `dict[str, Any]`, boolean-flag soup, tag-and-dispatch without sum types, capability passed through ten frames, side effects in constructors), state in one line how this architecture avoids it. If the architecture *contains* an anti-pattern despite trying not to, surface it here as a known weakness with a follow-up that becomes a Gap-analysis entry.
+
 ## Edge cases
 
 Enumerate at least 8 edge cases for this phase. For each: how it manifests, how it's detected, what the system does. Pull from the lens designs' "Failure modes" sections and the critic's findings; add anything those missed.
@@ -250,7 +270,7 @@ Roll up the load-bearing tradeoffs from the synthesis ledger in `final-design.md
 
 This is where you earn your keep. What did the synthesis miss, under-specify, or get wrong? What does this architecture add to fix that?
 
-For each gap: one short paragraph stating the gap, then a one-paragraph proposed improvement (concrete, not abstract). At least 3 gaps — if you find fewer, you're not looking hard enough. (Common shapes: under-specified data models, missing failure paths, no story for cross-phase contract evolution, harness decisions skipped, testing strategy missing for a real risk.)
+For each gap: one short paragraph stating the gap, then a one-paragraph proposed improvement (concrete, not abstract). At least 3 gaps — if you find fewer, you're not looking hard enough. (Common shapes: under-specified data models, missing failure paths, no story for cross-phase contract evolution, harness decisions skipped, testing strategy missing for a real risk, **missed design pattern from `references/design-patterns-toolkit.md`** — e.g., a domain primitive flowing as raw `str` instead of a Newtype, a state machine modeled as nested booleans instead of a tagged union, a "pluggable" registry that still has a hardcoded list in the kernel, a `dict[str, Any]` interface where a Pydantic model belongs.)
 
 ### Gap 1: <short title>
 <one paragraph of gap>

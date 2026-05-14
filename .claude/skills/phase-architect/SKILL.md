@@ -110,6 +110,7 @@ The 4+1 view set is canonical. Beyond that, the Architect should also bring:
 - **Idempotence, replay, and determinism** as first-class properties — this is an agentic system; non-deterministic control flow is a smell.
 - **Test pyramid plus property tests and golden files** where applicable. Don't punt the testing strategy to implementation.
 - **Goals AND non-goals.** Non-goals prevent scope creep.
+- **Design-pattern toolkit awareness.** All three agents in this skill consult `references/design-patterns-toolkit.md` (the same catalog used by `roadmap-phase-designer`). The Architect explicitly names the patterns it commits to in a "Design patterns applied" section; the ADR extractor tags each ADR with its pattern and produces *anti-decision* ADRs ("why we did NOT introduce Strategy here") for restraint; the impl planner uses pattern commitments to drive sequencing (Newtypes + Smart constructors land Step 1; Plugin/Registry kernels precede their plugins; type-strict from day 1). Honoring the toolkit's anti-patterns list (pattern soup, premature pluggability, stringly-typed identifiers, boolean-flag soup, untyped `dict[str, Any]`) is non-negotiable — those become Gap-analysis entries when found, not silent acceptance.
 
 ## Tip — running on a phase after the architecture changes
 
