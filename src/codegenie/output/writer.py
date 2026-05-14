@@ -94,12 +94,18 @@ def _refuse_if_symlink(path: Path) -> None:
 
 
 def _atomic_write_bytes(dest: Path, payload: bytes) -> None:
-    """Write ``payload`` to ``dest`` via ``.tmp → fsync → os.replace``.
+    """Write ``payload`` to ``dest`` via per-writer ``.tmp`` + fsync + os.replace.
 
     The ``.tmp`` file is created with mode ``0o600`` so a crash between
-    create and ``os.replace`` cannot leave a world-readable shadow.
+    create and ``os.replace`` cannot leave a world-readable shadow. The
+    tmp filename embeds ``os.getpid()`` + a random short token so two
+    concurrent ``codegenie gather`` processes publishing the same
+    destination do not collide on the shared tmp slot (edge case #12
+    extended to the envelope-write path).
     """
-    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    import secrets as _secrets
+
+    tmp = dest.with_suffix(dest.suffix + f".{os.getpid()}.{_secrets.token_hex(4)}.tmp")
     fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
         os.write(fd, payload)
@@ -110,13 +116,27 @@ def _atomic_write_bytes(dest: Path, payload: bytes) -> None:
 
 
 def _fix_modes_recursively(root: Path) -> None:
-    """Apply ``0o700`` to every dir and ``0o600`` to every file under ``root``."""
-    os.chmod(root, 0o700)
+    """Apply ``0o700`` to every dir and ``0o600`` to every file under ``root``.
+
+    ``FileNotFoundError`` is tolerated mid-walk — another concurrent
+    ``gather`` may publish + replace its own tmp slot between the
+    ``os.walk`` snapshot and our ``os.chmod`` call.
+    """
+    try:
+        os.chmod(root, 0o700)
+    except FileNotFoundError:
+        return
     for dirpath, dirnames, filenames in os.walk(root):
         for d in dirnames:
-            os.chmod(os.path.join(dirpath, d), 0o700)
+            try:
+                os.chmod(os.path.join(dirpath, d), 0o700)
+            except FileNotFoundError:
+                continue
         for f in filenames:
-            os.chmod(os.path.join(dirpath, f), 0o600)
+            try:
+                os.chmod(os.path.join(dirpath, f), 0o600)
+            except FileNotFoundError:
+                continue
 
 
 class Writer:

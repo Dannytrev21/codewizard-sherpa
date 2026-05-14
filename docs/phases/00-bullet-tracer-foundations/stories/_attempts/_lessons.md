@@ -462,3 +462,30 @@ would have benefited from knowing.
   assert on a probe's payload must walk through `probes[<probe.name>]`.
   Discovered in **S4-05** while pinning the symlink-escape closed-world
   counts assertion.
+
+## Concurrency
+
+- **`<dest>.tmp` is NOT a safe atomic-write tmp slot under concurrent
+  same-target writers.** Two processes writing the same final path pick
+  the same `.tmp` filename; first's `os.replace` unlinks the slot, second's
+  `os.replace` raises `FileNotFoundError`. Use a per-writer tmp name
+  (`f"{target.suffix}.{os.getpid()}.{secrets.token_hex(4)}.tmp"`) so each
+  writer owns its own slot. Applied to both
+  `src/codegenie/cache/store.py:_atomic_write_bytes` and
+  `src/codegenie/output/writer.py:_atomic_write_bytes`. Discovered in
+  **S5-01** while pinning edge case #12.
+
+- **`os.walk` + `os.chmod` is racy under sibling-process `os.replace`.**
+  Any post-write directory-walk step (`_reapply_modes`,
+  `_fix_modes_recursively`) must `try / except FileNotFoundError: continue`
+  around each chmod, because a sibling writer's `<dest>.tmp` may be
+  unlinked by its `os.replace` between the `os.walk` listing and the
+  loop's `os.chmod`. Discovered in **S5-01**.
+
+- **`--no-gitignore` is a CLI-group-level flag, not a `gather` subcommand
+  flag.** click binds options left-to-right; the invocation is
+  `python -m codegenie --no-gitignore gather <path>`. Putting the flag
+  after `gather` raises `No such option: --no-gitignore`. The
+  `tests/smoke/test_cli_end_to_end.py:_invoke_gather` helper already
+  encodes this; new tests that shell out to the CLI should mirror it.
+  Discovered in **S5-01**.

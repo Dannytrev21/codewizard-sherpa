@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -115,8 +116,16 @@ def _deserialize_output(blob_bytes: bytes) -> ProbeOutput:
 
 
 def _atomic_write_bytes(target: Path, data: bytes) -> None:
-    """Write ``data`` to ``target`` via ``<target>.tmp`` + fsync + os.replace."""
-    tmp = target.with_suffix(target.suffix + ".tmp")
+    """Write ``data`` to ``target`` via per-writer tmp + fsync + os.replace.
+
+    The tmp filename embeds ``os.getpid()`` + a random short token so two
+    concurrent ``codegenie gather`` processes writing the same blob path
+    do not race on the same ``<target>.tmp`` slot (edge case #12 in
+    ``phase-arch-design.md §789``). Without this disambiguation, the second
+    writer's ``os.replace`` raises ``FileNotFoundError`` after the first's
+    replace has already moved the shared tmp out of the way.
+    """
+    tmp = target.with_suffix(target.suffix + f".{os.getpid()}.{secrets.token_hex(4)}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _FILE_MODE)
     try:
         os.write(fd, data)
@@ -136,14 +145,26 @@ def _reapply_modes(root: Path) -> None:
 
     Idempotent; defeats the ``actions/cache`` umask flattening between
     restore and the next write. Cross-platform safe (Windows treats mode
-    bits as advisory).
+    bits as advisory). ``FileNotFoundError`` is tolerated mid-walk — under
+    concurrent ``put`` calls another process's ``<dest>.tmp`` may be
+    listed by ``os.walk`` and then unlinked by that process's
+    ``os.replace`` before this loop reaches it.
     """
-    os.chmod(root, _DIR_MODE)
+    try:
+        os.chmod(root, _DIR_MODE)
+    except FileNotFoundError:
+        return
     for current, dirs, files in os.walk(root):
         for d in dirs:
-            os.chmod(Path(current) / d, _DIR_MODE)
+            try:
+                os.chmod(Path(current) / d, _DIR_MODE)
+            except FileNotFoundError:
+                continue
         for f in files:
-            os.chmod(Path(current) / f, _FILE_MODE)
+            try:
+                os.chmod(Path(current) / f, _FILE_MODE)
+            except FileNotFoundError:
+                continue
 
 
 class CacheStore:

@@ -157,9 +157,18 @@ testpaths = ["tests"]
 # import the regen helpers from the bare `scripts/regen_probe_contract_snapshot.py`
 # script without promoting `scripts/` to a package.
 pythonpath = ["."]
-# --cov-fail-under=85 is WIRED here; it goes live as a merge gate in S4-04
-# once the vertical slice produces enough real code to clear the floor.
-addopts = "-ra --strict-markers --cov=src/codegenie --cov-branch --cov-fail-under=85"
+# Default selection skips `bench` (advisory canaries — S5-01). Contributors
+# get a fast local loop; CI's `bench` job uses `-m bench` explicitly to opt
+# the three canaries in. `--strict-markers` then forces every `pytest.mark.*`
+# to be declared below.
+addopts = "-ra --strict-markers -m \"not bench\" --cov=src/codegenie --cov-branch --cov-fail-under=85"
+# Registered markers. `bench` partitions the advisory cold-start /
+# coordinator-overhead / cache-hit-dispatch canaries that ship in
+# `tests/bench/` (S5-01); they never gate merge — the structural
+# cold-start defense is `import-linter` (S1-05).
+markers = [
+  "bench: advisory performance canaries — not run under the default suite",
+]
 
 [tool.coverage.run]
 branch = true

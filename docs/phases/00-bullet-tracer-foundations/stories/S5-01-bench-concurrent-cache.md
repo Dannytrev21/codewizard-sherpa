@@ -1,10 +1,32 @@
 # Story S5-01 — Performance canaries + concurrent-cache test
 
 **Step:** Step 5 — Close the remaining CI gates and project conventions
-**Status:** Ready — HARDENED
+**Status:** Done
 **Effort:** S
 **Depends on:** S4-04
 **ADRs honored:** ADR-0001, ADR-0003, ADR-0009, ADR-0011
+
+## Evidence (S5-01 green — 2026-05-13)
+
+- Red test: `tests/unit/test_cache_concurrent.py` — three tests
+  (`test_two_concurrent_gathers_leave_consistent_cache`,
+  `test_concurrent_then_in_process_third_gather_is_cache_hit`,
+  `test_perm_restoration_after_concurrent_runs`). 10/10 stable.
+- Bench harness: `tests/bench/__init__.py`, `tests/bench/_helpers.py`,
+  `tests/bench/test_cli_cold_start.py`,
+  `tests/bench/test_coordinator_overhead.py`,
+  `tests/bench/test_cache_hit_dispatch.py`. `bench` marker registered
+  in `pyproject.toml`; default suite skips bench (`-m "not bench"`).
+- CI workflow: `.github/workflows/ci.yml` — `bench-collection-guard`
+  (gating, asserts 3 collected) + `bench (advisory)` (`continue-on-error:
+  true`) + `actions/upload-artifact@b4b15b8c…` (v4.4.3, SHA-pinned).
+- S3-01 amendment surfaced & fixed: per-writer tmp filenames in
+  `src/codegenie/cache/store.py:_atomic_write_bytes` and
+  `src/codegenie/output/writer.py:_atomic_write_bytes`; `FileNotFoundError`
+  tolerance in `_reapply_modes` / `_fix_modes_recursively`. See
+  `_attempts/S5-01.md` for the full diagnostic.
+- Gates: `make lint && make typecheck && pytest -q` all green;
+  92.71% coverage; `pytest tests/bench/ -m bench` 3/3 green.
 
 ## Validation notes
 

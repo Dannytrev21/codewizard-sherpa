@@ -94,6 +94,37 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run tests
         run: pytest -q
+      # S5-01 — bench canaries. `bench-collection-guard` is GATING: if a
+      # future change renames the marker or filters a file the collection
+      # falls below 3 and the job fails. `bench` itself is ADVISORY
+      # (`continue-on-error: true`); the cold-start canary is variance-prone
+      # on shared CI runners (`phase-arch-design.md §Edge cases row 12`).
+      # `bench-results.json` is uploaded as a workflow artifact so a future
+      # PR-comment action (filed against Phase 1) can consume it.
+      - name: bench-collection-guard
+        run: |
+          set -euo pipefail
+          collected=$(pytest --collect-only -m bench tests/bench/ -q --no-header --no-cov 2>/dev/null | grep -c '::test_' || true)
+          echo "bench tests collected: ${collected}"
+          if [ "${collected}" -ne 3 ]; then
+            echo "expected exactly 3 bench tests (S5-01); got ${collected}" >&2
+            exit 1
+          fi
+      - name: bench (advisory)
+        continue-on-error: true
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: pytest tests/bench/ -m bench -q --tb=short --no-cov
+      - name: Upload bench-results.json
+        if: always()
+        # actions/upload-artifact v4.4.3 — SHA-pinned per ADR-0002. Do NOT
+        # replace with `@v4` (floating tag); the SHA is the supply-chain
+        # anchor.
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: bench-results
+          path: bench-results.json
+          if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
   # Job 4: security — pip-audit + osv-scanner against uv.lock.

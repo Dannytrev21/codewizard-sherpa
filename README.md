@@ -64,7 +64,7 @@ Every PR runs through six SHA-pinned jobs across Python 3.11 / 3.12 ×
 |---|---|---|
 | `lint` | `make lint` (ruff) + `make lint-imports` (import-linter) | Structural cold-start defense — blocks heavy modules from `codegenie.cli` and `codegenie/__init__.py` |
 | `typecheck` | `make typecheck` (mypy `--strict`) | Catches narrowed-type drift early |
-| `test` | `pytest -q` (Phase 0 carve-out: `--cov-fail-under=0`; live floor lands in S4-04) | Full suite |
+| `test` | `pytest -q` (default selection excludes `-m bench` — advisory canaries opt in via the `bench` step) + `bench-collection-guard` (gating, asserts exactly 3 bench tests) + advisory `bench` step (`continue-on-error: true`, uploads `bench-results.json` artifact) | Full suite + advisory perf canaries |
 | `security` | `pip-audit` + `osv-scanner` against `uv.lock` | Supply-chain advisories; HIGH/CRITICAL fails the job |
 | `docs` | `mkdocs build --strict` (path-filtered on `docs/**` + `mkdocs.yml`) | Docs gate |
 | `fence` | `pytest -q tests/unit/test_pyproject_fence.py` after a two-step bare install | **Load-bearing ADR-0002 gate** — refuses any LLM SDK in the gather-pipeline runtime closure |
