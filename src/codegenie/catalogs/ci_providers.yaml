@@ -1,0 +1,24 @@
+# codegenie CI-provider catalog (Phase 1 seed; ADR-0006).
+#
+# `marker_paths` is the per-provider glob set CIProbe uses to detect a
+# provider's presence in a repo. The `parser` key is the discriminator
+# CIProbe routes on — its arms are pinned by the Python-level Literal on
+# CIProviderEntry.parser; the YAML schema stays open for Phase 4+
+# extension (Notes-for-implementer #6 of the story).
+catalog_version: 1
+entries:
+  - name: github_actions
+    marker_paths: [".github/workflows/*.yml", ".github/workflows/*.yaml"]
+    parser: github_actions
+  - name: gitlab_ci
+    marker_paths: [".gitlab-ci.yml"]
+    parser: gitlab_ci
+  - name: circleci
+    marker_paths: [".circleci/config.yml"]
+    parser: circleci
+  - name: jenkins
+    marker_paths: ["Jenkinsfile"]
+    parser: jenkins
+  - name: azure_pipelines
+    marker_paths: ["azure-pipelines.yml"]
+    parser: azure_pipelines

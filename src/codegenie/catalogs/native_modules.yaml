@@ -1,0 +1,72 @@
+# codegenie native-module catalog (Phase 1 seed; ADR-0006).
+#
+# `catalog_version` participates in NodeManifestProbe's cache key via
+# `declared_inputs` — bumping it invalidates every cached node_manifest
+# slice. `catalog_entry_version` is per-entry audit metadata.
+#
+# Phase 7's distroless migration is the load-bearing consumer; values for
+# `system_deps_required` should reflect the runtime libraries Chainguard's
+# distroless base lacks. Gaps surface in Phase 7 and are filed as YAML PRs
+# bumping the relevant `catalog_entry_version` (and `catalog_version`).
+catalog_version: 1
+entries:
+  - name: bcrypt
+    requires_node_gyp: true
+    system_deps_required: [libstdc++]
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "bcrypt — native bindings to OpenBSD's bcrypt"
+    catalog_entry_version: 1
+  - name: sharp
+    requires_node_gyp: true
+    system_deps_required: [libvips]
+    binary_artifacts_glob: ["build/Release/*.node", "vendor/**/*"]
+    notes: "sharp — libvips image-processing wrapper"
+    catalog_entry_version: 1
+  - name: better-sqlite3
+    requires_node_gyp: true
+    system_deps_required: []
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "better-sqlite3 — bundled SQLite; statically linked"
+    catalog_entry_version: 1
+  - name: node-canvas
+    requires_node_gyp: true
+    system_deps_required: [libcairo2, libjpeg, libpango-1.0]
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "node-canvas — Cairo-backed canvas API"
+    catalog_entry_version: 1
+  - name: node-rdkafka
+    requires_node_gyp: true
+    system_deps_required: [librdkafka]
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "node-rdkafka — librdkafka bindings"
+    catalog_entry_version: 1
+  - name: node-pty
+    requires_node_gyp: true
+    system_deps_required: []
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "node-pty — pseudo-terminal forking"
+    catalog_entry_version: 1
+  - name: bufferutil
+    requires_node_gyp: true
+    system_deps_required: []
+    binary_artifacts_glob: ["build/Release/*.node", "prebuilds/**/*.node"]
+    notes: "bufferutil — ws performance helpers"
+    catalog_entry_version: 1
+  - name: utf-8-validate
+    requires_node_gyp: true
+    system_deps_required: []
+    binary_artifacts_glob: ["build/Release/*.node", "prebuilds/**/*.node"]
+    notes: "utf-8-validate — ws performance helpers"
+    catalog_entry_version: 1
+  - name: argon2
+    requires_node_gyp: true
+    system_deps_required: []
+    binary_artifacts_glob: ["build/Release/*.node", "prebuilds/**/*.node"]
+    notes: "argon2 — Argon2 password hashing"
+    catalog_entry_version: 1
+  - name: keytar
+    requires_node_gyp: true
+    system_deps_required: [libsecret-1-0]
+    binary_artifacts_glob: ["build/Release/*.node"]
+    notes: "keytar — OS keychain bindings (Linux: libsecret)"
+    catalog_entry_version: 1

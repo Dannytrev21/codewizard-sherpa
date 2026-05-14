@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codegenie.dev/catalogs/_schema.json",
+  "title": "codegenie catalogs self-schema",
+  "$defs": {
+    "native_modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog_version", "entries"],
+      "properties": {
+        "catalog_version": {"type": "integer", "minimum": 1},
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "requires_node_gyp",
+              "system_deps_required",
+              "binary_artifacts_glob",
+              "notes",
+              "catalog_entry_version"
+            ],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "requires_node_gyp": {"type": "boolean"},
+              "system_deps_required": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "binary_artifacts_glob": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "notes": {"type": "string"},
+              "catalog_entry_version": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "ci_providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog_version", "entries"],
+      "properties": {
+        "catalog_version": {"type": "integer", "minimum": 1},
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "marker_paths", "parser"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "marker_paths": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string"}
+              },
+              "parser": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}
