@@ -282,8 +282,9 @@ Every probe implements one interface. The interface is the same in this POC as i
 # codegenie/probes/base.py
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal, Any
+from typing import Literal, Any, NamedTuple
 from pathlib import Path
 from logging import Logger
 
@@ -299,6 +300,14 @@ class Task:
     type: str                # "distroless_migration", "vuln_remediation", etc.
     options: dict[str, Any]  # task-specific parameters
 
+# Phase 1 contract type (ADR-0002, phase-arch-design.md §"Gap analysis" Gap 1).
+# NamedTuple gives auto-hash + value-equality for frozenset membership.
+class InputFingerprint(NamedTuple):
+    path: str            # absolute POSIX-form string; coordinator normalizes at fingerprint time
+    mtime_ns: int        # os.stat result, nanosecond precision
+    size: int            # bytes
+    content_hash: str    # blake3 hex digest of the file's bytes
+
 @dataclass
 class ProbeContext:
     cache_dir: Path
@@ -306,6 +315,9 @@ class ProbeContext:
     workspace: Path            # ephemeral workspace for the probe
     logger: Logger
     config: dict[str, Any]
+    # Phase 1 additions (ADR-0002). No further extensions without ADR amendment.
+    parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
+    input_snapshot: frozenset["InputFingerprint"] | None = None
 
 @dataclass
 class ProbeOutput:

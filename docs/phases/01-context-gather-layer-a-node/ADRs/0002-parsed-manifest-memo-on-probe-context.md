@@ -2,8 +2,11 @@
 
 **Status:** Accepted
 **Date:** 2026-05-12
-**Tags:** coordinator · probe-context · performance · chokepoint-preservation
+**Last amended:** 2026-05-14 (S1-06 — add `input_snapshot` + `InputFingerprint`)
+**Tags:** coordinator · probe-context · performance · chokepoint-preservation · toctou
 **Related:** ADR-0008, [Phase 0 ADR-0009](../../00-bullet-tracer-foundations/ADRs/0009-cache-hit-pass-through-coordinator-output.md), [Phase 0 ADR-0010](../../00-bullet-tracer-foundations/ADRs/0010-pydantic-probe-output-validator.md), [Phase 0 ADR-0008](../../00-bullet-tracer-foundations/ADRs/0008-output-sanitizer-two-pass-chokepoint.md)
+
+> **Amendment scope (2026-05-14, S1-06):** this ADR is the single Phase-0-contract amendment for the entire Phase 1. The amendment adds `input_snapshot: frozenset[InputFingerprint] | None = None` and the companion `InputFingerprint` `NamedTuple` to `src/codegenie/probes/base.py`, alongside the original `parsed_manifest` seam. **No further extensions to `ProbeContext` are permitted in Phase 1 without a new ADR.** The dedicated sentinel test `test_probe_context_field_list_matches_adr_0002_amendment` in `tests/unit/test_probe_contract.py` hard-codes the allowed 7-field tuple and fails CI naming this ADR the moment a third future field appears.
 
 ## Context
 
@@ -21,7 +24,24 @@ The security lens's sandbox would force re-parse per fork ([final-design] "Confl
 
 ## Decision
 
-**Introduce `ParsedManifestMemo` in `src/codegenie/coordinator/parsed_manifest_memo.py`.** The coordinator constructs one per `gather()` invocation, then exposes it to each probe via `ProbeContext.parsed_manifest: Callable[[Path], Mapping[str, JSONValue] | None] | None` (defaulting to `None`).
+**Two additive optional fields are appended to the Phase-0 `ProbeContext` dataclass** in `src/codegenie/probes/base.py` (the contract surface), both defaulting to `None` so every existing construction site (Phase 0 probes, tests, the coordinator) keeps working unchanged:
+
+1. `parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None` — the memo seam. The coordinator constructs a per-gather `ParsedManifestMemo` (`src/codegenie/coordinator/parsed_manifest_memo.py`, S1-07) and exposes its `get` method here.
+2. `input_snapshot: frozenset[InputFingerprint] | None = None` — the pre-dispatch input-snapshot pass (`phase-arch-design.md §"Gap analysis"` Gap 1, S1-08). The coordinator walks each probe's `declared_inputs`, stats + content-hashes every match exactly once, populates the `frozenset` and pins it on the per-gather `ProbeContext`. Cache-key derivation moves to `content_hash` (not live `os.stat`), closing the TOCTOU window load-bearing for Phase 14's continuous-gather concurrent-edit threat model.
+
+The companion contract type `InputFingerprint` is a `typing.NamedTuple` defined in `base.py` alongside `ProbeContext`:
+
+```python
+class InputFingerprint(NamedTuple):
+    path: str            # absolute POSIX-form string (cross-platform hashable + comparable)
+    mtime_ns: int        # os.stat result
+    size: int            # bytes
+    content_hash: str    # blake3 hex digest
+```
+
+`NamedTuple` is chosen so the type is auto-hashable for `frozenset[InputFingerprint]` membership without `dataclass(frozen=True, eq=True)` boilerplate. `InputFingerprint` lives in `base.py` (not in `coordinator/`) because it is a contract type — coordinator produces, probes consume via `ctx.input_snapshot` — and the stdlib-only fence on `base.py` is preserved (its only new import is `from collections.abc import Callable, Mapping`).
+
+### `ParsedManifestMemo` semantics
 
 - **Key:** `(absolute_path, mtime_ns, size)` for TOCTOU safety. A file changed mid-gather re-parses.
 - **Allowlist:** Phase 1 allows only `{"package.json"}`. Future allowlist additions are additive.
@@ -29,6 +49,13 @@ The security lens's sandbox would force re-parse per fork ([final-design] "Confl
 - **Immutability:** parsed dicts returned wrapped in `types.MappingProxyType` at the top level; nested dicts/lists are returned by reference with `Mapping`-typed signatures (mutation is a mypy error).
 - **Fallback:** each probe defensive-checks `ctx.parsed_manifest is not None` and falls back to direct `safe_json.load(...)`. Same correctness; 3× parse cost.
 - **Failures don't cache:** if `safe_json.load` raises (cap exceeded, malformed), the memo does not store the result; the next probe retries and sees the same error.
+
+### `input_snapshot` semantics
+
+- **Source of truth for cache keys.** Probe cache keys are derived from the `content_hash` of each declared-input entry, not from a live `os.stat` at cache-key time. A file changed between snapshot-pass and probe-dispatch does not silently invalidate the cache key.
+- **Pre-dispatch single-pass.** The coordinator stats + hashes each file once at the start of a gather; ~5 ms of pre-dispatch I/O per repo.
+- **Fallback:** probes defensive-check `ctx.input_snapshot is not None` (Edge case 12 in `phase-arch-design.md`) and fall back to live `os.stat` if absent — same correctness, TOCTOU window reopens.
+- **Why `path: str` and not `Path`:** macOS's case-insensitive filesystem makes `Path` equality a foot-gun (`Path("/a/B") != Path("/a/b")` but both stat the same file). The coordinator normalizes to an absolute POSIX-form string at fingerprint time.
 
 ## Tradeoffs
 
@@ -43,12 +70,14 @@ The security lens's sandbox would force re-parse per fork ([final-design] "Confl
 
 ## Consequences
 
-- `src/codegenie/coordinator/parsed_manifest_memo.py` is a new file; `ProbeContext` gains one optional field.
+- `src/codegenie/coordinator/parsed_manifest_memo.py` is a new file; `ProbeContext` gains **two** optional fields (`parsed_manifest`, `input_snapshot`) and `base.py` gains the `InputFingerprint` `NamedTuple` (S1-06).
 - Probes that opt in route their `package.json` read through `ctx.parsed_manifest(repo_root / "package.json")` first, then fall back to `safe_json.load`. The pattern is a one-helper-function pattern; the lockfile parsers and other parse work continue to call `safe_json` / `safe_yaml` directly.
 - Phase 2's `IndexHealthProbe` reuses the memo at zero implementation cost.
 - The audit anchor (Phase 0 ADR-0004) gains a sibling event family `probe.memo.hit` / `probe.memo.miss` for instrumentation; cache-key derivation is unaffected.
 - `tests/unit/probes/test_parsed_manifest_memo.py` covers first-call parses, subsequent-call returns memoized, `mtime` change re-parses, and the falsy-memo fallback path.
-- The Gap #1 improvement in `phase-arch-design.md` (pre-dispatch input-snapshot pass) is documented as a future amendment to this ADR if Phase 14's concurrent-gather threat model demands it.
+- **Resolved in this ADR (2026-05-14 amendment):** the Gap #1 improvement in `phase-arch-design.md` (pre-dispatch input-snapshot pass) is no longer deferred; it is implemented under `input_snapshot` + `InputFingerprint` as part of this ADR's scope (S1-06 declares the seam; S1-08 lands the coordinator pass). Cache-key derivation moves to `content_hash` per-input rather than live `os.stat`.
+- `tests/unit/test_probe_contract.py` gains the ADR-0002 sentinel test `test_probe_context_field_list_matches_adr_0002_amendment` (hard-coded 7-field tuple) plus an `InputFingerprint` mutation-killer tier and doc-grep tests on `localv2.md §4` and this ADR. Adding a third field to `ProbeContext` fails CI with a message naming this ADR.
+- The stdlib-only fence on `base.py` is widened by exactly `"collections"` (admits `from collections.abc import Callable, Mapping`); `ALLOWED_BASE_PY_IMPORTS` is pinned by `test_allowed_base_py_imports_includes_collections` so a future revert is a loud regression.
 
 ## Reversibility
 
