@@ -60,9 +60,10 @@ Read everything before writing anything. Produce a one-page **Context Brief** in
 ReAct as the outer loop (Thought → Action → Observation), red-green-refactor as the inner discipline. One AC at a time. Write the failing test first. Smallest code to pass. Refactor while green. Every Thought-Action-Observation triple is journaled.
 
 → See [`references/implementer.md`](references/implementer.md) for the ReAct discipline and TDD rules.
+→ See [`references/design-patterns.md`](references/design-patterns.md) for the refactor-step pattern lens (registry, strategy, ports/adapters, newtype, tagged union, smart constructor, etc.) and the anti-pattern smell list.
 → See [`references/techniques.md`](references/techniques.md) for ReAct + Reflexion + CoV background.
 
-**Exit gate:** every AC in the story has at least one test exercising it, all tests pass locally, lint + type-check are clean.
+**Exit gate:** every AC in the story has at least one test exercising it, all tests pass locally, lint + type-check are clean, and the design-patterns refactor checklist (see [`references/design-patterns.md`](references/design-patterns.md) §"During Stage 2 refactor") has been walked once.
 
 ### Stage 3 — Validator (Ralph Wiggum naive verification)
 
@@ -71,6 +72,7 @@ Skeptical fresh-eyes pass. Re-explain each AC in the simplest, most literal term
 Also runs cross-cutting gates: full test suite, ruff, mypy, pre-commit if configured.
 
 → See [`references/validator.md`](references/validator.md) for the Ralph Wiggum frame and report format.
+→ See [`references/design-patterns.md`](references/design-patterns.md) §"During Stage 3 validation" for the design-quality gate (anti-pattern smells the validator catches in code this story adds).
 
 **Decision:**
 - All ACs pass + all gates green → proceed to Stage 4
@@ -95,6 +97,8 @@ A story is complete only when ALL of these hold:
 - [ ] Every file listed in "Files to touch" has been touched (created or modified) — or the story file itself is amended to remove a file with a one-line reason
 - [ ] Documentation updates from the story's Files-to-touch section are merged
 - [ ] Stage 3 Validator signed off all ACs and all gates
+- [ ] Design-patterns refactor checklist walked (see [`references/design-patterns.md`](references/design-patterns.md)); any patterns intentionally applied or deferred are recorded under "Refactor decisions" in the attempt log
+- [ ] No anti-patterns from [`references/design-patterns.md`](references/design-patterns.md) §"Anti-patterns the validator should flag" introduced by this story's code
 - [ ] Attempt log + cross-story lessons written
 - [ ] `Status: Done` in story file with evidence block
 
@@ -105,6 +109,7 @@ Anything less = the skill stopped early. Surface the gap explicitly. Do not clai
 - **Match the codebase's conventions** (Rule 11). Read `CLAUDE.md` once at the top of Stage 1 and apply throughout.
 - **Surgical changes** (Rule 3). Touch only what the story names. If you spot something else worth fixing, log it as a follow-up — don't silently fold it in.
 - **Simplicity first** (Rule 2). Minimum code that satisfies the test. No speculative features.
+- **Design patterns as a refactor lens, not a checklist.** Reinforce the patterns this codebase already uses (Plugin/Registry, Capability, chokepoint modules, Pipeline, strict typing, markers-only exceptions, functional core / imperative shell) and reach for additional patterns (Strategy, Newtype, Tagged union, Smart constructor, Ports & Adapters) only when the code naturally calls for them. The full menu — including the project-aligned reinforcements, the "reach-for-when-it-fits" list, and the anti-pattern smells — lives in [`references/design-patterns.md`](references/design-patterns.md). Premature abstraction violates Rule 2; missing an obvious pattern violates Rule 11.
 - **Documentation as you go**. New module → one-paragraph docstring. New CLI command → mkdocs nav entry. New config knob → entry in the relevant `references/` doc.
 - **No LLM in deterministic transforms** (Rule 5). Parsing, path manipulation, exit codes, test discovery — use plain code. The model is for judgment, drafting, classification.
 - **Fail loud** (Rule 12). Skipped test? Say so. Missing evidence? Say so. Validator partial? Say so.
@@ -125,6 +130,7 @@ Anything less = the skill stopped early. Surface the gap explicitly. Do not clai
 
 - [`references/context-loader.md`](references/context-loader.md) — what to read, in what order, what to extract
 - [`references/implementer.md`](references/implementer.md) — ReAct + red-green-refactor TDD discipline
+- [`references/design-patterns.md`](references/design-patterns.md) — refactor-step pattern lens + anti-pattern smells the validator flags
 - [`references/validator.md`](references/validator.md) — Ralph Wiggum naive-verification pass
 - [`references/reflector.md`](references/reflector.md) — attempt log + lessons-learned format
 - [`references/techniques.md`](references/techniques.md) — ReAct, Reflexion, Ralph Wiggum, Chain-of-Verification, self-consistency: when to use which

@@ -59,8 +59,40 @@ Beyond per-AC checks, run these gates and record exit codes + summaries:
 | Type-check | `mypy` (if configured) | No new errors |
 | Pre-commit | `pre-commit run --all-files` (if wired) | All hooks pass |
 | Files-to-touch | shell `ls` on every path in story's section | Every file exists with non-trivial content |
+| Design quality | walk [`design-patterns.md`](design-patterns.md) §"Anti-patterns the validator should flag" against code this story added | No anti-pattern smells in story-added code; project-aligned patterns (Plugin/Registry, Capability, chokepoint modules, Markers-only exceptions, strict typing) reinforced rather than worked around |
 
 If any gate fails, the validation result is **FAIL** — return to Stage 2.
+
+### Design-quality gate — what to look for
+
+Open [`design-patterns.md`](design-patterns.md) and skim the
+anti-pattern table against the files this story *added or modified*
+(not the rest of the codebase — Rule 3). Specifically:
+
+- `Any` in any new function signature on `src/`? → FAIL.
+- Raw `str` / `int` for an identifier with a semantic (e.g., a probe
+  name, a warning id, a cache key)? → FAIL — should be a `NewType` or
+  a frozen dataclass.
+- New `if/elif` ladder over a closed set of subclasses or string tags?
+  → FAIL — tagged union or strategy dispatch.
+- A dangerous operation (`os.open`, `subprocess.run`, `hashlib.*`,
+  `yaml.load`, …) used directly when a chokepoint module exists
+  (`safe_json`, `exec.run_allowlisted`, `hashing.content_hash`, …)?
+  → FAIL — route through the chokepoint.
+- `except Exception` / `except BaseException` introduced? → FAIL —
+  narrow to the specific subclass that's actually expected.
+- New mutable module-level state without `Final` typing? → FAIL.
+- New class inherits from a class that already has its own non-ABC
+  parent (two-level concrete inheritance)? → FAIL — favor composition.
+- Comments that explain *what* the code does instead of a non-obvious
+  *why*? → FAIL — rename / extract a function / delete the comment.
+- A new public `__all__` that exports symbols no caller needs? → FAIL
+  — trim the surface (deep interface, not wide).
+
+If you find any of the above in code *the story added*, that's a
+RETURN to Stage 2 with the gap named. If you find any in pre-existing
+code the story touched only incidentally, log it as a follow-up — do
+not fold the fix in (Rule 3 — surgical changes).
 
 ## Validator report format
 
@@ -82,6 +114,7 @@ Output a single markdown block (and save it as the latest attempt's validator bl
 - mypy: PASS
 - pre-commit: not configured
 - Files-to-touch: PASS (all 7 files exist)
+- Design quality: PASS — no anti-pattern smells in story-added code; chokepoints reinforced (safe_json, exec); `WarningId` newtype used; markers-only invariant preserved.
 
 ### Diagnosis
 - AC-3 missing — no test exercises the empty-input case

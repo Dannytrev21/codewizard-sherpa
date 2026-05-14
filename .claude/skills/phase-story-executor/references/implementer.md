@@ -42,7 +42,9 @@ For each acceptance criterion (or the smallest testable slice of one):
 
 ### 3. Refactor — tidy while green
 
-- Improve naming, eliminate duplication, match conventions extracted in Stage 1
+- Improve naming, eliminate duplication, match conventions extracted in Stage 1.
+- **Walk the design-patterns refactor checklist.** Spend ~60 seconds with [`design-patterns.md`](design-patterns.md) §"During Stage 2 refactor" open: raw `str` / `int` / `Any` for something semantic → newtype it; `if/elif` ladder over a closed variant set → tagged union or strategy; new dangerous operation re-implemented inline → route through (or add) a chokepoint module; broad `except Exception` / `except OSError` → narrow; mutable module-level state → `Final` or pass it explicitly; two-level deep inheritance → composition. Reinforce the patterns the codebase already uses (Plugin/Registry, Capability, Pipeline, Markers-only exceptions) rather than re-inventing them. **Do not** manufacture a pattern for a single use site — Rule 2 still wins.
+- For each pattern you applied (or deliberately deferred), record one line under "Refactor decisions" in the attempt journal — e.g., "deferred Strategy registry for lockfile parsers; only one parser exists today."
 - Behavior must not change. Run the full test suite after each refactor (not just the new test). Any regression = undo and try smaller.
 
 ### 4. Move to the next AC
