@@ -1,7 +1,7 @@
 # Story S1-02 — `safe_json` parser with `O_NOFOLLOW` + size + depth caps
 
 **Step:** Step 1 — Plant shared primitives, sub-schema convention, and the three Phase-0 in-place edits
-**Status:** Ready (hardened by phase-story-validator)
+**Status:** Done — 2026-05-13 (phase-story-executor attempt 1, GREEN). All 19 ACs verified; 33/33 new unit tests green; full suite 648/648; coverage 93.03%; mypy `--strict` + ruff + pre-commit + import-linter all clean. Attempt log: [`_attempts/S1-02.md`](_attempts/S1-02.md). Implementation: [`src/codegenie/parsers/__init__.py`](../../../../src/codegenie/parsers/__init__.py), [`src/codegenie/parsers/safe_json.py`](../../../../src/codegenie/parsers/safe_json.py). `SymlinkRefusedError` docstring extended at [`src/codegenie/errors.py`](../../../../src/codegenie/errors.py). Tests: [`tests/unit/parsers/test_safe_json.py`](../../../../tests/unit/parsers/test_safe_json.py).
 **Effort:** M
 **Depends on:** S1-01
 **ADRs honored:** ADR-0008, ADR-0009, ADR-0007
