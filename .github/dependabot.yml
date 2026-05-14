@@ -18,3 +18,10 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    ignore:
+      # v2.x removed `--fail-on-severity` (CLI breaking change). Migration
+      # is docs-led, not a 1:1 dependabot bump — defer until we author a
+      # hand-rolled PR against v2's SARIF + post-filter pattern. See
+      # closed PR #11 for context.
+      - dependency-name: "google/osv-scanner-action"
+        update-types: ["version-update:semver-major"]
