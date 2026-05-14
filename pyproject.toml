@@ -161,6 +161,9 @@ pythonpath = ["."]
 # get a fast local loop; CI's `bench` job uses `-m bench` explicitly to opt
 # the three canaries in. `--strict-markers` then forces every `pytest.mark.*`
 # to be declared below.
+# Coverage ratchet (see docs/contributing.md §Project conventions): the
+# `--cov-fail-under=85` floor below is the Phase 0 gate; Phase 1 bumps to
+# 87/77, Phase 2 to 90/80 (frozen until Phase 5). Do NOT raise ahead.
 addopts = "-ra --strict-markers -m \"not bench\" --cov=src/codegenie --cov-branch --cov-fail-under=85"
 # Registered markers. `bench` partitions the advisory cold-start /
 # coordinator-overhead / cache-hit-dispatch canaries that ship in

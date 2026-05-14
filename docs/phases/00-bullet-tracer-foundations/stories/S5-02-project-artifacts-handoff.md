@@ -1,7 +1,7 @@
 # Story S5-02 — Project artifacts + contributor docs + Phase 1 handoff
 
 **Step:** Step 5 — Close the remaining CI gates and project conventions
-**Status:** Ready (HARDENED)
+**Status:** GREEN (implementation landed 2026-05-13; post-merge SHA + workflow-run URL backfill outstanding — see attempt log)
 **Effort:** M
 **Depends on:** S4-05
 **ADRs honored:** ADR-0002, ADR-0006, ADR-0007

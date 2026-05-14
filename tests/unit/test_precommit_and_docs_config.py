@@ -365,17 +365,14 @@ def test_mkdocs_build_strict_exits_zero() -> None:
     )
 
 
-# ---------- Test 9: AC-10 (contributing.md placeholder) ----------
+# ---------- Test 9: AC-10 (contributing.md replaces the S1-04 placeholder) ----
 
-
-def test_contributing_md_placeholder_exists_with_todo_marker() -> None:
-    contrib = PROJECT_ROOT / "docs" / "contributing.md"
-    assert contrib.is_file(), "docs/contributing.md must exist as a placeholder (AC-10)"
-    body = contrib.read_text()
-    assert "TODO(S5-02)" in body, (
-        "docs/contributing.md must contain `TODO(S5-02)` marker so a future reader "
-        "knows S5-02 fills in the real contributor docs"
-    )
+# The S1-04 placeholder assertion (file present + `TODO(S5-02)` marker) was
+# retired by S5-02 when the real contributor docs landed. The replacement
+# invariants live in tests/unit/test_project_artifacts.py — sections,
+# coverage-ratchet datapoints, ADR-0006 four-extras shape, ADR-0007 amendment
+# workflow, the "Probe version bumps" Q2 resolution, and the negative-space
+# assertion that `TODO(S5-02)` is gone.
 
 
 # ---------- Test 10: AC-1 robustness (no duplicate hook ids) ----------

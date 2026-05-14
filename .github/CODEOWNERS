@@ -1,0 +1,31 @@
+# CODEOWNERS — gates the contract-frozen path set.
+#
+# Rules below are intentionally narrow. Each gated path corresponds to a
+# load-bearing architectural commitment that must not change silently:
+#
+#   * src/codegenie/probes/base.py            — the probe contract (ADR-0007)
+#   * tests/snapshots/probe_contract.v1.json  — the frozen snapshot (ADR-0007)
+#   * tests/unit/test_pyproject_fence.py      — the LLM-in-gather fence (ADR-0002)
+#   * tests/unit/test_project_artifacts.py    — the regression defense for this
+#                                               file and the surrounding artifacts
+#   * localv2.md                              — the canonical local-POC spec
+#   * docs/production/adrs/                   — production ADR folder
+#   * .github/CODEOWNERS                      — this file
+#
+# Drift policy: per ADR-0007, drift is resolved by changing code, never by
+# editing the spec. Trailing slashes on directory patterns are intentional —
+# GitHub's CODEOWNERS syntax distinguishes files from directories on this
+# bit. Do NOT add the trailing slash to file paths or the rule silently
+# stops applying.
+#
+# Phase 0 ships with a single maintainer. Team-level expansion is a Phase 1+
+# administrative change; the unit test under tests/unit/test_project_artifacts.py
+# enforces "every gated path has >= 1 owner token".
+
+src/codegenie/probes/base.py @Dannytrev21
+tests/snapshots/probe_contract.v1.json @Dannytrev21
+tests/unit/test_pyproject_fence.py @Dannytrev21
+tests/unit/test_project_artifacts.py @Dannytrev21
+localv2.md @Dannytrev21
+docs/production/adrs/ @Dannytrev21
+.github/CODEOWNERS @Dannytrev21
