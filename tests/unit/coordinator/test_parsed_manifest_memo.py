@@ -260,3 +260,37 @@ def test_module_docstring_names_arch_adr_and_msgpack_rejection() -> None:
     assert "Component design" in doc
     assert "ADR-0002" in doc
     assert "msgpack" in doc
+
+
+# ---------------------------------------------------------------------------
+# S1-08 — AC-14: memo dual-key shapes coexist; identity preserved per key
+# ---------------------------------------------------------------------------
+def test_memo_dual_keys_coexist(tmp_path: Path) -> None:
+    p = tmp_path / "package.json"
+    p.write_text(json.dumps({"name": "x"}))
+    memo = ParsedManifestMemo()
+    a = memo.get(p, content_hash="blake3:abc")
+    b = memo.get(p)  # content_hash=None → legacy stat-tuple key
+    assert a is not None
+    assert b is not None
+    # Two distinct cache entries — one per key shape.
+    assert len(memo._cache) == 2  # noqa: SLF001 — internal contract pinned
+    # Identity under the same key.
+    a2 = memo.get(p, content_hash="blake3:abc")
+    b2 = memo.get(p)
+    assert a is a2
+    assert b is b2
+    # Mutation that conflates the two key shapes is caught.
+
+
+# ---------------------------------------------------------------------------
+# S1-08 — AC-15: sentinel content_hash bypasses the memo
+# ---------------------------------------------------------------------------
+def test_memo_sentinel_content_hash_returns_none(tmp_path: Path) -> None:
+    p = tmp_path / "package.json"
+    p.write_text("{}")
+    memo = ParsedManifestMemo()
+    assert memo.get(p, content_hash="<refused>") is None
+    assert memo.get(p, content_hash="<oversize>") is None
+    # Cache stays empty — sentinel inputs do not write entries.
+    assert len(memo._cache) == 0  # noqa: SLF001 — internal contract pinned

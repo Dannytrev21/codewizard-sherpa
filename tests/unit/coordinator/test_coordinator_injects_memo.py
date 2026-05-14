@@ -54,9 +54,10 @@ async def test_gather_threads_parsed_manifest_to_ctx(
 
 
 # AC-17 — cross-gather isolation: two sequential gathers => two distinct memos.
-# We capture ``parsed_manifest.__self__`` (the underlying memo) because
-# Python builds a fresh bound method on every ``memo.get`` access, making
-# ``id(parsed_manifest)`` unstable in general. The *instance* identity is the
+# S1-08 wires ``ctx.parsed_manifest`` to a per-probe closure adapter (which
+# routes ``memo.get(path, content_hash=...)``); the underlying memo is
+# surfaced as ``adapter.__memo__`` so tests can pin instance identity
+# without poking through the closure cell. The *instance* identity is the
 # load-bearing invariant: two distinct memo instances ⇒ two distinct caches.
 async def test_cross_gather_isolation(
     tmp_path: Path,
@@ -67,7 +68,7 @@ async def test_cross_gather_isolation(
     seen: list[Any] = []
 
     async def _capture(_repo: RepoSnapshot, ctx: Any) -> ProbeOutput:
-        seen.append(ctx.parsed_manifest.__self__)
+        seen.append(ctx.parsed_manifest.__memo__)
         return ProbeOutput(
             schema_slice={"ok": True},
             raw_artifacts=[],
@@ -116,7 +117,7 @@ async def test_same_gather_sharing_across_probes(
     seen: list[Any] = []
 
     async def _capture(_repo: RepoSnapshot, ctx: Any) -> ProbeOutput:
-        seen.append(ctx.parsed_manifest.__self__)
+        seen.append(ctx.parsed_manifest.__memo__)
         return ProbeOutput(
             schema_slice={"ok": True},
             raw_artifacts=[],
