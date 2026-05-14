@@ -37,6 +37,6 @@ def test_no_module_redeclares_a_registered_event_literal() -> None:
         for lit in _REGISTERED_LITERALS:
             if f'"{lit}"' in text or f"'{lit}'" in text:
                 offenders.append((str(py), lit))
-    assert not offenders, (
-        "registered event literals re-declared outside logging.py: " + repr(offenders)
+    assert not offenders, "registered event literals re-declared outside logging.py: " + repr(
+        offenders
     )

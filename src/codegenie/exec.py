@@ -37,6 +37,7 @@ or ``subprocess.run``.
 Sources:
 
 - ``docs/phases/00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md``
+- ``docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md``
 - ``docs/phases/00-bullet-tracer-foundations/phase-arch-design.md``
   §Component design — Subprocess allowlist
 - ``docs/phases/00-bullet-tracer-foundations/stories/S2-04-exec-allowlist.md``
@@ -64,9 +65,11 @@ __all__ = [
     "run_allowlisted",
 ]
 
-# Phase 0 allowlist is exactly ``{"git"}``. Every addition is a deliberate-PR
-# change with mandatory review (ADR-0012 §Decision).
-ALLOWED_BINARIES: frozenset[str] = frozenset({"git"})
+# Phase 0 allowlist was exactly ``{"git"}``; Phase 1 ADR-0001 extends to
+# ``{"git", "node"}`` so ``NodeBuildSystemProbe`` can record the locally-resolved
+# Node version via ``node --version``. Every addition is a deliberate-PR change
+# with mandatory review (ADR-0012 §Decision).
+ALLOWED_BINARIES: frozenset[str] = frozenset({"git", "node"})
 
 # Keys that must never reach a child process via ``env_extra``. ``AWS_*`` is
 # matched by prefix. Comparison is on the uppercased key so callers can't

@@ -45,9 +45,26 @@ GITIGNORE_APPEND_SKIPPED: Final[str] = "gitignore.append.skipped"
 GITIGNORE_APPEND_IDEMPOTENT: Final[str] = "gitignore.append.idempotent"
 GITIGNORE_APPEND_FAILED: Final[str] = "gitignore.append.failed"
 
+# S1-10: Phase-1 lifecycle event names. Previously scattered as module-local
+# ``_EVENT_*: Final[str]`` definitions across three parser modules and two raw
+# literals in ``parsed_manifest_memo``. Centralizing here makes the event-name
+# vocabulary a single-source-of-truth registry (Open/Closed at the file
+# boundary). The structural guard against literal drift is
+# ``tests/unit/test_no_event_literal_drift.py``.
+EVENT_PROBE_PARSER_CAP_EXCEEDED: Final[str] = "probe.parser.cap_exceeded"
+EVENT_PROBE_MEMO_HIT: Final[str] = "probe.memo.hit"
+EVENT_PROBE_MEMO_MISS: Final[str] = "probe.memo.miss"
+EVENT_PROBE_CATALOG_LOAD: Final[str] = "probe.catalog.load"
+EVENT_PROBE_RAW_ARTIFACT_TRUNCATED: Final[str] = "probe.raw_artifact.truncated"
+
 __all__ = [
     "EVENT_PROBE_CACHE_HIT",
+    "EVENT_PROBE_CATALOG_LOAD",
     "EVENT_PROBE_FAILURE",
+    "EVENT_PROBE_MEMO_HIT",
+    "EVENT_PROBE_MEMO_MISS",
+    "EVENT_PROBE_PARSER_CAP_EXCEEDED",
+    "EVENT_PROBE_RAW_ARTIFACT_TRUNCATED",
     "EVENT_PROBE_SKIP",
     "EVENT_PROBE_START",
     "EVENT_PROBE_SUCCESS",
