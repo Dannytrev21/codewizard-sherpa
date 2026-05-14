@@ -166,7 +166,7 @@ jobs:
         # NOT the repo root (the root ``action.yml`` has no ``runs:``
         # section by design — see ``CONTRIBUTING.md`` upstream). The SHA
         # remains pinned per ADR-0002.
-        uses: google/osv-scanner-action/osv-scanner-action@daa2c68f50d845057895a9c300e42478481c1d26  # v1.9.1
+        uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638  # v1.9.2
         with:
           scan-args: |-
             --lockfile=uv.lock
