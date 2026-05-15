@@ -102,6 +102,19 @@ __all__ = ["NodeBuildSystemProbe"]
 _log = structlog.get_logger(__name__)
 
 
+# --- ADR-0013 typed enum (Phase 2 S1-05 surface) ----------------------------
+
+# ``PackageManager`` is the typed shape of the ``build_system.package_manager``
+# field. The Literal values mirror the schema enum at
+# ``src/codegenie/schema/probes/node_build_system.schema.json`` (minus the
+# nullable slot — null is expressed at field level as ``PackageManager | None``,
+# not inside the Literal). Phase 1 ADR-0013 names these as distinct keys for
+# plugin dispatch; Phase 2 S1-05 re-exports this alias unchanged from
+# ``codegenie.types.identifiers`` so kernel-tier modules don't reach into a
+# Layer-A probe to spell the type.
+PackageManager = Literal["bun", "pnpm", "yarn-classic", "yarn-berry", "npm"]
+
+
 # --- module-level Open/Closed seams -----------------------------------------
 
 

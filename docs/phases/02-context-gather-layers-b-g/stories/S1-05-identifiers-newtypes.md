@@ -1,10 +1,26 @@
 # Story S1-05 — ADR-0033 identifier newtypes — `IndexId`, `SkillId`, `TaskClassId`, `IndexName`
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready
+**Status:** Done (GREEN 2026-05-15 — all 9 ACs verified; attempt log: [`_attempts/S1-05.md`](_attempts/S1-05.md))
 **Effort:** S
 **Depends on:** —
 **ADRs honored:** production ADR-0033 (typed identifiers across module boundaries)
+
+## Evidence (S1-05)
+
+- **AC-1, AC-7** — `tests/unit/types/test_identifiers.py::test_newtypes_exist_and_are_distinct` + `::test_newtypes_runtime_identity_to_str` (NewType objects expose `__supertype__ is str`; `IndexId("scip") == "scip"`).
+- **AC-1 (distinct identities)** — `tests/unit/types/test_identifiers.py::test_newtype_objects_are_distinct_identities`.
+- **AC-2** — Re-export at [`src/codegenie/types/identifiers.py:18`](../../../../src/codegenie/types/identifiers.py) (`from codegenie.probes.node_build_system import PackageManager as PackageManager`).
+- **AC-3** — `__all__` in [`src/codegenie/types/__init__.py`](../../../../src/codegenie/types/__init__.py) and `identifiers.py`; pinned by `test_all_exports_include_five_names` and `test_identifiers_module_all_lists_five_names`.
+- **AC-4** — Source-scan guard `test_no_package_manager_redefinition_in_types_module` (no `class PackageManager`, no reassignment, exactly one import line).
+- **AC-5** — `test_package_manager_reexported_from_phase1_adr_0013_location` asserts `ids.PackageManager is P1`.
+- **AC-6** — [`tests/unit/types/test_identifiers_typecheck.py`](../../../../tests/unit/types/test_identifiers_typecheck.py) — `mypy --strict` PASS over file; commented lines pin nominal-type discrimination.
+- **AC-8** — RED commit ran with `ModuleNotFoundError: No module named 'codegenie.types.identifiers'`; GREEN commit makes 7 tests pass.
+- **AC-9** — `ruff check src/ tests/` clean, `ruff format --check` clean, `mypy --strict src/codegenie/types/ tests/unit/types/` clean, `pytest tests/unit/types/` → 7 passed; full suite 1605 passed.
+
+## Precondition note (S1-05)
+
+`PackageManager` did not previously exist as a typed alias in `codegenie.probes.node_build_system`; the field was typed `str | None`. AC-2/AC-5 require importing it. Surgical minimal fix: a `PackageManager: TypeAlias = Literal["bun","pnpm","yarn-classic","yarn-berry","npm"]` constant was added to [`src/codegenie/probes/node_build_system.py`](../../../../src/codegenie/probes/node_build_system.py) (matches the schema enum at `src/codegenie/schema/probes/node_build_system.schema.json` line 29). Existing signatures (`str | None`) were left untouched — `Literal | None` is a structural subtype of `str | None`, so no downstream signature drift. Consistent with Phase 1 ADR-0013's enumeration of variants and the story's Notes §"Phase 1 ADR-0013 location matters" allowance.
 
 ## Context
 
