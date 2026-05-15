@@ -794,3 +794,63 @@ match the codebase, including the *absence* of a dependency).
 **Don't:** copy-paste `mocker.spy(...)` from the story TDD plan
 verbatim. The spy *behavior* (observable distinct call paths) is the
 AC contract; the *fixture name* is conventional.
+
+## L-42 — `BudgetingContext` is the runtime context, not `ProbeContext` (S4-01)
+
+The probe ABC's `ProbeContext` dataclass (in `src/codegenie/probes/base.py`)
+declares `cache_dir`, `output_dir`, `workspace`, `logger`, `config`,
+`parsed_manifest`, `input_snapshot`. The runtime per-dispatch object the
+coordinator constructs is `BudgetingContext` (in `src/codegenie/coordinator/budget.py`)
+which exposes only `workspace`, `raw_artifact_mb`, `bytes_written`,
+`parsed_manifest`, `input_snapshot`, `report_bytes`. A probe that touches
+`ctx.output_dir`, `ctx.cache_dir`, or `ctx.logger` will pass unit tests
+(which build the full ABC dataclass) but `AttributeError` at runtime.
+
+**Apply to:** every new probe. Until the ABC and runtime context are
+reconciled, write raw artifacts under
+`ctx.workspace / ".codegenie" / "_probe_raw" / <name>.json` — the
+`.codegenie/` namespace is already excluded from fingerprinting (L-39).
+
+**Don't:** copy `ctx.output_dir` from the ABC docstring without a
+runtime smoke test. The dataclass surface is aspirational; the
+runtime surface is `BudgetingContext`.
+
+## L-43 — Field names that match `SECRET_FIELD_PATTERN` need an explicit allowlist (S4-01)
+
+Phase-0 ADR-0008 + ADR-0010 install a defense-in-depth regex
+(`(?i)^.*(secret|token|password|credential|api[_-]?key|...)[..].*$`)
+against any dict key in a `ProbeOutput.schema_slice`. The CISlice
+contract names `references_secrets: list[str]` — by construction a list
+of literal identifier names (production ADR-0005: probe never resolves a
+value). Without an exemption the slice cannot ship.
+
+**Apply to:** any future probe whose data model contains a field name
+mandated by the architecture and matching the secret-shape regex. Add
+the exact name to `SECRET_FIELD_ALLOWLIST` (in
+`src/codegenie/coordinator/validator.py`) and write a fresh phase ADR
+naming the construction-time guarantee that makes the values safe
+(precedent: ADR-0014, S4-01).
+
+**Don't:** rename the field behind the contract's back; don't loosen
+the regex to add word boundaries (that narrows the defense for every
+other field). The allowlist is exact-equality only; substring matches
+still raise (anchored by a regression test).
+
+## L-44 — Strict `jobs.*.steps[].run` walkers are too narrow for cross-cutting regex coverage (S4-01)
+
+`_extract_run_strings(workflow)` walks `jobs.*.steps[].run` only — that
+strictness is load-bearing for AC-25's `_IMAGE_BUILD_MARKERS` `run` vs
+`uses` discriminator (`docker/build-push-action` is `uses:`-shaped, not
+`run:`-shaped — conflating them flips the AC). But test fixtures
+sometimes ship valid YAML that doesn't match the GHA shape (bare
+`steps:` without a `jobs:` wrapper), and secrets references can appear
+under any key (`env:`, `with:`, top-level expressions).
+
+**Apply to:** any probe that needs a strict-shape walker (for a
+specific contract) AND a cross-cutting regex coverage (for a security
+or facts-not-judgments invariant). Keep both. Route the strict walker
+to its consumer; route the depth-walker (`_collect_string_values`) to
+the regex consumer.
+
+**Don't:** widen the strict walker to "all strings" — that breaks the
+discriminator the strict consumer needs.

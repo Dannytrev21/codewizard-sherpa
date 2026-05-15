@@ -222,6 +222,40 @@ def test_non_secret_keys_accepted(safe_key: str) -> None:
     _ProbeOutputValidator(schema_slice={safe_key: "v"}, confidence="high")
 
 
+# ADR-0014 — narrow allowlist for the secret-shaped field-name rejection.
+
+
+def test_references_secrets_field_name_allowlisted() -> None:
+    """ADR-0014: ``references_secrets`` is the literal-identifier-names field
+    on ``CISlice`` (S4-01); the values are construction-time guaranteed to be
+    identifier strings, not secret payloads. The allowlist lets it through
+    while every other secret-shaped key still raises."""
+    _ProbeOutputValidator(
+        schema_slice={"references_secrets": ["NPM_TOKEN", "AWS_ACCESS_KEY_ID"]},
+        confidence="high",
+    )
+
+
+def test_allowlist_does_not_widen_to_substring_matches() -> None:
+    """ADR-0014: allowlist is exact-equality, NOT substring. A nearby name
+    like ``references_secrets_v2`` is still rejected by the regex."""
+    with pytest.raises(ValidationError) as ei:
+        _ProbeOutputValidator(
+            schema_slice={"references_secrets_v2": ["A"]},
+            confidence="high",
+        )
+    typed = _unwrap_typed_error(ei.value)
+    assert isinstance(typed, SecretLikelyFieldNameError)
+
+
+def test_allowlist_constant_shape() -> None:
+    """ADR-0014: the allowlist is exposed for re-use and is frozen."""
+    from codegenie.coordinator.validator import SECRET_FIELD_ALLOWLIST
+
+    assert isinstance(SECRET_FIELD_ALLOWLIST, frozenset)
+    assert "references_secrets" in SECRET_FIELD_ALLOWLIST
+
+
 def test_secret_field_pattern_is_compiled_at_module_scope() -> None:
     """AC-15: S3-03 will import this symbol — pin its presence and shape."""
     import re

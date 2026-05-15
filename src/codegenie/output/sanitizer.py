@@ -37,11 +37,19 @@ from typing import Any
 
 import structlog
 
-from codegenie.coordinator.validator import SECRET_FIELD_PATTERN
+from codegenie.coordinator.validator import (
+    SECRET_FIELD_ALLOWLIST,
+    SECRET_FIELD_PATTERN,
+)
 from codegenie.errors import SecretLikelyFieldNameError
 from codegenie.probes.base import ProbeOutput
 
-__all__ = ["OutputSanitizer", "SECRET_FIELD_PATTERN", "SanitizedProbeOutput"]
+__all__ = [
+    "OutputSanitizer",
+    "SECRET_FIELD_ALLOWLIST",
+    "SECRET_FIELD_PATTERN",
+    "SanitizedProbeOutput",
+]
 
 _log = structlog.get_logger(__name__)
 
@@ -102,7 +110,11 @@ def _walk_pass1_keys(node: Any, on_match: Any) -> None:
         cur = stack.pop()
         if isinstance(cur, dict):
             for k, v in cur.items():
-                if isinstance(k, str) and SECRET_FIELD_PATTERN.search(k):
+                if (
+                    isinstance(k, str)
+                    and k not in SECRET_FIELD_ALLOWLIST
+                    and SECRET_FIELD_PATTERN.search(k)
+                ):
                     on_match(k)
                 stack.append(v)
         elif isinstance(cur, list):

@@ -1,7 +1,7 @@
 # Story S4-01 — `CIProbe` + sub-schema
 
 **Step:** Step 4 — Ship `CIProbe`, `DeploymentProbe`, and `TestInventoryProbe`
-**Status:** Ready (HARDENED)
+**Status:** Done (executed 2026-05-15 — phase-story-executor; see [`_attempts/S4-01.md`](_attempts/S4-01.md))
 **Effort:** M
 **Depends on:** S1-03 (`safe_yaml`), S1-05 (catalogs — `ci_providers.yaml`)
 **ADRs honored:** ADR-0004 (`additionalProperties: false`), ADR-0006 (catalog-in-`declared_inputs` cache invalidation), ADR-0007 (warning-ID pattern), ADR-0009 (no new C-extension parser deps), ADR-0010 (Layer A slices optional at envelope), production ADR-0005 (no LLM in gather)

@@ -43,6 +43,9 @@
         },
         "node_manifest": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/node_manifest/v0.1.0.json"
+        },
+        "ci": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/ci/v0.1.0.json"
         }
       }
     }

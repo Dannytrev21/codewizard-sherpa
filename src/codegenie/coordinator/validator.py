@@ -40,7 +40,7 @@ from typing_extensions import TypeAliasType
 
 from codegenie.errors import SecretLikelyFieldNameError
 
-__all__ = ["JSONValue", "SECRET_FIELD_PATTERN"]
+__all__ = ["JSONValue", "SECRET_FIELD_ALLOWLIST", "SECRET_FIELD_PATTERN"]
 
 
 # Named recursive type alias (Pydantic v2's documented pattern — see
@@ -69,6 +69,15 @@ SECRET_FIELD_PATTERN: re.Pattern[str] = re.compile(
     r"(?i)^.*(secret|token|password|credential|api[_-]?key|"
     r"auth[_-]?token|bearer|access[_-]?key|private[_-]?key).*$"
 )
+
+
+# Narrow allowlist of metadata field names whose value is, by construction,
+# a list of identifier names (NOT secret values). Per S4-01 + production
+# ADR-0005, ``CIProbe`` records workflow ``${{ secrets.NAME }}`` references
+# as literal name strings; the probe never resolves a value. The values
+# under these keys are still walked for type-closure; only the key-name
+# rejection skips them. Adding entries to this set requires an ADR.
+SECRET_FIELD_ALLOWLIST: frozenset[str] = frozenset({"references_secrets"})
 
 
 # Allowed JSON-leaf types. ``bool`` is listed separately from ``int`` because
@@ -105,7 +114,11 @@ def _walk_and_enforce(root: dict[str, Any]) -> None:
         node, path = stack.pop()
         if isinstance(node, dict):
             for k, v in node.items():
-                if isinstance(k, str) and SECRET_FIELD_PATTERN.search(k):
+                if (
+                    isinstance(k, str)
+                    and k not in SECRET_FIELD_ALLOWLIST
+                    and SECRET_FIELD_PATTERN.search(k)
+                ):
                     raise SecretLikelyFieldNameError(k, path + (k,))
                 child_path = path + (k,) if isinstance(k, str) else path
                 if isinstance(v, dict) or isinstance(v, list):

@@ -13,11 +13,19 @@ import time; concrete probe modules are imported by name below as Phase 1
 stories land.
 """
 
-from codegenie.probes import base, language_detection, node_build_system, node_manifest, registry
+from codegenie.probes import (
+    base,
+    ci,
+    language_detection,
+    node_build_system,
+    node_manifest,
+    registry,
+)
 from codegenie.probes.registry import default_registry
 
 __all__ = [
     "base",
+    "ci",
     "default_registry",
     "language_detection",
     "node_build_system",
