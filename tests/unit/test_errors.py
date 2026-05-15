@@ -31,20 +31,31 @@ PHASE1_NEW = {
     "CatalogLoadError",
 }
 
-EXPECTED_SUBCLASSES = {
-    # Phase 0 — eleven (corrected count; the prior draft of S1-01 listed 9).
-    "ConfigError",
-    "ToolMissingError",
-    "ProbeError",
-    "ProbeTimeoutError",
-    "ProbeBudgetExceeded",
-    "CacheError",
-    "SchemaValidationError",
-    "SecretLikelyFieldNameError",
-    "DisallowedSubprocessError",
-    "SymlinkRefusedError",
-    "AllProbesFailedError",
-} | PHASE1_NEW
+PHASE2_NEW = {
+    # Phase 2 (Layers B–G) — S1-02 adds the indices.registry duplicate-name
+    # marker. Additional Phase-2 markers (SkillsLoadError, ConventionsError,
+    # TCCMLoadError, …) land in their own stories.
+    "FreshnessRegistryError",
+}
+
+EXPECTED_SUBCLASSES = (
+    {
+        # Phase 0 — eleven (corrected count; the prior draft of S1-01 listed 9).
+        "ConfigError",
+        "ToolMissingError",
+        "ProbeError",
+        "ProbeTimeoutError",
+        "ProbeBudgetExceeded",
+        "CacheError",
+        "SchemaValidationError",
+        "SecretLikelyFieldNameError",
+        "DisallowedSubprocessError",
+        "SymlinkRefusedError",
+        "AllProbesFailedError",
+    }
+    | PHASE1_NEW
+    | PHASE2_NEW
+)
 
 DOCUMENTED_MODULE_SLUGS = {
     "exec",
@@ -59,6 +70,8 @@ DOCUMENTED_MODULE_SLUGS = {
     # Phase 1 additions (S1-01) — additive only; no Phase 0 slug removed.
     "parsers",
     "catalogs",
+    # Phase 2 additions (S1-02) — additive only.
+    "indices",
 }
 MARKER_ALLOWED_DICT_KEYS = {
     "__module__",

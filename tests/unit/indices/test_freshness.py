@@ -151,10 +151,14 @@ def test_match_is_exhaustive_over_index_freshness_top_level() -> None:
 
 
 def test_all_exports_full_variant_set() -> None:
-    """AC-1: ``__all__`` pins the eight names; each resolves to a class object."""
+    """AC-1: ``__all__`` pins the eight S1-01 names; each resolves to a class
+    object. Phase 2 S1-02 adds the registry surface on top — checked
+    independently in ``tests/unit/indices/test_freshness_registry.py`` —
+    so this assertion is a *subset* contract on the S1-01 deliverables only.
+    """
     import codegenie.indices as m
 
-    assert set(m.__all__) == {
+    s1_01_names = {
         "IndexFreshness",
         "Fresh",
         "Stale",
@@ -164,6 +168,7 @@ def test_all_exports_full_variant_set() -> None:
         "CoverageGap",
         "IndexerError",
     }
+    assert s1_01_names <= set(m.__all__)
 
 
 def test_freshness_module_has_no_model_construct() -> None:

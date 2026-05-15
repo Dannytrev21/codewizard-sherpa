@@ -61,3 +61,23 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** Importing `TestInventoryAdapter` (or any `Test*`-named class) into `tests/**/*.py` warns at collection time even when no test instantiates it.
 - **Fix:** **Alias on import in the test file** — `from codegenie.adapters import TestInventoryAdapter as InventoryAdapter`. Do **not** set `__test__ = False` on the Protocol class (either inside or after the body): on Python 3.11 (CI), assigning `__test__` post-class-body adds it to `_get_protocol_attrs`, breaking `isinstance` for any stub that doesn't declare `__test__`. CI was green on Python 3.13 (local) and red on Python 3.11 (CI) — the `_get_protocol_attrs` implementation diverges across minor versions.
 - **Why it matters:** Any future domain type that begins with `Test` (e.g., `TestMatrix`, `TestSuiteId`) needs the import-alias fix in test files, not a runtime mutation of the source class. Setting `__test__` on a Protocol is a portability trap.
+
+## L11 — Story-sketch RED test that decorates inside `with pytest.raises` leaks `UnboundLocalError`
+- **Source:** S1-02 (AC-3 duplicate-name rejection test).
+- **Symptom:** `with pytest.raises(...): @reg.register(name) def check_b(...): ...` — the decorator raises before binding `check_b`, then the post-`raises` assertion `f".{check_b.__qualname__}" in msg` blows up with `UnboundLocalError: cannot access local variable 'check_b'`.
+- **Fix:** Define the function above the `with` block (`def check_b(...): ...`), then call the decorator imperatively inside (`reg.register(name)(check_b)`). The decorator-time semantics survive (qualname still includes the test function as enclosing scope) and the post-block reference is bound.
+- **Why it matters:** Phase 2's other registry stories (S1-10 `depgraph` registry; the post-S4 freshness-source registrations) will copy the same duplicate-name pattern. Apply the imperative-call fix on first pass.
+
+## L12 — Phase-N exception-marker additions cascade into two `__all__`-closure tests
+- **Source:** S1-02 (`FreshnessRegistryError` addition).
+- **Symptom:** Two pre-existing test files break the moment a new marker lands in `codegenie.errors`:
+  - `tests/unit/test_errors.py::test_all_closure_pins_public_surface` (pins the EXACT `__all__` set against `EXPECTED_SUBCLASSES`).
+  - `tests/unit/test_errors.py::test_every_subclass_has_raise_site_docstring` (requires the docstring to name a `DOCUMENTED_MODULE_SLUGS` entry).
+- **Fix:** Add `PHASE_N_NEW = {...}` and `EXPECTED_SUBCLASSES = ... | PHASE_N_NEW` in `tests/unit/test_errors.py`; add the new module's directory slug (`"indices"` for S1-02; `"depgraph"` for S1-10; `"tccm"` for S1-04; etc.) to `DOCUMENTED_MODULE_SLUGS`.
+- **Why it matters:** Every Phase-2 marker addition (S1-04 `TCCMLoadError`, S1-10 `DepGraphRegistryError`, S2-01 `SkillsLoadError`, S2-02 `ConventionsError`, S5-01 / S6-06 outcome-types markers, etc.) will trip both. Plan the test edit alongside the source edit.
+
+## L13 — Re-export of new package surface narrows existing equality assertions on `__all__`
+- **Source:** S1-02 (`codegenie.indices.__init__` extended with the registry surface).
+- **Symptom:** `tests/unit/indices/test_freshness.py::test_all_exports_full_variant_set` asserted `set(m.__all__) == {<S1-01 names>}`; equality fails the moment any sibling story extends the package.
+- **Fix:** Loosen the assertion to a subset on the *story-specific* names (`s1_01_names <= set(m.__all__)`). The new sibling story checks its own surface independently. Keeps each story's `__all__` AC scoped to its own deliverable.
+- **Why it matters:** Same trap will fire when S1-04 (TCCM model + queries + loader) re-exports from `codegenie.tccm.__init__`, and again at S5-01 (`scenario_result` + `scanner_outcome`). Narrow each per-story assertion to a subset on the story-owned names.

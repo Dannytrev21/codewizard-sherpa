@@ -19,14 +19,26 @@ from codegenie.indices.freshness import (
     Stale,
     StaleReason,
 )
+from codegenie.indices.registry import (
+    FreshnessCheck,
+    FreshnessRegistry,
+    FreshnessRegistryError,
+    default_freshness_registry,
+    register_index_freshness_check,
+)
 
 __all__ = [
     "CommitsBehind",
     "CoverageGap",
     "DigestMismatch",
     "Fresh",
+    "FreshnessCheck",
+    "FreshnessRegistry",
+    "FreshnessRegistryError",
     "IndexFreshness",
     "IndexerError",
     "Stale",
     "StaleReason",
+    "default_freshness_registry",
+    "register_index_freshness_check",
 ]

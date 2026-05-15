@@ -48,6 +48,8 @@ __all__ = [
     "MalformedYAMLError",
     "MalformedLockfileError",
     "CatalogLoadError",
+    # Phase 2 (Layers B–G) — S1-02.
+    "FreshnessRegistryError",
 ]
 
 
@@ -141,3 +143,13 @@ class CatalogLoadError(CodegenieError):
     self-schema validation or contains a duplicate name. This is a
     load-bearing-invariant violation — hard fail at CLI startup; operator
     must fix the catalog before any gather runs."""
+
+
+# --- Phase 2 (Layers B–G) markers — S1-02 -------------------------------------
+
+
+class FreshnessRegistryError(CodegenieError):
+    """Raised by ``codegenie.indices.registry`` on duplicate
+    ``@register_index_freshness_check`` decoration. Hard fail at import time
+    (load-bearing fail-loud surface — a registry that silently shadows is
+    worse than no registry; mirrors the Phase-0 ``ProbeError`` precedent)."""
