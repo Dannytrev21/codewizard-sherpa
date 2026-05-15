@@ -1,10 +1,33 @@
 # Story S1-08 — `@register_probe(heaviness=, runs_last=)` + coordinator sort-order edit
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready
+**Status:** Ready (HARDENED 2026-05-15)
 **Effort:** M
 **Depends on:** S1-05
 **ADRs honored:** 02-ADR-0003
+
+## Validation notes (2026-05-15, phase-story-validator)
+
+The story was HARDENED after a four-critic pass. Summary of changes:
+
+- **Consistency (block)** — Coordinator integration was under-specified. The actual coordinator at `src/codegenie/coordinator/coordinator.py` does **not** call `Registry.sorted_for_task()`; it receives a pre-resolved `probes: Sequence[Probe]` list from `_seam_registry_for_task()` at `src/codegenie/cli.py:239–258`, which currently calls `default_registry.all_probes()`. The integration point for sort-order is the **CLI seam**, not the coordinator's internals. Files-to-touch updated to include `src/codegenie/cli.py`. AC-6 split into AC-6a (seam reads sorted order) + AC-6b (coordinator preserves single Semaphore, no per-tier semaphores).
+- **Consistency (block)** — The coordinator partitions probes into a prelude wave (`tier == "base"`) and a Wave-2 rest. `phase-arch-design.md §"Component design" #1` annotates `IndexHealthProbe.tier = "base"`. Naïvely, that would dispatch B2 in Wave 1, **before** any heavy SCIP/SBOM probe — defeating the entire `runs_last` semantic. Added AC-13 making the cross-wave invariant explicit and verifiable: a `runs_last=True` probe **must** dispatch after every non-`runs_last` probe regardless of its declared `tier`. The seam (or coordinator) hoists `runs_last=True` probes out of Wave 1 into the tail of Wave 2.
+- **Coverage (harden)** — Missing edge-case ACs added: empty registry (AC-14a), single `runs_last=True` only (AC-14b), all-same-heaviness preserves registration order (AC-14c). The "two `runs_last=True` probes" case in AC-4 conflicts with 02-ADR-0003 Tradeoffs row 4 ("one probe per gather may set it"). The story's intent is *the sort is well-defined for ≥1 runs_last*, not that the design endorses multiple — AC-4 reworded to say so, and an explicit ADR-amendment-deferred note added to `Notes for the implementer`.
+- **Test-Quality (harden)** — `test_module_level_decorator_backward_compatible_no_parens` was mutation-thin (only asserted `returned is cls`). Rewritten to (a) use a sub-registry so default_registry isn't polluted across tests, (b) assert the entry **actually appears** in `sorted_for_dispatch()` with defaults `("light", False)`. Now fails if the decorator silently drops kwargs OR fails to register.
+- **Test-Quality (harden)** — `test_coordinator_sort_order.py` was a `...` sketch. Replaced with a concrete test that captures dispatch-entry timestamps via a `_FakeRecorder` probe and asserts the observed order matches `sorted_for_dispatch()`. The test would fail if `sorted_for_dispatch` were stubbed to return `self._entries` unchanged (no-op).
+- **Test-Quality (harden + property-based)** — Added AC-15 + a property-based test (Hypothesis) over the four sort invariants: (1) every `runs_last=True` entry appears after every `runs_last=False` entry; (2) within each partition, heaviness rank is non-decreasing; (3) ties within (partition, heaviness) preserve registration order; (4) `len(output) == len(input)` and the output is a permutation of the input. Property-based shrinking will surface any off-by-one in the heaviness rank dict.
+- **Coverage (harden)** — AC-10 only specified one `coordinator.dispatch.order` event. The coordinator has two waves. AC-10 reworded: emit `coordinator.dispatch.order` **once per wave** with the wave-1 / wave-2 ordered probe-name lists, OR a single event carrying both lists keyed by wave. Test must verify both wave-1 and wave-2 orderings observable from logs.
+- **Coverage (harden)** — AC-8 was unverified ("Phase 0/1 probes continue to register without per-probe edits"). Added AC-8 test: import `codegenie.probes` (triggers every concrete `@register_probe` decoration) and assert `default_registry.sorted_for_dispatch()` contains every Phase 0/1 probe with `heaviness="light", runs_last=False`. This is the real backward-compat guarantee.
+- **Coverage (harden)** — Added AC-16: `_filter` lru_cache compatibility. The current module-level `_filter(probes_tuple, task, languages)` returns `tuple[type[Probe], ...]`. The story's `sorted_for_task` must either (a) preserve the same cache surface (filter-then-sort), or (b) introduce a new cache aligned with the new return shape. Whichever path, a test must verify cache invalidation across two different registries does not leak.
+- **Design-Patterns (note, not AC)** — `codegenie.probes.registry` is the **1st** of three registries in this phase (probes / indices / depgraph — see `src/codegenie/indices/registry.py:26–29` docstring naming the rule-of-three trigger queued for S1-10). Added implementer note: keep `ProbeRegEntry` shape compatible with a future `KernelRegistryEntry[K, V]` extract (frozen dataclass, generic-friendly field names). **Do not** introduce the kernel here — Rule 2: three similar lines is better than premature abstraction; S1-10 will be the third precedent and the right moment.
+- **Design-Patterns (harden)** — `Heaviness` is a `Literal["light","medium","heavy"]`. The `_HEAVINESS_RANK: dict[Heaviness, int]` is the only place ordering is encoded. Added an AC-17 mypy-level invariant: `_HEAVINESS_RANK`'s key set must equal the `Heaviness` `Literal` arms. A unit test uses `typing.get_args(Heaviness)` to assert exhaustive coverage — surfaces drift loud at CI time if a 4th tier is ever added.
+
+Critic priority resolution applied (`Consistency > Coverage > Test-Quality > Design-Patterns`):
+
+- Consistency-block on tier-partition vs runs_last is honored by AC-13 (the cross-wave invariant); design-patterns critic's suggestion to "make the prelude/Wave-2 split itself a strategy plugin" was rejected as premature (Rule 2; no rule-of-three trigger yet).
+- Coverage critic wanted an AC asserting "multiple `runs_last=True` probes raise a warning". Resolved against by 02-ADR-0003 Tradeoffs row 4 ("`runs_last` is a global ordering primitive (one probe per gather may set it)") — the design admits but does not police; sort is well-defined either way. Warning behaviour deferred to a future ADR amendment if drift surfaces.
+
+Verdict: **HARDENED** — story now binds the implementer to the load-bearing invariant (`runs_last` overrides tier-partition) and gives the validator pass concrete, mutation-resistant tests to verify against.
 
 ## Context
 
@@ -42,15 +65,23 @@ Extend `src/codegenie/probes/registry.py` to accept `@register_probe(heaviness: 
   - First: every entry with `runs_last=False`, ordered `heavy` → `medium` → `light`, ties broken by registration order (stable).
   - Last: every entry with `runs_last=True`, ordered `heavy` → `medium` → `light`, ties broken by registration order.
   Result: a `runs_last=True` light probe still runs after a `runs_last=False` heavy probe — `runs_last` dominates `heaviness`.
-- [ ] **AC-4.** A synthetic mixed registry test (light+light, medium+medium, heavy+heavy, runs_last=True light, runs_last=True heavy) dispatches in the asserted exact order. Parametrized.
-- [ ] **AC-5.** `Registry.for_task(...)` (Phase 0 method) preserves filter semantics; `sorted_for_dispatch` is layered on top — `Registry.sorted_for_task(task, languages) -> tuple[ProbeRegEntry, ...]` combines both.
-- [ ] **AC-6.** `src/codegenie/coordinator/coordinator.py` reads `sorted_for_task` (or the equivalent integration point) and dispatches under the **existing** single `Semaphore(min(cpu_count(), 8))`. No per-tier semaphores. No `pytest-xdist`. (02-ADR-0009 + ADR-0003 §Consequences.)
+- [ ] **AC-4.** A synthetic mixed registry test (light+light, medium+medium, heavy+heavy, one `runs_last=True heaviness="light"`, one `runs_last=True heaviness="heavy"`) dispatches in the asserted exact order. The sort is well-defined for ≥1 `runs_last=True` entries (the design admits but does not police multiple — see 02-ADR-0003 Tradeoffs row 4 + `Notes for the implementer`). Parametrized.
+- [ ] **AC-5.** `Registry.for_task(...)` (Phase 0 method) preserves filter semantics; `sorted_for_dispatch` is layered on top — `Registry.sorted_for_task(task, languages) -> tuple[ProbeRegEntry, ...]` combines both (filter, then sort).
+- [ ] **AC-6a.** `src/codegenie/cli.py:_seam_registry_for_task()` (the call site that resolves the probes list passed to `coordinator.gather`) is updated to consume `default_registry.sorted_for_dispatch()` (or `sorted_for_task` once Phase 2 widens to non-`*` task filters) instead of `default_registry.all_probes()`. The order the coordinator receives **is** the sorted order. The seam preserves the current "instantiate each class" step (`[cls() for cls in ...]`).
+- [ ] **AC-6b.** `src/codegenie/coordinator/coordinator.py` continues to dispatch under the **existing** single `Semaphore(min(cpu_count(), 8))`. No per-tier semaphores. No `pytest-xdist`. (02-ADR-0009 + 02-ADR-0003 §Consequences.) The coordinator does **not** re-sort what it receives — preserves "trust the seam" + minimizes the ~15 LOC edit budget the architect specified.
 - [ ] **AC-7.** The Phase 0 contract-freeze snapshot test (`tests/unit/test_probe_contract.py`) stays green — `Probe` ABC unchanged (`base.py` not edited in this story).
-- [ ] **AC-8.** Phase 0/1 existing probes (`LanguageDetectionProbe`, `NodeBuildSystemProbe`, parsers, etc.) continue to register without per-probe edits; their default `heaviness="light"`, `runs_last=False`.
-- [ ] **AC-9.** A unit test asserts dispatch order under a coordinator-like environment: synthetic probes record a timestamp on entry; the order observed matches `sorted_for_dispatch`'s declared order (modulo the semaphore-induced parallelism for ties).
-- [ ] **AC-10.** Structured log emission: every dispatch logs `coordinator.dispatch.order` with the list of probe names in order — verified by structlog capture in one test.
+- [ ] **AC-8.** Phase 0/1 existing probes (`LanguageDetectionProbe`, `NodeBuildSystemProbe`, `NodeManifestProbe`, `CIProbe`, `DeploymentProbe`, `TestInventoryProbe`, parser probes) continue to register without per-probe edits. **Verified by a test** that imports `codegenie.probes` (triggering every `@register_probe` decoration) and asserts every Phase 0/1 probe appears in `default_registry.sorted_for_dispatch()` with `heaviness="light", runs_last=False`. Failure mode caught: a misimplemented dual-shape decorator that silently dropped Phase 0/1 registrations on import.
+- [ ] **AC-9.** Dispatch-order test under a coordinator-like environment: synthetic probes record a monotonic `time.perf_counter_ns()` on entry; the order observed matches `sorted_for_dispatch`'s declared order modulo the semaphore-induced parallelism for ties (assert: for any two probes of *different* heaviness tier and same `runs_last`, the heavier probe's entry timestamp is strictly less than the lighter probe's). Mutation-resistant: would fail if `sorted_for_dispatch` were stubbed to return `self._entries` unchanged.
+- [ ] **AC-10.** Structured log emission: the dispatch path emits `coordinator.dispatch.order` **per wave** — one event with `wave="prelude"` carrying the wave-1 ordered probe-name list, and one event with `wave="rest"` carrying the wave-2 ordered list. Verified by structlog capture in one test that asserts both lists are present AND that any `runs_last=True` probe appears at the end of the `wave="rest"` list (never in `wave="prelude"`). Audit anchor.
 - [ ] **AC-11.** The TDD plan's red test exists, was committed, and is green.
-- [ ] **AC-12.** `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest tests/unit/probes/` + `tests/unit/coordinator/` all pass on the touched files.
+- [ ] **AC-12.** `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest tests/unit/probes/` + `tests/unit/coordinator/` + `tests/unit/test_cli.py` (the seam-touched files) all pass on the touched files.
+- [ ] **AC-13. (cross-wave `runs_last` invariant — load-bearing for IndexHealthProbe.)** A `runs_last=True` probe dispatches **after every non-`runs_last` probe regardless of declared `tier`**. The coordinator currently partitions by `tier == "base"` (prelude) vs other (Wave 2). `phase-arch-design.md §"Component design" #1` annotates `IndexHealthProbe.tier = "base"`. The seam or coordinator MUST hoist `runs_last=True` probes out of the prelude partition and into the tail of Wave 2 — never dispatch them in Wave 1. Verified by a test: a `tier="base"` + `runs_last=True` probe's entry timestamp is strictly greater than every `tier != "base"` non-`runs_last` probe's entry timestamp.
+- [ ] **AC-14a.** Empty registry: `Registry().sorted_for_dispatch()` returns `()` without raising.
+- [ ] **AC-14b.** All entries `runs_last=True`: `sorted_for_dispatch` returns them in `heavy → medium → light` order with registration-order tie-breaks; no entry is dropped.
+- [ ] **AC-14c.** All entries same heaviness, all `runs_last=False`: `sorted_for_dispatch` preserves registration order exactly (stable-sort guarantee is observable).
+- [ ] **AC-15. (property-based.)** Hypothesis-based test over the four sort invariants holds for arbitrary registry shapes: (1) every `runs_last=True` entry appears after every `runs_last=False` entry; (2) within each partition (runs_last True/False), heaviness rank is non-decreasing per `_HEAVINESS_RANK`; (3) ties within (partition, heaviness) preserve `registration_index` order; (4) `len(output) == len(input)` and the output is a permutation of the input (no duplicates, no drops). Failure surfaces via Hypothesis shrinker → minimal counter-example.
+- [ ] **AC-16. (cache correctness.)** Two independent `Registry()` instances do not cross-pollute. `r1.sorted_for_dispatch()` followed by `r2.sorted_for_dispatch()` returns r1's entries and r2's entries respectively. If the implementation chooses to `lru_cache` either `sorted_for_dispatch` or the underlying filter, the cache MUST be keyed such that two different `Registry` instances are not aliased (the Phase 0 `_filter` lives at module scope and takes `probes_tuple` precisely so the cache doesn't leak `self`; preserve that property).
+- [ ] **AC-17. (`Heaviness` exhaustiveness.)** A unit test uses `typing.get_args(Heaviness)` to assert `set(_HEAVINESS_RANK.keys()) == set(typing.get_args(Heaviness))`. If a 4th tier is ever added to `Heaviness`, CI fails loud at this assertion rather than silently mis-sorting at runtime. (Make-illegal-states-unrepresentable invariant for the registry.)
 
 ## Implementation outline
 
@@ -145,18 +176,161 @@ def test_decorator_factory_shape() -> None:
     assert entries[0].runs_last is True
 
 
-def test_module_level_decorator_backward_compatible_no_parens() -> None:
+def test_module_level_decorator_backward_compatible_no_parens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A Phase 0/1 probe decorated with bare @register_probe (no parens) still
-    registers with default heaviness="light", runs_last=False."""
-    # default_registry is the singleton; use unregister_for_tests hook (add to
-    # Registry mirroring S1-02) or use a fresh sub-registry. Pick whichever
-    # pattern the Phase 0/1 tests already use; here, assume a fresh registry.
-    reg = Registry()
+    registers AND lands in the registry with defaults.
+
+    Mutation-resistance: a buggy dual-shape decorator that returns ``cls``
+    unchanged but never calls ``register()`` would pass the old assertion
+    ``returned is cls``. This test fails that buggy implementation by also
+    asserting the entry appears in ``sorted_for_dispatch()`` with defaults.
+    """
+    from codegenie.probes import registry as registry_mod
+
+    fresh = Registry()
+    monkeypatch.setattr(registry_mod, "default_registry", fresh)
+
     cls = _make_probe("legacy_phase0_probe")
-    # The Phase 0 module-level decorator pattern: @register_probe applied to cls.
-    # Simulate by calling the dual-shape decorator with the class positionally.
     returned = register_probe(cls)  # treats first positional arg as the class
+
     assert returned is cls
+    entries = fresh.sorted_for_dispatch()
+    assert len(entries) == 1, "decorator must actually register, not just return cls"
+    assert entries[0].cls is cls
+    assert entries[0].heaviness == "light"
+    assert entries[0].runs_last is False
+
+
+def test_phase_0_1_probes_register_unedited() -> None:
+    """AC-8: importing ``codegenie.probes`` triggers every Phase 0/1
+    ``@register_probe`` decoration; all of them must land with defaults.
+
+    This is the real backward-compat guarantee: ``LanguageDetectionProbe``,
+    ``NodeBuildSystemProbe``, ``NodeManifestProbe``, ``CIProbe``,
+    ``DeploymentProbe``, ``TestInventoryProbe``, plus the parser probes are
+    not edited in this story; they must still appear in the default registry
+    with ``heaviness="light", runs_last=False``.
+    """
+    import importlib
+
+    import codegenie.probes  # noqa: F401 — import side effect
+
+    importlib.import_module("codegenie.probes")
+    from codegenie.probes.registry import default_registry
+
+    entries = default_registry.sorted_for_dispatch()
+    by_name = {e.cls.name: e for e in entries}
+    expected_phase01 = {
+        "language_detection",
+        "node_build_system",
+        "node_manifest",
+        "ci",
+        "deployment",
+        "test_inventory",
+    }
+    missing = expected_phase01 - set(by_name.keys())
+    assert not missing, f"Phase 0/1 probes dropped on import: {missing}"
+    for name in expected_phase01:
+        assert by_name[name].heaviness == "light", name
+        assert by_name[name].runs_last is False, name
+
+
+def test_empty_registry_sorted_dispatch_is_empty_tuple() -> None:
+    """AC-14a."""
+    assert Registry().sorted_for_dispatch() == ()
+
+
+def test_all_runs_last_partition_orders_by_heaviness_then_registration() -> None:
+    """AC-14b: every entry has runs_last=True; heavy → medium → light, then
+    registration order within tier."""
+    reg = Registry()
+    reg.register(_make_probe("a"), heaviness="light", runs_last=True)
+    reg.register(_make_probe("b"), heaviness="heavy", runs_last=True)
+    reg.register(_make_probe("c"), heaviness="medium", runs_last=True)
+    reg.register(_make_probe("d"), heaviness="heavy", runs_last=True)
+    order = [e.cls.name for e in reg.sorted_for_dispatch()]
+    assert order == ["b", "d", "c", "a"]
+
+
+def test_heaviness_literal_arms_exhaustively_ranked() -> None:
+    """AC-17: ``_HEAVINESS_RANK`` keys must equal ``Heaviness`` Literal arms.
+
+    If a 4th tier is added to ``Heaviness`` but ``_HEAVINESS_RANK`` is not
+    updated, this fails loud at CI rather than silently mis-sorting.
+    """
+    import typing
+
+    from codegenie.probes.registry import _HEAVINESS_RANK, Heaviness
+
+    assert set(_HEAVINESS_RANK.keys()) == set(typing.get_args(Heaviness))
+
+
+# Property-based — AC-15.
+from hypothesis import given, strategies as st
+
+_heaviness_st = st.sampled_from(["light", "medium", "heavy"])
+_runs_last_st = st.booleans()
+_entry_specs_st = st.lists(st.tuples(_heaviness_st, _runs_last_st), min_size=0, max_size=20)
+
+
+@given(specs=_entry_specs_st)
+def test_sort_invariants_hold_for_arbitrary_registries(
+    specs: list[tuple[str, bool]],
+) -> None:
+    """AC-15: four sort invariants hold for any list of (heaviness, runs_last)
+    pairs.
+
+    Mutation-resistance: shrinking will surface off-by-one rank-dict bugs,
+    flipped runs_last partition, or non-stable tie-breaks.
+    """
+    from codegenie.probes.registry import _HEAVINESS_RANK
+
+    reg = Registry()
+    for i, (h, rl) in enumerate(specs):
+        reg.register(_make_probe(f"p{i}"), heaviness=h, runs_last=rl)
+    out = reg.sorted_for_dispatch()
+
+    # (4) permutation of input — no drops, no dupes, same length.
+    assert len(out) == len(specs)
+    assert {e.cls.name for e in out} == {f"p{i}" for i in range(len(specs))}
+
+    # (1) every runs_last=True after every runs_last=False.
+    seen_runs_last = False
+    for e in out:
+        if e.runs_last:
+            seen_runs_last = True
+        else:
+            assert not seen_runs_last, "runs_last=False after runs_last=True"
+
+    # (2) within each partition, heaviness rank non-decreasing.
+    for partition in (False, True):
+        ranks = [_HEAVINESS_RANK[e.heaviness] for e in out if e.runs_last is partition]
+        assert ranks == sorted(ranks), f"heaviness rank non-monotonic in {partition=}"
+
+    # (3) ties within (partition, heaviness) preserve registration order.
+    for partition in (False, True):
+        for h in ("heavy", "medium", "light"):
+            idxs = [e.registration_index for e in out if e.runs_last is partition and e.heaviness == h]
+            assert idxs == sorted(idxs), f"tie-break unstable in {partition=}, {h=}"
+
+
+def test_two_registries_do_not_cross_pollute() -> None:
+    """AC-16: independent ``Registry()`` instances stay isolated.
+
+    The Phase 0 ``_filter`` cache lives at module scope and takes the
+    probes-tuple as a key; this test fails any implementation that aliases
+    instances via a cache keyed on something less specific.
+    """
+    r1 = Registry()
+    r2 = Registry()
+    r1.register(_make_probe("only_in_r1"))
+    r2.register(_make_probe("only_in_r2"))
+    names_r1 = {e.cls.name for e in r1.sorted_for_dispatch()}
+    names_r2 = {e.cls.name for e in r2.sorted_for_dispatch()}
+    assert names_r1 == {"only_in_r1"}
+    assert names_r2 == {"only_in_r2"}
 
 
 def test_iter_order_is_stable_within_tier() -> None:
@@ -180,23 +354,138 @@ Test file path: `tests/unit/coordinator/test_coordinator_sort_order.py`
 
 ```python
 from __future__ import annotations
-# Synthetic registry of light + medium + heavy + runs_last probes; the
-# coordinator dispatches in the asserted order under
-# Semaphore(min(cpu_count(), 8)). Mirror the integration shape of
-# coordinator.gather; mock the cache to force-MISS so every probe runs.
-# Capture entry timestamps from each probe's run(); assert ordering survives
-# the semaphore.
-# [Full test sketch deferred — implementer composes from existing
-# tests/unit/coordinator/test_*.py shape.]
 
-def test_runs_last_dispatched_after_every_sibling() -> None:
-    # arrange: 5 probes; one is runs_last=True with heaviness="light"; others
-    # are mixed heaviness=False runs_last.
-    # act: gather()
-    # assert: last entry to record its dispatch timestamp is the runs_last
-    # probe, even though it's "light".
-    ...
+import asyncio
+import time
+from collections.abc import Sequence
+from typing import Any
+
+import pytest
+import structlog
+from structlog.testing import LogCapture
+
+from codegenie.coordinator.coordinator import gather
+from codegenie.probes.base import Probe, ProbeContext, ProbeOutput
+from codegenie.probes.registry import Registry
+
+
+def _make_recorder_probe(
+    name_: str,
+    *,
+    tier_: str = "task_specific",
+    timeline: list[tuple[str, int]],
+) -> type[Probe]:
+    """A synthetic probe that records (name, perf_counter_ns) on entry to
+    ``run`` and returns a trivial slice.
+
+    ``timeline`` is a shared list the test threads receive entries into;
+    after gather() returns, the order of the list reveals the actual
+    dispatch order (modulo semaphore-induced parallelism for ties)."""
+
+    class _P(Probe):
+        name = name_
+        layer = "B"
+        tier = tier_
+        applies_to_tasks = ["*"]
+        applies_to_languages = ["*"]
+        requires: list[str] = []
+        declared_inputs: list[str] = []
+        cache_strategy = "none"
+        timeout_seconds = 5
+
+        async def run(self, ctx: ProbeContext) -> ProbeOutput:  # type: ignore[no-untyped-def]
+            timeline.append((name_, time.perf_counter_ns()))
+            await asyncio.sleep(0.005)  # small yield so semaphore-bound ties surface
+            return ProbeOutput(schema_slice={}, errors=[], warnings=[])
+
+    _P.__name__ = name_
+    return _P
+
+
+def _seam_to_probes(reg: Registry) -> list[Probe]:
+    """Mirror ``cli._seam_registry_for_task`` post-S1-08 behaviour:
+    consume ``sorted_for_dispatch`` and instantiate."""
+    return [e.cls() for e in reg.sorted_for_dispatch()]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_order_under_single_semaphore(
+    log_output: LogCapture,
+    cache_force_miss: Any,
+    fake_snapshot: Any,
+    fake_task: Any,
+    fake_config_max_8: Any,
+    fake_sanitizer: Any,
+) -> None:
+    """AC-9 + AC-13: registry-declared order survives the single
+    ``Semaphore(min(cpu_count(), 8))`` and ``runs_last=True`` dispatches after
+    every non-runs_last sibling — including across the prelude/Wave-2
+    partition.
+
+    Mutation-resistance: would fail if ``sorted_for_dispatch`` were stubbed
+    to return ``self._entries`` unchanged OR if the coordinator/seam ignored
+    ``runs_last`` for ``tier="base"`` probes.
+    """
+    timeline: list[tuple[str, int]] = []
+    reg = Registry()
+    reg.register(_make_recorder_probe("a_light",   tier_="task_specific", timeline=timeline))
+    reg.register(_make_recorder_probe("b_medium", tier_="task_specific", timeline=timeline), heaviness="medium")
+    reg.register(_make_recorder_probe("c_heavy",  tier_="task_specific", timeline=timeline), heaviness="heavy")
+    # The load-bearing case: tier="base" + runs_last=True — IndexHealth shape.
+    reg.register(
+        _make_recorder_probe("d_index_health", tier_="base", timeline=timeline),
+        runs_last=True,
+    )
+    # A non-runs_last tier="base" probe — should still run in the prelude.
+    reg.register(_make_recorder_probe("e_base_prelude", tier_="base", timeline=timeline))
+
+    probes = _seam_to_probes(reg)
+    await gather(fake_snapshot, fake_task, probes, fake_config_max_8, cache_force_miss, fake_sanitizer)
+
+    order = [name for name, _ in timeline]
+
+    # AC-13: d_index_health (runs_last=True) is strictly last, despite tier="base".
+    assert order[-1] == "d_index_health"
+    # Non-runs_last prelude probe runs before any non-prelude Wave-2 probe.
+    assert order.index("e_base_prelude") < order.index("a_light")
+    assert order.index("e_base_prelude") < order.index("b_medium")
+    assert order.index("e_base_prelude") < order.index("c_heavy")
+    # Within Wave 2 non-runs_last: heavy < medium < light by entry-timestamp.
+    assert order.index("c_heavy") < order.index("b_medium")
+    assert order.index("b_medium") < order.index("a_light")
+
+
+@pytest.mark.asyncio
+async def test_coordinator_dispatch_order_log_emitted_per_wave(
+    log_output: LogCapture,
+    cache_force_miss: Any,
+    fake_snapshot: Any,
+    fake_task: Any,
+    fake_config_max_8: Any,
+    fake_sanitizer: Any,
+) -> None:
+    """AC-10: ``coordinator.dispatch.order`` emitted once per wave; any
+    ``runs_last=True`` probe appears at the tail of the rest-wave list, never
+    in the prelude-wave list."""
+    timeline: list[tuple[str, int]] = []
+    reg = Registry()
+    reg.register(_make_recorder_probe("base_a",   tier_="base", timeline=timeline))
+    reg.register(_make_recorder_probe("rest_a",   tier_="task_specific", timeline=timeline), heaviness="heavy")
+    reg.register(
+        _make_recorder_probe("runs_last_x", tier_="base", timeline=timeline),
+        runs_last=True,
+    )
+    probes = _seam_to_probes(reg)
+    await gather(fake_snapshot, fake_task, probes, fake_config_max_8, cache_force_miss, fake_sanitizer)
+
+    events = [r for r in log_output.entries if r.get("event") == "coordinator.dispatch.order"]
+    waves = {e["wave"]: e["probe_order"] for e in events}
+    assert set(waves.keys()) == {"prelude", "rest"}
+    assert "runs_last_x" not in waves["prelude"]
+    assert waves["rest"][-1] == "runs_last_x"
 ```
+
+Notes on the test harness above: `log_output`, `cache_force_miss`, `fake_snapshot`, `fake_task`, `fake_config_max_8`, and `fake_sanitizer` are pytest fixtures the existing `tests/unit/coordinator/conftest.py` already provides (mirror their shape; the implementer reads that conftest and reuses or extends as needed — Rule 11, match the codebase's conventions). If a fixture doesn't yet exist, add it to the same conftest rather than inlining bespoke setup in this test file.
 
 Run — confirm `ImportError`/`TypeError` on the new decorator-factory signature. Commit.
 
@@ -324,10 +613,12 @@ In `src/codegenie/coordinator/coordinator.py`:
 
 | Path | Why |
 |---|---|
-| `src/codegenie/probes/registry.py` | Add `ProbeRegEntry`, `sorted_for_dispatch`, `sorted_for_task`, dual-shape `register_probe` decorator. |
-| `src/codegenie/coordinator/coordinator.py` | Dispatch reads `sorted_for_task` order; preserve single `Semaphore`; emit `coordinator.dispatch.order` log. |
-| `tests/unit/probes/test_registry_heaviness.py` | Heaviness/runs_last ordering, decorator factory, backward-compat, ABC-unchanged. |
-| `tests/unit/coordinator/test_coordinator_sort_order.py` | Coordinator honors registry order under single semaphore. |
+| `src/codegenie/probes/registry.py` | Add `ProbeRegEntry`, `_HEAVINESS_RANK`, `sorted_for_dispatch`, `sorted_for_task`, `Registry.decorator(...)`, dual-shape module-level `register_probe`. |
+| `src/codegenie/cli.py` | (AC-6a) `_seam_registry_for_task()` switches from `default_registry.all_probes()` to `default_registry.sorted_for_dispatch()` (consumed via `[e.cls() for e in ...]`). Surgical — one method body. |
+| `src/codegenie/coordinator/coordinator.py` | (AC-6b + AC-13) Trust the seam's order. The only edit is to (a) ensure the prelude/Wave-2 partition hoists `runs_last=True` probes out of `base` into the tail of `rest`, and (b) emit `coordinator.dispatch.order` once per wave with the ordered probe-name list. Preserves single `Semaphore(min(cpu_count(), 8))`. ~15 LOC per the architect's budget. |
+| `tests/unit/probes/test_registry_heaviness.py` | Heaviness/runs_last ordering (AC-3, AC-4), decorator factory (AC-1), backward-compat including post-import default-registry contents (AC-8), ABC-unchanged (AC-7 spot-check), edge cases (AC-14a/b/c), `Heaviness` exhaustiveness (AC-17), property-based invariants (AC-15), cache isolation (AC-16). |
+| `tests/unit/coordinator/test_coordinator_sort_order.py` | Coordinator honors registry order under single semaphore (AC-9), cross-wave `runs_last` invariant (AC-13), per-wave `coordinator.dispatch.order` log emission (AC-10). |
+| `tests/unit/test_cli.py` *(if exists, else `tests/unit/test_cli_seam.py`)* | (AC-6a) The seam returns instances of every registered probe in `sorted_for_dispatch()` order. |
 
 ## Out of scope
 
@@ -340,6 +631,9 @@ In `src/codegenie/coordinator/coordinator.py`:
 
 ## Notes for the implementer
 
+- **Cross-wave `runs_last` is the load-bearing invariant** (AC-13). The architect's annotation `IndexHealthProbe.tier = "base"` plus `runs_last=True` is a deliberate stress on the prelude/Wave-2 partition: a naïve coordinator would dispatch B2 first (in the prelude), not last. The fix lives in the coordinator's partition step: split into `base = [p for p in probes if tier=="base" and not _runs_last(p)]` and append `runs_last=True` probes to the *end* of `rest`, regardless of declared tier. Resolve the "is this probe runs_last?" predicate via a coordinator-side helper that reads from the registry by probe `name` (or via a `ProbeMeta` lookup): the coordinator does NOT learn `runs_last` from the probe instance itself — that would re-introduce the ABC contract change 02-ADR-0003 rejected. One clean shape: `_seam_registry_for_task()` returns `list[tuple[Probe, ProbeMeta]]` (or pairs the seam emits) so the coordinator partitions on the metadata without touching `Probe`. Pick the shape that minimizes the coordinator's LOC delta.
+- **`tier` semantic check with the architect (out-of-band).** The fact that `IndexHealthProbe.tier = "base"` is on the same probe that must run last is friction-inducing. If during implementation it becomes clear the cleaner shape is `IndexHealthProbe.tier = "task_specific"`, raise the question via an ADR amendment on 02-ADR-0003 or a follow-up story rather than silently re-tier'ing the probe — that decision is not in this story's scope (S4-01 owns `IndexHealthProbe` itself). For S1-08, treat AC-13 as the contract and make it work with `tier="base"`.
+- **Rule-of-three kernel-extract is queued, not in scope.** `codegenie.probes.registry` is the **1st** of three decorator-registries in this phase (probes, then `codegenie.indices.registry` already shipped at S1-02, then `codegenie.depgraph.registry` at S1-10). `src/codegenie/indices/registry.py:26–29` already names the rule-of-three trigger. Keep `ProbeRegEntry` a frozen dataclass with field names that would survive a future generic `KernelRegistryEntry[K, V]` extract (`cls`, `registration_index`, and per-registry metadata fields). **Do not** introduce the kernel base in this story — Rule 2: three similar lines is better than premature abstraction; S1-10 is the right moment.
 - **Dual-shape decorator is the canonical idiom.** The `cls=None` + overload pattern is in Python textbooks; ensure mypy is happy by using `@overload` properly. Test backward-compat explicitly — Phase 0/1 probes use `@register_probe` with no parens and must continue to work.
 - **`Probe` ABC is not edited.** The Phase 0 contract-freeze snapshot test (`tests/unit/test_probe_contract.py`) is the structural defense. If that test fails after this story, the change is wrong — back out and route via the registry annotation instead.
 - **Stable sort is load-bearing.** Cache keys and golden files depend on deterministic dispatch order; ties between probes of the same heaviness/runs_last MUST be broken by registration order (the `registration_index` field). `sorted()` in Python is stable; using the rank-tuple key preserves the registration-index tie-break.
