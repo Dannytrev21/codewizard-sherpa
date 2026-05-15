@@ -713,3 +713,84 @@ states.
 install-state changes. Don't add both ignores at once
 (`# type: ignore[import-not-found,import-untyped]`); mypy's
 unused-ignore logic flags whichever isn't currently triggering.
+
+## L-35 — `cli`-side raw-artifact filename collides across probes (S3-06)
+
+`cli.py` writes raw artifacts under `<output_dir>/raw/<basename>` where
+basename = `raw_path.name` (the leaf of the path the probe emitted).
+**Two probes can claim the same basename**: e.g., adding `[repo.root /
+"pnpm-lock.yaml"]` to `NodeManifestProbe.raw_artifacts` would write
+`.codegenie/context/raw/pnpm-lock.yaml`, which then matches
+`NodeBuildSystemProbe`'s `declared_inputs = ["pnpm-lock.yaml", ...]` on
+the next gather (because `declared_inputs_for` uses `rglob`, not
+`glob` — L-36). Result: spurious cache invalidation on the warm run
+for an unrelated probe.
+
+**Apply to:** every future probe story that adds `raw_artifacts`
+emission. Before landing, check that no basename in the probe's
+emitted paths overlaps with any other probe's `declared_inputs`
+globs.
+
+**Don't:** add `raw_artifacts` emission piecemeal without a writer-side
+namespacing pass. The fix shape lives in `cli.py` (namespace the
+filename, e.g., `<probe>.<basename>`) or in `cache.keys.declared_inputs_for`
+(exclude the `.codegenie/` output namespace from rglob) — not in the
+probe code. Surface the gap and BLOCK on the writer/keys follow-up
+rather than working around it from the probe.
+
+## L-36 — `declared_inputs_for` uses `rglob`, not `glob` (S3-06)
+
+`codegenie.cache.keys.declared_inputs_for` walks `snapshot.root.rglob(
+pattern)` for every entry in `declared_inputs`. So a literal-looking
+entry like `"pnpm-lock.yaml"` matches *every* `pnpm-lock.yaml` anywhere
+in the repo tree — including cli-written artifacts under `.codegenie/`.
+This bites because the glob *looks* like a literal filename, but it's
+recursive.
+
+**Apply to:** every cache-invalidation-scope test; every probe that
+adds raw-artifact emission. Before reasoning about cache-key
+stability, list `snapshot.root.rglob(pattern)` for every probe's
+`declared_inputs` against the repo state you expect at each phase
+(cold, warm, after-edit).
+
+**Don't:** assume literal-looking declared_inputs entries match only
+the top-level file. Always test "what happens when a sibling probe's
+side effect drops a matching basename under `.codegenie/`."
+
+## L-37 — Catalog-edit cache invalidation needs the catalog file in the fixture at the declared-input path (S3-06)
+
+`NodeManifestProbe.declared_inputs` includes `"src/codegenie/catalogs/
+native_modules.yaml"`. That pattern is matched against the repo root
+via `rglob`, *not* against the codegenie install root. So a fixture
+without that path has **zero catalog contribution to the cache key** —
+the ADR-0006 cache-invalidation invariant cannot be exercised by
+monkey-patching the in-process `_load_catalog` function.
+
+**Apply to:** every test exercising catalog-edit cache invalidation
+(S3-06 AC-7; future CIProvider catalog tests in Phase 2; replacement-
+catalog tests in Phase 3). Seed the catalog file INTO the fixture at
+the declared-input relative path; edit it there; re-gather.
+
+**Don't:** monkey-patch `codegenie.catalogs._load_catalog` and expect
+the cache key to change. The constants `NATIVE_MODULES` /
+`NATIVE_MODULES_CATALOG_VERSION` are import-time singletons; they
+affect the probe's *behavior* but not the cache-key *fingerprint*
+(which goes through `declared_inputs_for` → file content hash).
+
+## L-38 — `pytest-mock` is not in dev extras; inline a `_CallCounter` for spy-style tests (S3-06)
+
+Stories prescribing `mocker.spy(target, "attr")` fail collection with
+"fixture 'mocker' not found" because pytest-mock is not in
+`pyproject.toml`'s dev extras. The shipped equivalent is a 6-line
+`_CallCounter` (counts calls + delegates to wrapped) +
+`monkeypatch.setattr(target, attr, counter)`. Same behavioral
+contract — call-count + call-through — different spelling.
+
+**Apply to:** every future story whose TDD plan prescribes
+`mocker.spy`. Inline the helper in the test file; do NOT add
+pytest-mock to the dev extras to satisfy a story spelling (Rule 11 —
+match the codebase, including the *absence* of a dependency).
+
+**Don't:** copy-paste `mocker.spy(...)` from the story TDD plan
+verbatim. The spy *behavior* (observable distinct call paths) is the
+AC contract; the *fixture name* is conventional.

@@ -232,3 +232,204 @@ def test_declared_inputs_for_does_not_raise_on_missing_paths(tmp_path: Path) -> 
     root.mkdir()
     snapshot = RepoSnapshot(root=root, git_commit=None, detected_languages={}, config={})
     assert declared_inputs_for(NoMatchProbe, snapshot) == []  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# S3-06 AC-7 — Catalog-edit invalidates `node_manifest` AND ONLY `node_manifest`
+# ---------------------------------------------------------------------------
+
+
+def _cache_state_from_logs(events: list[dict[str, object]]) -> dict[str, str]:
+    """Reduce captured structlog events to ``{probe_name: "hit"|"miss"}``.
+
+    A probe emits exactly one of:
+
+    - ``probe.cache_hit`` (warm path) → ``"hit"``
+    - ``probe.success`` with a ``cache_key`` (coordinator-side, after a
+      miss + successful run) → ``"miss"``
+
+    The probe-internal ``probe.success`` (without ``cache_key``) is the
+    pre-coordinator event from the probe body — filter it out by the
+    ``"cache_key" in event`` discriminator (S2-05 pattern of record).
+    """
+    state: dict[str, str] = {}
+    for event in events:
+        kind = event.get("event")
+        probe = event.get("probe")
+        if not isinstance(probe, str):
+            continue
+        if kind == "probe.cache_hit":
+            state[probe] = "hit"
+        elif kind == "probe.success" and "cache_key" in event:
+            state.setdefault(probe, "miss")
+    return state
+
+
+def _gather_with_logs(repo: Path) -> tuple[int, list[dict[str, object]]]:
+    """Run ``codegenie gather`` once under structlog capture; return
+    ``(exit_code, captured_events)``.
+    """
+    import structlog
+    from click.testing import CliRunner
+
+    from codegenie.cli import cli
+
+    with structlog.testing.capture_logs() as logs:
+        result = CliRunner().invoke(cli, ["--no-gitignore", "gather", str(repo)])
+    return result.exit_code, list(logs)
+
+
+@pytest.fixture
+def _disable_cli_configure_logging_unit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mirror of ``tests/integration/probes/conftest.py``'s autouse seam
+    disablement — needed here because this unit test invokes the CLI for
+    the S3-06 AC-7 catalog-invalidation-scope assertion. Without this,
+    ``CliRunner.invoke`` re-runs :func:`codegenie.logging.configure_logging`
+    which replaces structlog's active processor chain and silently drops
+    every captured event (S2-05 burned this).
+    """
+    import codegenie.cli
+
+    monkeypatch.setattr(codegenie.cli, "_seam_configure_logging", lambda verbose: None)
+
+
+def _seed_pnpm_native_repo(tmp_path: Path, *, with_catalog: bool = True) -> Path:
+    """Lay out a minimal pnpm-native repo plus the catalog file at the
+    relative path ``NodeManifestProbe.declared_inputs`` references.
+
+    ``with_catalog`` controls whether the catalog file is dropped; the
+    invalidation test needs it present from the cold run so the catalog
+    contributes to ``node_manifest``'s ``content_hash``.
+    """
+    fixture_src = Path(__file__).parent.parent / "fixtures" / "node_pnpm_native"
+    repo = tmp_path / "repo"
+    import shutil
+
+    shutil.copytree(fixture_src, repo)
+    if with_catalog:
+        catalog_src = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "codegenie"
+            / "catalogs"
+            / "native_modules.yaml"
+        )
+        catalog_dst = repo / "src" / "codegenie" / "catalogs" / "native_modules.yaml"
+        catalog_dst.parent.mkdir(parents=True, exist_ok=True)
+        catalog_dst.write_bytes(catalog_src.read_bytes())
+    return repo
+
+
+@pytest.mark.parametrize("sibling", ["language_detection", "node_build_system"])
+def test_catalog_edit_invalidates_only_node_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sibling: str,
+    _disable_cli_configure_logging_unit: None,
+) -> None:
+    """S3-06 AC-7 — ADR-0006 cache-scope invariant.
+
+    Editing ``native_modules.yaml`` MUST invalidate ``node_manifest``
+    (the catalog is in its ``declared_inputs``) and MUST NOT invalidate
+    any sibling probe (their ``declared_inputs`` do not include the
+    catalog). Both directions are pinned by the aggregate assertion
+    ``{p: s in cache_state if s == "miss"} == {"node_manifest"}``; a
+    surgical-flush mutant (e.g., a buggy invalidation that flushed
+    everything except ``ci``) would be caught.
+
+    The parametrize covers each currently-registered Phase 0 / Phase 1
+    sibling. As Phase 1 lands ``ci`` / ``deployment`` / ``test_inventory``
+    probes (S4-01..S4-03), the parametrize set grows by listing them
+    here — zero edits to the test body.
+    """
+    repo = _seed_pnpm_native_repo(tmp_path)
+    catalog_path = repo / "src" / "codegenie" / "catalogs" / "native_modules.yaml"
+    original_size = catalog_path.stat().st_size
+
+    cold_exit, cold_logs = _gather_with_logs(repo)
+    assert cold_exit == 0, f"cold gather failed: events={cold_logs}"
+    cold_state = _cache_state_from_logs(cold_logs)
+    # On cold, every probe should miss (no prior cache entries).
+    assert "node_manifest" in cold_state, cold_logs
+    assert cold_state["node_manifest"] == "miss"
+
+    # Size-changing catalog edit: bump catalog_version: 1 → 10 (+1 byte).
+    # ADR-0006 §Tradeoffs row 4 — the (path, size) cache key requires a
+    # size change; a same-size YAML edit does NOT invalidate (pinned by
+    # the companion xfail test below).
+    text = catalog_path.read_text(encoding="utf-8")
+    bumped = text.replace("catalog_version: 1", "catalog_version: 10")
+    catalog_path.write_text(bumped, encoding="utf-8")
+    new_size = catalog_path.stat().st_size
+    assert new_size != original_size, (
+        "ADR-0006 (path, size) cache key requires a size change; bump "
+        "1→2 is forbidden (same byte count). Got original_size="
+        f"{original_size}, new_size={new_size}."
+    )
+
+    warm_exit, warm_logs = _gather_with_logs(repo)
+    assert warm_exit == 0, f"warm gather failed: events={warm_logs}"
+    warm_state = _cache_state_from_logs(warm_logs)
+
+    # Aggregate assertion — pins BOTH directions:
+    #   - under-invalidation: node_manifest must be a miss (the catalog
+    #     change must propagate to the cache key)
+    #   - over-invalidation: ONLY node_manifest is a miss (siblings stay
+    #     warm). A surgical-flush mutant fails this single equality.
+    misses = {p for p, s in warm_state.items() if s == "miss"}
+    assert misses == {"node_manifest"}, (
+        f"S3-06 AC-7 — catalog edit must invalidate node_manifest AND ONLY "
+        f"node_manifest; got misses={misses}, warm_state={warm_state}"
+    )
+
+    # Per-sibling pinning (parametrize): each sibling must be a hit.
+    assert warm_state.get(sibling) == "hit", (
+        f"sibling {sibling} cache state: expected 'hit', got "
+        f"{warm_state.get(sibling)!r}; warm_state={warm_state}"
+    )
+
+
+@pytest.mark.xfail(
+    reason="ADR-0006 §Tradeoffs row 4: same-size YAML edit does NOT "
+    "invalidate (accepted Phase 1 limitation; cache key is (path, size)). "
+    "xfail pins this as a regression-tracked invariant rather than docs.",
+    strict=True,
+)
+def test_same_size_catalog_edit_does_not_invalidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _disable_cli_configure_logging_unit: None,
+) -> None:
+    """ADR-0006 §Tradeoffs row 4 — companion invariant: a same-size
+    YAML edit (e.g., ``catalog_version: 1`` → ``catalog_version: 2``)
+    does NOT change the (path, size) cache key and therefore does NOT
+    invalidate ``node_manifest``. This is the documented limitation;
+    the xfail pins it so a future cache-key-strengthening change (e.g.,
+    including content hash in addition to size) surfaces here as an
+    unexpected pass.
+    """
+    repo = _seed_pnpm_native_repo(tmp_path)
+    catalog_path = repo / "src" / "codegenie" / "catalogs" / "native_modules.yaml"
+    original_size = catalog_path.stat().st_size
+
+    cold_exit, _ = _gather_with_logs(repo)
+    assert cold_exit == 0
+
+    # Same-size edit: 1 → 2 keeps byte count unchanged.
+    text = catalog_path.read_text(encoding="utf-8")
+    bumped = text.replace("catalog_version: 1", "catalog_version: 2")
+    catalog_path.write_text(bumped, encoding="utf-8")
+    assert catalog_path.stat().st_size == original_size, (
+        "same-size edit precondition failed; bytes drifted"
+    )
+
+    warm_exit, warm_logs = _gather_with_logs(repo)
+    assert warm_exit == 0
+    warm_state = _cache_state_from_logs(warm_logs)
+    # The xfail expectation: under the current cache-key shape, the
+    # catalog change is invisible — node_manifest WILL hit. When the
+    # cache key is strengthened (Phase 2 amendment), this test starts
+    # passing as a "miss" and the xfail decorator must be dropped.
+    assert warm_state.get("node_manifest") == "miss", (
+        f"expected ADR-0006 limitation: same-size edit invalidates node_manifest; got {warm_state}"
+    )
