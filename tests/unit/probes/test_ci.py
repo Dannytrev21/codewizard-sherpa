@@ -267,9 +267,7 @@ def test_provider_precedence_follows_catalog_order(
         ),
     ],
 )
-def test_jenkinsfile_regex_extraction(
-    tmp_path: Path, body: str, expect_in_unit: str
-) -> None:
+def test_jenkinsfile_regex_extraction(tmp_path: Path, body: str, expect_in_unit: str) -> None:
     (tmp_path / "Jenkinsfile").write_text(body)
     out = _run(tmp_path)
     s = out.schema_slice["ci"]
@@ -365,14 +363,13 @@ def test_secrets_regex_does_not_match_env_inputs_or_capitalized(
 ) -> None:
     _write_workflow(
         tmp_path,
-        "steps:\n  - run: echo ${{ env.FOO }} ${{ inputs.BAR }} ${{ Secrets.X }} ${{ secrets.REAL }}\n",
+        "steps:\n  - run: echo "
+        "${{ env.FOO }} ${{ inputs.BAR }} ${{ Secrets.X }} ${{ secrets.REAL }}\n",
     )
     assert _run(tmp_path).schema_slice["ci"]["references_secrets"] == ["REAL"]
 
 
-def test_secrets_value_never_resolved(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_secrets_value_never_resolved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Sentinel: probe must NOT call os.environ.get for any secret name."""
     import os
 
@@ -423,9 +420,7 @@ def test_secrets_regex_constant_shape() -> None:
     """AC-17 — exact regex constant pinned."""
     from codegenie.probes.ci import _SECRETS_RE
 
-    assert (
-        _SECRETS_RE.pattern == r"\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]{0,128})\s*\}\}"
-    )
+    assert _SECRETS_RE.pattern == r"\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]{0,128})\s*\}\}"
 
 
 # ---------- T-13: per-file workflow YAML parse failure (AC-21, CN-1) -----
@@ -653,9 +648,7 @@ def test_subschema_rejects_unknown_field_at_root() -> None:
 
 def test_subschema_additional_properties_false_at_every_object() -> None:
     """AC-3 — every type:object node must declare additionalProperties:false."""
-    schema = json.loads(
-        Path("src/codegenie/schema/probes/ci.schema.json").read_text()
-    )
+    schema = json.loads(Path("src/codegenie/schema/probes/ci.schema.json").read_text())
 
     def walk(node: Any, path: str) -> None:
         if isinstance(node, dict) and node.get("type") == "object":
@@ -677,9 +670,7 @@ def test_subschema_additional_properties_false_at_every_object() -> None:
 
 def test_envelope_optional_at_probes_level() -> None:
     """Envelope's properties.probes.required does NOT list `ci`."""
-    env = json.loads(
-        Path("src/codegenie/schema/repo_context.schema.json").read_text()
-    )
+    env = json.loads(Path("src/codegenie/schema/repo_context.schema.json").read_text())
     required = env.get("properties", {}).get("probes", {}).get("required", [])
     assert "ci" not in required
 

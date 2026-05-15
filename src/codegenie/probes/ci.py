@@ -285,9 +285,7 @@ def _collect_string_values(node: Any) -> list[str]:
     return out
 
 
-def _detect_image_build(
-    runs: Sequence[str], uses: Sequence[str]
-) -> tuple[bool, str | None]:
+def _detect_image_build(runs: Sequence[str], uses: Sequence[str]) -> tuple[bool, str | None]:
     """Iterate ``_IMAGE_BUILD_MARKERS`` in order; first hit wins.
 
     The marker tuple is the precedence — first marker that finds a
@@ -302,9 +300,7 @@ def _detect_image_build(
     return False, None
 
 
-def _first_marker_match(
-    entries: Sequence[str], markers: Sequence[str]
-) -> str | None:
+def _first_marker_match(entries: Sequence[str], markers: Sequence[str]) -> str | None:
     for entry in entries:
         for marker in markers:
             if marker in entry:
@@ -378,18 +374,14 @@ def _parse_github_actions(root: Path) -> _ParseOutcome:
         return out
     for path in candidates:
         try:
-            data = safe_yaml.load(
-                path, max_bytes=_PARSE_MAX_BYTES, max_depth=_PARSE_MAX_DEPTH
-            )
+            data = safe_yaml.load(path, max_bytes=_PARSE_MAX_BYTES, max_depth=_PARSE_MAX_DEPTH)
         except (
             SizeCapExceeded,
             DepthCapExceeded,
             MalformedYAMLError,
             SymlinkRefusedError,
         ) as exc:
-            out.parse_errors.append(
-                {"path": path.name, "kind": type(exc).__name__}
-            )
+            out.parse_errors.append({"path": path.name, "kind": type(exc).__name__})
             if "ci.workflow_parse_error" not in out.warnings:
                 out.warnings.append("ci.workflow_parse_error")
             continue
@@ -414,9 +406,7 @@ def _parse_gitlab_ci(root: Path) -> _ParseOutcome:
     if not path.is_file():
         return out
     try:
-        data = safe_yaml.load(
-            path, max_bytes=_PARSE_MAX_BYTES, max_depth=_PARSE_MAX_DEPTH
-        )
+        data = safe_yaml.load(path, max_bytes=_PARSE_MAX_BYTES, max_depth=_PARSE_MAX_DEPTH)
     except (
         SizeCapExceeded,
         DepthCapExceeded,
@@ -542,9 +532,7 @@ class CIProbe(Probe):
         confidence: str = "high"
 
         # --- (1) provider presence + selection --------------------------
-        present = [
-            name for name in _PROVIDER_PRECEDENCE if _provider_present(repo.root, name)
-        ]
+        present = [name for name in _PROVIDER_PRECEDENCE if _provider_present(repo.root, name)]
         provider, additional_providers = _select_provider(present, _PROVIDER_PRECEDENCE)
         if len(present) > 1:
             warnings.append("ci.multi_provider")
