@@ -1,10 +1,33 @@
 # Story S1-06 — `ALLOWED_BINARIES` eleven additions (ADR-0001)
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** HARDENED 2026-05-15 (phase-story-validator, Pass 1 + Pass 2)
+**Status:** Done (2026-05-15) — see [`_attempts/S1-06.md`](_attempts/S1-06.md)
 **Effort:** S
 **Depends on:** —
-**ADRs honored:** 02-ADR-0001
+**ADRs honored:** 02-ADR-0001 (extended in this story via AC-10 to enumerate `ast-grep`/`ripgrep` and record the `bwrap`-not-allowlisted wrapper-pattern exception)
+
+## Evidence (Status: Done)
+
+All 16 ACs PASS. Cross-cutting gates green: `ruff check`, `ruff format --check`, `mypy --strict src/codegenie tests/unit/exec`, full `pytest` suite (**1663 passed**, 1 skipped, 2 xfailed). Evidence index:
+
+| AC | Evidence |
+|----|----------|
+| 1 | `tests/unit/exec/test_allowed_binaries.py::test_allowed_binaries_is_exact_twelve_entry_set` |
+| 2 | `tests/unit/exec/test_allowed_binaries.py::test_adr_0001_enumerates_all_new_binaries` |
+| 3 | `tests/unit/exec/test_allowed_binaries.py::test_phase_0_sensitive_constants_unchanged` |
+| 4 | `test_new_binary_not_rejected_by_allowlist` (10 cases) + `test_sensitive_env_var_is_dropped_from_child_env` (7 cases) |
+| 5 | Diff scope verified — only `src/codegenie/exec.py` data + `tests/` + ADR touched |
+| 6 | `tests/unit/test_exec.py::test_run_allowlisted_signature_default_is_none` (unchanged, still green) |
+| 7 | RED demonstrated on first `pytest` invocation; green after `exec.py` literal edit |
+| 8 | `ruff check` / `ruff format --check` / `mypy --strict` / `pytest` all clean |
+| 9 | `tests/unit/test_exec.py::test_node_in_allowed_binaries` + `tests/unit/probes/test_deployment.py::test_allowed_binaries_invariant_phase2` |
+| 10 | `02-ADR-0001` §Decision "ten new entries" + §Tradeoffs row 2 "Ten new CVE feeds" + §Consequences `bwrap` bullet |
+| 11 | `tests/unit/exec/test_allowed_binaries.py::test_exec_module_docstring_phase2_present` |
+| 12 | `tests/unit/exec/test_allowed_binaries.py::test_env_strip_applies_to_each_new_binary` (6 cases) |
+| 13 | `_RUNNING_PROCS` cleanup assertion inside `test_new_binary_not_rejected_by_allowlist` (10 cases) |
+| 14 | `tests/unit/exec/test_allowed_binaries.py::test_new_binaries_reject_resolved_paths` (20 cases) |
+| 15 | `tests/unit/test_exec.py::test_allowed_binaries_closed_set_regression` (15 cases including `bwrap`, `bubblewrap`, `eval`, `exec`, `kill`, `chmod`, `chown`, `dd`, `nc`) |
+| 16 | `tests/unit/exec/test_allowed_binaries.py::test_aws_prefix_match_strips_arbitrary_key_for_new_binary` |
 
 ## Validation notes (2026-05-15 — phase-story-validator)
 

@@ -309,29 +309,72 @@ async def test_env_extra_drops_sensitive_keys(
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# Phase 1 / S1-10 — ALLOWED_BINARIES extension to {"git", "node"}
+# Phase 2 / S1-06 — ALLOWED_BINARIES extension to the twelve-entry closed set
+# (Phase 0 + Phase 1 ADR-0001 ``node`` + Phase 2 02-ADR-0001 ten Layer B/C/G
+# tools). Earlier history: Phase 0 = ``{"git"}``; Phase 1 added ``node``.
 # ───────────────────────────────────────────────────────────────────────────
+
+_PHASE_2_EXPECTED_BINARIES: frozenset[str] = frozenset(
+    {
+        "git",
+        "node",
+        "semgrep",
+        "syft",
+        "grype",
+        "gitleaks",
+        "scip-typescript",
+        "ast-grep",
+        "ripgrep",
+        "tree-sitter",
+        "docker",
+        "strace",
+    }
+)
 
 
 def test_node_in_allowed_binaries() -> None:
-    """ADR-0001: Phase 1 extends ``ALLOWED_BINARIES`` from ``{"git"}`` to
-    ``{"git", "node"}``. The equality assertion catches a mutant that silently
-    widens the set (e.g. adds ``"bash"``).
+    """Phase 2 02-ADR-0001: ``ALLOWED_BINARIES`` is the twelve-entry set
+    above. The equality assertion catches a mutant that silently widens
+    the set (e.g. adds ``"bash"``) or drops an entry. ``node`` (Phase 1
+    ADR-0001) remains pinned by ``in`` for the historical-precedent
+    rationale.
     """
     from codegenie.exec import ALLOWED_BINARIES
 
     assert "node" in ALLOWED_BINARIES
-    assert ALLOWED_BINARIES == frozenset({"git", "node"})
+    assert ALLOWED_BINARIES == _PHASE_2_EXPECTED_BINARIES
 
 
 @pytest.mark.parametrize(
     "denied",
-    ["bash", "sh", "python", "curl", "wget", "ssh"],
+    [
+        # Phase 0 / Phase 1 originals — shell + scripting + network binaries.
+        "bash",
+        "sh",
+        "python",
+        "curl",
+        "wget",
+        "ssh",
+        # Phase 2 S1-06 / AC-15 additions:
+        # `bwrap`/`bubblewrap` is the wrapper-pattern exception
+        # (02-ADR-0001 §Consequences). The other seven are adjacent dangerous
+        # binaries Phase 2 calls out as never-allowlisted.
+        "bwrap",
+        "bubblewrap",
+        "eval",
+        "exec",
+        "kill",
+        "chmod",
+        "chown",
+        "dd",
+        "nc",
+    ],
 )
 def test_allowed_binaries_closed_set_regression(denied: str) -> None:
-    """Open/Closed regression: a PR that adds any of these six binaries MUST
-    land a Phase ADR first (Phase 0 ADR-0012 + Phase 1 ADR-0001). This test is
-    the structural guard pinning the closed-set discipline against drift.
+    """Open/Closed regression: a PR that adds any of these binaries MUST land
+    a Phase ADR first (Phase 0 ADR-0012 + Phase 1 ADR-0001 + Phase 2 02-ADR-0001).
+    This test is the structural guard pinning the closed-set discipline
+    against drift.
     """
     from codegenie.exec import ALLOWED_BINARIES
 

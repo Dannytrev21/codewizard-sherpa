@@ -34,10 +34,17 @@ The structural defense around this module is ``tests/adv/test_no_shell_true.py``
 ``src/codegenie/`` other than this one imports ``asyncio.create_subprocess_exec``
 or ``subprocess.run``.
 
+Phase 2 (02-ADR-0001) extends :data:`ALLOWED_BINARIES` with the ten Layer B/C/G
+tools listed in
+``docs/phases/02-context-gather-layers-b-g/ADRs/0001-add-docker-and-security-cli-tools-to-allowed-binaries.md``.
+Future additions are ADR-amend or new-phase-ADR; no silent expansion.
+
 Sources:
 
 - ``docs/phases/00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md``
 - ``docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md``
+- ``docs/phases/02-context-gather-layers-b-g/ADRs/``
+  ``0001-add-docker-and-security-cli-tools-to-allowed-binaries.md``
 - ``docs/phases/00-bullet-tracer-foundations/phase-arch-design.md``
   §Component design — Subprocess allowlist
 - ``docs/phases/00-bullet-tracer-foundations/stories/S2-04-exec-allowlist.md``
@@ -65,9 +72,28 @@ __all__ = [
     "run_allowlisted",
 ]
 
-# Phase 0 allowlist was ``{"git"}``; Phase 1 ADR-0001 extends to add ``node``.
-# Every addition is a deliberate-PR change with mandatory review (ADR-0012 §Decision).
-ALLOWED_BINARIES: frozenset[str] = frozenset({"git", "node"})
+# Phase 0 allowlist was ``{"git"}``; Phase 1 ADR-0001 added ``node``; Phase 2
+# 02-ADR-0001 (and its AC-10 amendment) extends with ten Layer B/C/G tools
+# listed in ``docs/phases/02-context-gather-layers-b-g/ADRs/0001-add-docker-
+# and-security-cli-tools-to-allowed-binaries.md``. Every addition is a
+# deliberate-PR change with mandatory review (ADR-0012 §Decision); future
+# additions are ADR-amend or new-phase-ADR — no silent expansion.
+ALLOWED_BINARIES: frozenset[str] = frozenset(
+    {
+        "git",
+        "node",
+        "semgrep",
+        "syft",
+        "grype",
+        "gitleaks",
+        "scip-typescript",
+        "ast-grep",
+        "ripgrep",
+        "tree-sitter",
+        "docker",
+        "strace",
+    }
+)
 
 # Keys that must never reach a child process via ``env_extra``. ``AWS_*`` is
 # matched by prefix. Comparison is on the uppercased key so callers can't

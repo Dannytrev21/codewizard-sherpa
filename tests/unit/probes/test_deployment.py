@@ -588,11 +588,27 @@ def test_probe_no_subprocess_calls() -> None:
     assert "shutil.which" not in src
 
 
-def test_allowed_binaries_invariant_unchanged() -> None:
-    """AC-37. Phase-1-end invariant: ALLOWED_BINARIES = {'git','node'}; ADR-0011."""
+def test_allowed_binaries_invariant_phase2() -> None:
+    """AC-37. Phase-2-end invariant: ``ALLOWED_BINARIES`` is the twelve-entry
+    closed set under Phase 2 02-ADR-0001 (Phase 0 + Phase 1 ADR-0001 ``node``
+    + the ten Layer B/C/G tools). Pinning the full set at the deployment
+    boundary protects against silent additions outside an ADR."""
     from codegenie.exec import ALLOWED_BINARIES
 
-    assert ALLOWED_BINARIES == {"git", "node"}
+    assert ALLOWED_BINARIES == {
+        "git",
+        "node",
+        "semgrep",
+        "syft",
+        "grype",
+        "gitleaks",
+        "scip-typescript",
+        "ast-grep",
+        "ripgrep",
+        "tree-sitter",
+        "docker",
+        "strace",
+    }
 
 
 # ---------- T-WARNING-IDS (AC-38, AC-39, AC-40) -----------------------------
