@@ -73,3 +73,25 @@ def validate(repo_context: dict[str, object]) -> None:
     except jsonschema.ValidationError as err:
         pointer = err.json_path
         raise SchemaValidationError(f"validation failed at {pointer}: {err.message}") from err
+
+
+def _environment_entry(entry: dict[str, object], deployment_schema: dict[str, object]) -> None:
+    """Validate one ``EnvironmentEntry`` against the deployment sub-schema's
+    ``properties.environments.items`` block.
+
+    Adapter for S4-02 AC-14 / ADR-0012 — every ``EnvironmentEntry`` is a
+    strict (``additionalProperties: false``) shape and must validate
+    independently of the envelope.
+    """
+    item_schema = deployment_schema["properties"]["deployment"]["properties"][  # type: ignore[index]
+        "environments"
+    ]["items"]
+    try:
+        jsonschema.Draft202012Validator(item_schema).validate(entry)
+    except jsonschema.ValidationError as err:
+        raise SchemaValidationError(
+            f"environments[].items validation failed at {err.json_path}: {err.message}"
+        ) from err
+
+
+validate.environment_entry = _environment_entry  # type: ignore[attr-defined]

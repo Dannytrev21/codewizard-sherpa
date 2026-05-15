@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/deployment/v0.1.0.json",
+  "title": "Deployment probe output",
+  "description": "Slice of repo-context produced by DeploymentProbe (Layer A, Phase 1; S4-02). Strict (`additionalProperties: false`) at the slice root, at `image_reference` (ImageRefBlock), and at every `EnvironmentEntry` (ADR-0004). The single documented exception is `security_context`, which is `additionalProperties: true` because Kubernetes `SecurityContext` is a ~30-field evolving structured type and verbatim pass-through is the load-bearing convention. ADR-0012 is honored by carrying both `image_reference: ImageRefBlock | null` (singleton, nullable primary) AND `environments: list[EnvironmentEntry]` (additive, may be empty). The slice is OPTIONAL at the envelope (ADR-0010): repos without Helm/Kustomize/k8s/Terraform may omit `deployment` entirely or emit `type: \"none\"`. Warning IDs match the ADR-0007 pattern (`^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$`); per-values-file parse failures emit the bare `helm.values_file_parse_error` ID and the offending path is recorded under `raw/deployment.json`, not in the WarningId itself (per S4-01 CN-1 / S4-02 CN-1 resolution). Per ADR-0011 no `helm template` / `kustomize build` / `python-hcl2` is invoked; Terraform is paths-only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["deployment"],
+  "properties": {
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "chart_path",
+        "image_reference",
+        "environments",
+        "terraform_files",
+        "kustomization_resource_path_outside_repo",
+        "security_context",
+        "exposed_ports",
+        "required_env_vars",
+        "warnings"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["helm", "kustomize", "raw", "terraform", "none"],
+          "description": "Highest-precedence detected deployment shape; `none` distinguishes ran-and-found-nothing from didn't-run (the slice is still emitted)."
+        },
+        "chart_path": {
+          "type": ["string", "null"],
+          "description": "Repo-relative POSIX path to `Chart.yaml`. Null when type != \"helm\"."
+        },
+        "image_reference": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "value"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Dotted path into the values mapping (e.g., `image.repository`) where the reference was extracted."
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Concatenated `repository:tag` (or verbatim shorthand `image:` value)."
+                }
+              }
+            }
+          ],
+          "description": "Primary singleton image reference (ADR-0012). Set for `values.yaml`-only Helm; null for multi-env-without-baseline or non-Helm types."
+        },
+        "environments": {
+          "type": "array",
+          "description": "ADR-0012 additive multi-env list. One entry per detected `values-<env>.{yaml,yml}` file. Sorted by `name`. Empty for single-env or non-Helm types.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "image_reference"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Environment name from filename stem (`values-prod.yaml` -> `prod`); falls back to full stem when filename does not match the dash-separator convention."
+              },
+              "image_reference": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["path", "value"],
+                    "properties": {
+                      "path": {"type": "string"},
+                      "value": {"type": "string"}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "terraform_files": {
+          "type": "array",
+          "description": "Lex-sorted list of repo-relative POSIX paths to `*.tf` files. Paths only per ADR-0011 (no parsing).",
+          "items": {"type": "string"}
+        },
+        "kustomization_resource_path_outside_repo": {
+          "type": "boolean",
+          "description": "True when any `kustomization.yaml#resources` entry resolved outside the repo root (zip-slip refused). The offending path is NOT recorded in the slice (path-leak hygiene); see `raw/deployment.json`."
+        },
+        "security_context": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "DOCUMENTED ADR-0004 EXCEPTION: Kubernetes `SecurityContext` is a ~30-field evolving structured type. Verbatim pass-through is the load-bearing convention; the Planner reads further if needed (production ADR-0005 facts-not-judgments)."
+            }
+          ],
+          "description": "Verbatim `containers[0].securityContext` from the first Deployment-family workload encountered. Null when no workloads."
+        },
+        "exposed_ports": {
+          "type": "array",
+          "description": "Sorted-ascending, deduplicated `containerPort` values from Deployment-family workload containers.",
+          "items": {"type": "integer"}
+        },
+        "required_env_vars": {
+          "type": "array",
+          "description": "Sorted-alpha, deduplicated `env[].name` values from Deployment-family workload containers. NAMES ONLY — values never leak into the slice (ADR-0011 facts-not-judgments).",
+          "items": {"type": "string"}
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern. Membership is enumerated in `deployment.py::_WARNING_IDS`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "description": "Forward-compatible per-slice typed-exception IDs. Membership enumerated in `deployment.py::_ERROR_IDS`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        }
+      }
+    }
+  }
+}

@@ -46,6 +46,9 @@
         },
         "ci": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/ci/v0.1.0.json"
+        },
+        "deployment": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/deployment/v0.1.0.json"
         }
       }
     }

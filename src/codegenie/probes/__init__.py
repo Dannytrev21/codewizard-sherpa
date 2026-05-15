@@ -16,6 +16,7 @@ stories land.
 from codegenie.probes import (
     base,
     ci,
+    deployment,
     language_detection,
     node_build_system,
     node_manifest,
@@ -27,6 +28,7 @@ __all__ = [
     "base",
     "ci",
     "default_registry",
+    "deployment",
     "language_detection",
     "node_build_system",
     "node_manifest",

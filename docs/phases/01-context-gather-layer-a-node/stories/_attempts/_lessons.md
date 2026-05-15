@@ -854,3 +854,51 @@ the regex consumer.
 
 **Don't:** widen the strict walker to "all strings" — that breaks the
 discriminator the strict consumer needs.
+
+## L-45 — Glob-then-partition beats two glob passes for same-prefix file families (S4-02)
+
+When a file family shares a common prefix but two name shapes need to
+be distinguished (Helm baseline `values.yaml` vs. env overlays
+`values-prod.yaml` vs. non-conformant `values.prod.yaml`), one wider
+glob (`values*.yaml`) plus a post-filter partition by exact name beats
+two separate globs (`values.yaml` exact + `values-*.yaml` glob). The
+narrower glob silently drops the non-conformant variant the AC
+actually requires (S4-02 AC-15 prescribes `values.prod.yaml` →
+`environments[0].name == "values.prod"` with the
+`helm.values_filename_unrecognized` warning). The wider glob makes
+the non-conformant case observable to the conformance check.
+
+**Apply to:** any future probe that processes a file family with a
+shared prefix and a "canonical / non-canonical" distinction. Examples:
+GitHub Actions composite-action paths (`action.yml` vs.
+`action-*.yml`), Kustomize component overlays (`patch.yaml` vs.
+`patch-*.yaml`), Pyproject overlay variants. Glob wide; classify
+in code; emit conformance warning in the same site.
+
+**Don't:** narrow the glob to "the canonical shape" hoping the
+non-canonical case is rare — once an AC pins the non-canonical
+behavior the narrow glob is a silent bug. The conformance warning
+(ADR-0007) is the correct vehicle, not glob-as-filter.
+
+## L-46 — Cap counters need to advance on the gating event, not on the success event (S4-02)
+
+`_walk_overlays` originally counted resource entries against
+`max_files` only when the entry resolved to an existing on-disk file.
+A hostile (or broken) `kustomization.yaml` listing 60 non-existent
+resource paths would never trip the file-cap warning because the
+counter advanced only on the `resolved.is_file()` branch.
+
+The gating event is "resource entry was declared in kustomization
+yaml AND passed zip-slip containment" — not "resource resolved to a
+real file." The latter is a workload-layer concern; the former is
+the declared-inputs cap the AC pins.
+
+**Apply to:** every cap test in this codebase. Verify the counter
+advances on the *declaration* event, not on the *success* event.
+The TDD fixture for AC-26 creates the kustomization but not the
+resources — that’s deliberate; the cap should fire regardless.
+
+**Don't:** count "successfully processed payloads" against caps
+intended to bound "declared inputs." The two are different
+invariants and conflating them lets adversarial inputs bypass the
+cap by supplying paths that fail later.
