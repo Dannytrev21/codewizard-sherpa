@@ -89,6 +89,36 @@ re-read doesn't re-litigate. (Sibling to L-4: "TDD parametrize values
 are contract, not guidance"; L-7 is the inverse — when the payload
 itself is impossible, the *intent* is the contract.)
 
+## L-S5-03a — Envelope wraps each probe slice under its own slice-name key (S5-03)
+
+The CLI writer materializes `ProbeOutput.schema_slice` under
+`envelope["probes"][probe_name]`, but each probe further wraps its slice
+content under a *slice-name* key (`"deployment"`, `"build_system"`,
+`"language_stack"`). Story AC text reading
+`result.context["probes"]["deployment"]["exposed_ports"]` is wrong by
+one layer; the shipped path is
+`result.context["probes"]["deployment"]["deployment"]["exposed_ports"]`.
+The slice-name wrap is intentional (envelope-level discriminator),
+established at each probe's `schema_slice={"<slice_name>": ...}` literal.
+Lesson for adversarial-story executors: before writing
+`result.context["probes"][probe]["..."]`, grep `schema_slice=` in
+`src/codegenie/probes/<probe>.py` — the top-level key in that dict
+literal is the inner wrap name. Surface the AC drift as a deviation;
+fix the test path; do NOT relax the AC's intent. (Rule 11.)
+
+## L-S5-03b — `_has_kustomize` only detects root-level kustomization (S5-03)
+
+`DeploymentProbe._has_kustomize` checks `root/kustomization.{yaml,yml}`
+only. Stories prescribing nested fixtures
+(`tmp_path / "k8s" / "kustomization.yaml"`) silently dispatch to
+`_parse_raw` instead — the zip-slip defense is `_parse_kustomize`-only.
+A nested-kustomization fixture passes the test for the wrong reason
+(the defense never runs; the sentinel happens to be skipped because
+`_parse_raw` walks well-known dirs without following `resources:`
+references). Always anchor kustomization fixtures at the repo root for
+zip-slip tests; mirror the S4-02 unit-test pattern at
+`tests/unit/probes/test_deployment.py:349`.
+
 ## L-9 — `MappingProxyType` mutation API mix `TypeError` + `AttributeError` (S1-05)
 
 `types.MappingProxyType` raises `TypeError` for `__setitem__` and

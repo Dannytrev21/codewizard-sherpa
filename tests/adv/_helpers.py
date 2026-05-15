@@ -45,13 +45,21 @@ __all__ = [
 class GatherResult:
     """Thin envelope around :class:`click.testing.Result` with parsed context.
 
-    ``context`` is the parsed ``.codegenie/context/repo-context.yaml``;
-    callers index into it directly (``result.context["probes"][name]``).
+    - ``context`` is the parsed ``.codegenie/context/repo-context.yaml``;
+      callers index into it directly (``result.context["probes"][name]``).
+    - ``context_yaml_text`` is the raw bytes-as-text of that YAML, for
+      sentinel-substring no-leak assertions (S5-03 AC-3).
+    - ``raw_jsons`` maps each raw-artifact filename under
+      ``.codegenie/context/raw/`` to its text contents, for the same
+      no-leak invariant against any per-probe raw output. Missing dir →
+      empty dict.
     """
 
     exit_code: int
     output: str
     context: dict[str, Any]
+    context_yaml_text: str
+    raw_jsons: dict[str, str]
 
 
 def invoke_gather(repo: Path) -> GatherResult:
@@ -61,15 +69,32 @@ def invoke_gather(repo: Path) -> GatherResult:
     additionally reads ``.codegenie/context/repo-context.yaml`` so the
     adversarial tests can assert closed-world equality on the slice's
     ``errors`` / ``warnings`` fields without re-parsing in every caller.
+    Also collects the raw YAML text plus every raw-artifact JSON under
+    ``.codegenie/context/raw/`` so S5-03's no-leak canary can scan every
+    byte the gather emits.
     """
     res: Result = CliRunner().invoke(cli, ["--no-gitignore", "gather", str(repo)])
     ctx_path = repo / ".codegenie" / "context" / "repo-context.yaml"
     parsed: dict[str, Any] = {}
+    yaml_text = ""
     if ctx_path.exists():
-        loaded = _yaml.safe_load(ctx_path.read_text())
+        yaml_text = ctx_path.read_text(encoding="utf-8")
+        loaded = _yaml.safe_load(yaml_text)
         if isinstance(loaded, dict):
             parsed = loaded
-    return GatherResult(exit_code=res.exit_code, output=res.output, context=parsed)
+    raw_dir = repo / ".codegenie" / "context" / "raw"
+    raw_jsons: dict[str, str] = {}
+    if raw_dir.is_dir():
+        for raw_path in sorted(raw_dir.iterdir()):
+            if raw_path.is_file():
+                raw_jsons[raw_path.name] = raw_path.read_text(encoding="utf-8")
+    return GatherResult(
+        exit_code=res.exit_code,
+        output=res.output,
+        context=parsed,
+        context_yaml_text=yaml_text,
+        raw_jsons=raw_jsons,
+    )
 
 
 def assert_parser_cap_event(

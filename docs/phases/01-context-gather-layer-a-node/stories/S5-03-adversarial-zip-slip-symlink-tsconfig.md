@@ -1,9 +1,18 @@
 # Story S5-03 — Zip-slip + symlink escape + tsconfig pathological adversarial corpus
 
 **Step:** Step 5 — Adversarial corpus + integration end-to-end + fixture portfolio
-**Status:** Ready
+**Status:** Done — 2026-05-15 (attempt 1; see `_attempts/S5-03.md`)
 **Effort:** M
 **Depends on:** S4-02, S5-01
+
+## Done — evidence
+
+- 8 tests across 3 new files; all 20 ACs satisfied (see `_attempts/S5-03.md` for AC-by-AC evidence).
+- Wall clock: 0.36 s on developer machine (budget: 10 s).
+- Tests: `tests/adv/test_symlink_escape_in_declared_inputs.py`, `tests/adv/test_zip_slip_kustomize.py`, `tests/adv/test_tsconfig_pathological.py`.
+- Helper extension: `tests/adv/_helpers.py::GatherResult` gained `context_yaml_text` + `raw_jsons` accessors.
+- Gates: `mypy --strict src/` clean (53 files); `ruff check` + `ruff format` clean; pytest 1479 passed (2 pre-existing unrelated `lint-imports` env failures).
+- Two cross-story lessons appended to `_attempts/_lessons.md` (L-S5-03a envelope wrap; L-S5-03b kustomize root-only detection).
 **ADRs honored:** ADR-0007 (warnings-id pattern; typed-exception IDs land on `ProbeOutput.errors`), ADR-0008 (in-process parse caps, no per-probe sandbox), ADR-0009 (no new C-extension parser dependencies), ADR-0011 (no Helm render / no HCL / no `npm ls`)
 
 ## Validation notes
