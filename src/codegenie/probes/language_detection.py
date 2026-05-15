@@ -28,6 +28,7 @@ ADR-0007 ID pattern, never on the slice's forward-compatible ``warnings[]``:
 - ``SizeCapExceeded`` → ``package_json.size_cap_exceeded`` + ``confidence: "medium"``
 - ``SymlinkRefusedError`` → ``package_json.symlink_refused`` + ``confidence: "low"``
 - ``MalformedJSONError`` → ``package_json.malformed`` + ``confidence: "medium"``
+- ``DepthCapExceeded`` → ``package_json.depth_cap_exceeded`` + ``confidence: "low"`` (S5-01 AC-12)
 
 (Per arch §"Component design" #1 — covering edge-case rows 2, 3, 11, 12.)
 
@@ -78,6 +79,7 @@ from typing import Any, Final, TypedDict
 import structlog
 
 from codegenie.errors import (
+    DepthCapExceeded,
     MalformedJSONError,
     SizeCapExceeded,
     SymlinkRefusedError,
@@ -178,6 +180,7 @@ _ERRORS: Final[frozenset[str]] = frozenset(
         "package_json.size_cap_exceeded",
         "package_json.symlink_refused",
         "package_json.malformed",
+        "package_json.depth_cap_exceeded",
     }
 )
 
@@ -190,6 +193,7 @@ _PKG_JSON_FAILURE: Final[Mapping[type[Exception], tuple[str, str]]] = MappingPro
         SizeCapExceeded: ("package_json.size_cap_exceeded", "medium"),
         SymlinkRefusedError: ("package_json.symlink_refused", "low"),
         MalformedJSONError: ("package_json.malformed", "medium"),
+        DepthCapExceeded: ("package_json.depth_cap_exceeded", "low"),
     }
 )
 
@@ -451,7 +455,12 @@ class LanguageDetectionProbe(Probe):
         if pkg_path.exists():
             try:
                 pkg = _read_package_json(pkg_path, ctx)
-            except (SizeCapExceeded, SymlinkRefusedError, MalformedJSONError) as exc:
+            except (
+                SizeCapExceeded,
+                SymlinkRefusedError,
+                MalformedJSONError,
+                DepthCapExceeded,
+            ) as exc:
                 error_id, demoted = _PKG_JSON_FAILURE[type(exc)]
                 errors.append(error_id)
                 confidence = _demote(confidence, demoted)

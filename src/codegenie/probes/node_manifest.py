@@ -276,6 +276,7 @@ _PKG_JSON_FAILURE: Final[Mapping[type[BaseException], str]] = {
     SizeCapExceeded: "package_json.size_cap_exceeded",
     MalformedJSONError: "package_json.malformed",
     SymlinkRefusedError: "package_json.symlink_refused",
+    DepthCapExceeded: "package_json.depth_cap_exceeded",
 }
 
 
@@ -345,7 +346,12 @@ def _read_package_json(
             max_bytes=_PARSE_MAX_BYTES,
             max_depth=_PARSE_MAX_DEPTH,
         )
-    except (SizeCapExceeded, MalformedJSONError, SymlinkRefusedError) as exc:
+    except (
+        SizeCapExceeded,
+        MalformedJSONError,
+        SymlinkRefusedError,
+        DepthCapExceeded,
+    ) as exc:
         errors.append(_PKG_JSON_FAILURE[type(exc)])
         return None
 

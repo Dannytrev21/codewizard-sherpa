@@ -310,5 +310,35 @@ def test_multi_monorepo_precedence_pnpm_beats_turbo(tmp_path: Path) -> None:
     )
 
 
+# ---------- T-12 — S5-01 AC-12 retrofit: DepthCapExceeded → low confidence
+# ---------- + typed error_id on ProbeOutput.errors -------------------------
+
+
+def test_deeply_nested_package_json_demotes_to_low_via_depth_cap(tmp_path: Path) -> None:
+    """S5-01 AC-12 — a depth-bombed package.json fires :class:`DepthCapExceeded`
+    inside ``safe_json.load``; the probe catches it, demotes confidence to
+    ``low``, and lands ``package_json.depth_cap_exceeded`` on ``ProbeOutput.errors``.
+
+    The retrofit is two-line additive — without it, the exception escapes the
+    catch-tuple and the run() method blows up at the coordinator boundary
+    (or worse, silently produces an empty ``errors`` list with the
+    walk-error fallback). Closed-world equality on ``errors`` is the kill.
+    """
+    # Build a deeply-nested JSON in memory: ``{"a": {"a": {"a": ...}}}`` to
+    # depth > 64 (the safe_json default). Under 5 MB on disk.
+    depth = 200
+    payload = "1"
+    for _ in range(depth):
+        payload = '{"a": ' + payload + "}"
+    (tmp_path / "package.json").write_text(payload)
+
+    out = _run_probe(tmp_path)
+    assert out.confidence == "low", out
+    assert out.errors == ["package_json.depth_cap_exceeded"], out.errors
+    # Slice still emits — primary is None, hints empty (failed pkg.json read).
+    assert out.schema_slice["language_stack"]["framework_hints"] == []
+    assert out.schema_slice["language_stack"]["monorepo"] is None
+
+
 # Silence imported-but-unused lint for `os` if Black/ruff complains.
 _ = os

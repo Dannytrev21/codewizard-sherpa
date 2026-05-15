@@ -78,6 +78,7 @@ from typing import Any, Final, Literal, TypeAlias, TypedDict
 import structlog
 
 from codegenie.errors import (
+    DepthCapExceeded,
     MalformedJSONError,
     SizeCapExceeded,
     SymlinkRefusedError,
@@ -192,6 +193,7 @@ _ERROR_IDS: Final[frozenset[str]] = frozenset(
         "package_json.size_cap_exceeded",
         "package_json.malformed",
         "package_json.symlink_refused",
+        "package_json.depth_cap_exceeded",
     }
 )
 
@@ -199,10 +201,13 @@ _ERROR_IDS: Final[frozenset[str]] = frozenset(
 # Map typed parser exception → error ID for ``package.json`` failures.
 # Routed to ``ProbeOutput.errors`` (NOT ``slice["warnings"]``) per the
 # established errors-vs-warnings discipline (ADR-0007 line 50).
+# S5-01 AC-12 follow-on: DepthCapExceeded must be caught here too, or the
+# unhandled bubble crashes the prelude and degrades the whole gather.
 _PKG_JSON_FAILURE: Final[Mapping[type[Exception], str]] = {
     SizeCapExceeded: "package_json.size_cap_exceeded",
     MalformedJSONError: "package_json.malformed",
     SymlinkRefusedError: "package_json.symlink_refused",
+    DepthCapExceeded: "package_json.depth_cap_exceeded",
 }
 
 
@@ -520,7 +525,12 @@ class TestInventoryProbe(Probe):
                         max_bytes=_PARSE_MAX_BYTES,
                         max_depth=_PARSE_MAX_DEPTH,
                     )
-            except (SizeCapExceeded, MalformedJSONError, SymlinkRefusedError) as exc:
+            except (
+                SizeCapExceeded,
+                MalformedJSONError,
+                SymlinkRefusedError,
+                DepthCapExceeded,
+            ) as exc:
                 error_id = _PKG_JSON_FAILURE[type(exc)]
                 assert error_id in _ERROR_IDS  # Rule 12 — fail loud
                 errors.append(error_id)

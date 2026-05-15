@@ -228,6 +228,7 @@ _ERROR_IDS: Final[frozenset[str]] = frozenset(
         "package_json.size_cap_exceeded",
         "package_json.malformed",
         "package_json.symlink_refused",
+        "package_json.depth_cap_exceeded",
         "tsconfig.depth_cap_exceeded",
     }
 )
@@ -235,10 +236,15 @@ _ERROR_IDS: Final[frozenset[str]] = frozenset(
 
 # Map typed parser exception → (error_id, confidence). Mirrors S2-01's
 # ``_PKG_JSON_FAILURE``; same demote-only rule applies via ``_demote``.
+# S5-01 AC-12 follow-on: DepthCapExceeded is the fourth typed parser
+# exception ``safe_json.load`` raises — every probe that reads
+# ``package.json`` (here + language_detection + node_manifest + test_inventory)
+# must catch it or the unhandled bubble degrades the gather to schema_invalid.
 _PKG_JSON_FAILURE: Final[Mapping[type[Exception], tuple[str, str]]] = {
     SizeCapExceeded: ("package_json.size_cap_exceeded", "low"),
     MalformedJSONError: ("package_json.malformed", "low"),
     SymlinkRefusedError: ("package_json.symlink_refused", "low"),
+    DepthCapExceeded: ("package_json.depth_cap_exceeded", "low"),
 }
 
 
@@ -573,7 +579,12 @@ class NodeBuildSystemProbe(Probe):
                         max_bytes=_PARSE_MAX_BYTES,
                         max_depth=_PARSE_MAX_DEPTH,
                     )
-            except (SizeCapExceeded, MalformedJSONError, SymlinkRefusedError) as exc:
+            except (
+                SizeCapExceeded,
+                MalformedJSONError,
+                SymlinkRefusedError,
+                DepthCapExceeded,
+            ) as exc:
                 error_id, demoted = _PKG_JSON_FAILURE[type(exc)]
                 errors.append(error_id)
                 confidence = _demote(confidence, demoted)

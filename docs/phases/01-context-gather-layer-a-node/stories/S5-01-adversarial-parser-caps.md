@@ -1,7 +1,8 @@
 # Story S5-01 — Parser-cap adversarial corpus: billion-laughs, JSON bombs, oversized lockfile
 
 **Step:** Step 5 — Adversarial corpus + integration end-to-end + fixture portfolio
-**Status:** Ready · **Validated:** 2026-05-14 (HARDENED — see [_validation/S5-01-adversarial-parser-caps.md](_validation/S5-01-adversarial-parser-caps.md))
+**Status:** Done — 2026-05-15 (see [_attempts/S5-01.md](_attempts/S5-01.md))
+**Validated:** 2026-05-14 (HARDENED — see [_validation/S5-01-adversarial-parser-caps.md](_validation/S5-01-adversarial-parser-caps.md))
 **Effort:** M
 **Depends on:** S2-05, S3-06 (the second pulls in `NodeManifestProbe` for the gather-level assertions)
 **ADRs honored:** ADR-0007 (typed-exception IDs land in `errors[]`, not `warnings[]`), ADR-0008 (in-process parse caps, no per-probe sandbox), ADR-0009 (no new C-extension parser dependencies)

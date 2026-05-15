@@ -1004,3 +1004,71 @@ resolution.
 **Action:** Before declaring a story's AC-list internally consistent,
 `grep` the test suite for *the prior contract's substrings* — any
 hit is an implicit dependency the story spec missed.
+
+## L-? — Probe-handler retrofits must cover *every* call-site of the new exception, not just the two the validator named (S5-01)
+
+When a story prescribes a "retrofit on probes A and B for new
+exception E", the validator may only audit those two probes — but
+the codebase usually has more call-sites that need the symmetric
+edit. S5-01 retrofitted `DepthCapExceeded` on `language_detection`
+and `node_manifest` per AC-12; **the gather-level test `exit_code == 0`
+asserts forced the discovery that `node_build_system` and
+`test_inventory` ALSO read `package.json` and ALSO needed the
+catch-tuple edit**. Without those, the unhandled `DepthCapExceeded`
+crashes the prelude and the gather degrades to `outcome=schema_invalid`.
+
+**Why:** AC-12's "two-line edits per probe" reads tight on the
+specific probes named — but the underlying contract is "every
+probe that calls `safe_json.load` on `package.json` must catch
+`DepthCapExceeded`." That's an exhaustive statement over the
+**full** set of call-sites, not just the two named.
+
+**Action:** When validating a retrofit story, grep for `safe_json.load`
+(or the relevant entry point) across `src/codegenie/probes/` and
+confirm the AC covers every match. If the count > the named probes,
+either widen the AC or flag the gap pre-execution.
+
+## L-? — Envelope shape ≠ slice shape ≠ `ProbeOutput` shape (S5-01)
+
+The story's AC text used the path `result.context["probes"][probe]["errors"]`
+and `["confidence"]`. Neither exists at that level: errors live
+**inside the slice** at varying paths (`["manifests"]["errors"]` for
+`node_manifest`; not surfaced at all for `language_detection`),
+and `confidence` is **never** in the envelope — it's on
+`ProbeOutput` and consumed by the coordinator. The slice schemas
+declare `errors`/`warnings` forward-compatibly but Phase 1 emits
+typed-exception IDs on `ProbeOutput.errors`, **not** in the slice.
+
+**Why:** The envelope contract is "shallow-merge each output's
+`schema_slice` into `envelope["probes"][name]`" (see
+`cli._seam_shallow_merge`). Nothing else. Authors of CLI-level
+assertions need to walk the slice schema for each probe rather
+than assuming a uniform `[name]["errors"]` / `[name]["confidence"]`
+shape.
+
+**Action:** For any new gather-level assertion against per-probe
+state: open the probe's slice schema first, locate where `errors`
+lives (or whether the probe emits them at the slice level at all),
+and write the test against the **actual** path. For state not
+surfaced in the slice (`confidence`, anything else on `ProbeOutput`),
+verify at the unit-test boundary instead.
+
+## L-? — Python's stdlib `json` scanner is recursive; depth fixtures cap at ~500–800 frames (S5-01)
+
+CPython 3.13's `json` C extension exposes `make_scanner` whose object
+decoder bottoms out through a Python-level `raw_decode → scan_once`
+loop. Default recursion limit is 1000; in pytest contexts the
+runway is closer to 500–800 frames. A "10,000-deep package.json"
+test as the story prescribed hits `RecursionError` before
+`DepthCapExceeded`, masking the actual structural defense.
+
+**Why:** Depth-cap tests need a fixture deeper than the cap they're
+probing but shallower than Python's recursion ceiling. With
+`max_depth=64` and a pytest stack ~150 frames deep on entry, `200`
+is the comfortable middle (5× the cap, well under the ceiling).
+
+**Action:** When sizing a depth-bomb fixture, treat the integer
+in the story as a target order of magnitude. Use the smallest
+value that comfortably exceeds the cap; document the deviation
+inline in the builder's docstring so the next reader doesn't try
+to "fix" it back to the story's literal number.

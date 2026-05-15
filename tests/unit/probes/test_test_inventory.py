@@ -850,6 +850,7 @@ def test_error_ids_anchor() -> None:
             "package_json.size_cap_exceeded",
             "package_json.malformed",
             "package_json.symlink_refused",
+            "package_json.depth_cap_exceeded",
         }
     )
 

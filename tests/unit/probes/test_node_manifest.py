@@ -736,3 +736,33 @@ def test_flatteners_return_empty_on_non_mapping_inputs() -> None:
     assert _flatten_npm({"packages": {"node_modules/x": "not a mapping"}}) == {}
     assert _flatten_yarn("not a mapping") == {}  # type: ignore[arg-type]
     assert _flatten_yarn({"entries": "not a mapping"}) == {}
+
+
+# ---------- S5-01 AC-12 — DepthCapExceeded on package.json --------------
+
+
+@pytest.mark.asyncio
+async def test_deeply_nested_package_json_emits_depth_cap_error(tmp_path: Path) -> None:
+    """S5-01 AC-12 — a depth-bombed ``package.json`` fires :class:`DepthCapExceeded`
+    inside ``_read_package_json``; the probe maps it to
+    ``package_json.depth_cap_exceeded`` on ``ProbeOutput.errors`` and the slice
+    short-circuits to ``primary=None`` with ``confidence=low``.
+
+    Closed-world equality on ``out.errors`` is the kill — a regression that drops
+    ``DepthCapExceeded`` from the catch-tuple would either bubble (CodegenieError
+    at the coordinator) or land an unmapped key in errors.
+    """
+    from codegenie.probes.node_manifest import NodeManifestProbe
+
+    depth = 200
+    payload = "1"
+    for _ in range(depth):
+        payload = '{"a": ' + payload + "}"
+    (tmp_path / "package.json").write_text(payload)
+
+    ctx = MagicMock()
+    ctx.parsed_manifest = None
+    out = await NodeManifestProbe().run(_make_snapshot(tmp_path), ctx)
+    assert out.confidence == "low"
+    assert out.errors == ["package_json.depth_cap_exceeded"], out.errors
+    assert out.schema_slice["manifests"]["primary"] is None
