@@ -80,6 +80,12 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 3: test — full pytest suite. The 85% coverage floor (line + branch)
   # is enforced via `addopts` in pyproject.toml; no per-CI override.
+  #
+  # The trailing `Per-module coverage carve-outs` step is the load-bearing
+  # ADR-0005 enforcement gate: `coverage.py`'s `[tool.coverage.report]
+  # fail_under` is global only, so the 85/75 carve-outs for
+  # `probes/deployment.py` and `probes/ci.py` are enforced by the script
+  # reading `coverage.json` (S4-04 AC-1 / AC-10).
   # ---------------------------------------------------------------------------
   test:
     name: test
@@ -93,7 +99,9 @@ jobs:
       - name: Install dev extras
         run: python -m pip install -e ".[dev]"
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --cov-report=json
+      - name: Per-module coverage carve-outs (ADR-0005)
+        run: python scripts/check_coverage_carve_outs.py coverage.json pyproject.toml
       # S5-01 — bench canaries. `bench-collection-guard` is GATING: if a
       # future change renames the marker or filters a file the collection
       # falls below 3 and the job fails. `bench` itself is ADVISORY

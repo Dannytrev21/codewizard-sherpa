@@ -189,6 +189,13 @@ def test_contributing_md_is_in_mkdocs_nav() -> None:
 
 
 # ---- AC-7: pyproject mirrors the coverage-ratchet comment --------------------
+#
+# Originally written against the Phase 0 ratchet plan (`85/75 → 87/77 → 90/80`).
+# Phase 1's ADR-0005 corrects this: there is no `87/77` intermediate — Phase 1
+# raises the global to 90/80 (in S6-02) with 85/75 carve-outs for
+# `probes/deployment.py` and `probes/ci.py` (S4-04). Story S4-04 AC-9 rewrote
+# the inline pyproject comment to match ADR-0005; this test was updated in
+# lockstep to pin the *corrected* contract.
 
 
 def test_pyproject_mirrors_coverage_ratchet_schedule() -> None:
@@ -196,11 +203,21 @@ def test_pyproject_mirrors_coverage_ratchet_schedule() -> None:
     anchors = [i for i, ln in enumerate(lines) if "--cov-fail-under=85" in ln]
     assert anchors, "pyproject.toml has no `--cov-fail-under=85` line to anchor the comment to"
     for anchor in anchors:
-        window = lines[max(0, anchor - 5) : anchor + 6]
+        window = lines[max(0, anchor - 6) : anchor + 7]
         joined = "\n".join(line for line in window if line.lstrip().startswith("#"))
-        if "87/77" in joined and "90/80" in joined and "contributing.md" in joined:
+        if (
+            "90/80" in joined
+            and "S6-02" in joined
+            and "ADR-0005" in joined
+            and "contributing.md" in joined
+            and "87/77" not in joined
+        ):
             return
-    pytest.fail("pyproject.toml is missing the coverage-ratchet comment near --cov-fail-under=85")
+    pytest.fail(
+        "pyproject.toml is missing the corrected coverage-ratchet comment near "
+        "--cov-fail-under=85 (must reference S6-02, ADR-0005, contributing.md "
+        "and NOT contain the stale 87/77 intermediate per ADR-0005 / S4-04 AC-9)"
+    )
 
 
 # ---- AC-8: phase README pins the handoff record ------------------------------

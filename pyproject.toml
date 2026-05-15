@@ -173,8 +173,11 @@ pythonpath = ["."]
 # the three canaries in. `--strict-markers` then forces every `pytest.mark.*`
 # to be declared below.
 # Coverage ratchet (see docs/contributing.md §Project conventions): the
-# `--cov-fail-under=85` floor below is the Phase 0 gate; Phase 1 bumps to
-# 87/77, Phase 2 to 90/80 (frozen until Phase 5). Do NOT raise ahead.
+# `--cov-fail-under=85` floor below is the Phase 0 global gate. Phase 1
+# (this phase) leaves the global unchanged in S4-04 and raises it to 90/80
+# in S6-02 with the 85/75 per-module carve-outs declared in
+# `[tool.coverage_carve_outs]` already in place (ADR-0005). Do NOT raise
+# ahead.
 addopts = "-ra --strict-markers -m \"not bench\" --cov=src/codegenie --cov-branch --cov-fail-under=85"
 # Registered markers. `bench` partitions the advisory cold-start /
 # coordinator-overhead / cache-hit-dispatch canaries that ship in
@@ -193,6 +196,46 @@ source = ["src/codegenie"]
 # phase-arch-design.md §Testing strategy / Test pyramid (CLI plumbing is
 # exercised end-to-end by S4-02's smoke test, not by unit-level coverage).
 omit = ["src/codegenie/cli.py"]
+
+# ---------------------------------------------------------------------------
+# Per-module coverage carve-outs (ADR-0005). Declared as data so the script
+# (`scripts/check_coverage_carve_outs.py`) and the CI-enforced test
+# (`tests/unit/build/test_coverage_carve_outs.py`) read from one source.
+#
+# Why: `codegenie.probes.deployment` and `codegenie.probes.ci` have
+# structurally-narrow branches (one `if` per supported CI provider /
+# deployment marker) that make the higher 90/80 floor gameable by
+# branch-checkbox tests asserting nothing meaningful — the exact Rule 9
+# violation the carve-out was designed to prevent. See ADR-0005 §Tradeoffs
+# and Global Rule 9 ("Tests verify intent, not just behavior") for the
+# load-bearing rationale; the adversarial-fixture corpus carries
+# behavioural correctness, coverage is supporting.
+#
+# The global `--cov-fail-under` is NOT raised in S4-04; S6-02 ratchets it to
+# 90/80 with these 85/75 carve-outs already in place. Splitting the
+# declaration from the ratchet is deliberate per
+# `docs/phases/01-context-gather-layer-a-node/High-level-impl.md §Step 4`.
+#
+# Further carve-outs require a new ADR amending 0005. Adding a third row
+# here without that ADR fails
+# `tests/unit/build/test_coverage_carve_outs.py::test_carve_out_table_has_exactly_two_entries`.
+# Each entry records BOTH the file path AND the dotted module name so a
+# half-applied rename PR surfaces the drift via the same test.
+# ---------------------------------------------------------------------------
+
+[[tool.coverage_carve_outs.entries]]
+path = "src/codegenie/probes/deployment.py"
+module = "codegenie.probes.deployment"
+line = 85
+branch = 75
+adr = "phase-01/ADR-0005"
+
+[[tool.coverage_carve_outs.entries]]
+path = "src/codegenie/probes/ci.py"
+module = "codegenie.probes.ci"
+line = 85
+branch = 75
+adr = "phase-01/ADR-0005"
 
 # ---------------------------------------------------------------------------
 # import-linter — structural cold-start defense (story S1-05, ADR phase-0006).

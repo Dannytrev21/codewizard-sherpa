@@ -960,3 +960,47 @@ value-validation form) for closed-key object fields just because
 "the values are all strings." That syntax means "any key is
 allowed if its value validates," which is the opposite of what
 a closed-key field needs.
+
+---
+
+## S4-04 — `coverage.json` summary field naming (real vs synthetic)
+
+**Lesson:** When a script reads JSON emitted by `coverage.py`'s
+`--cov-report=json`, **branch coverage lives under
+`percent_branches_covered`** in the per-file `summary` dict, **not**
+`percent_covered_branch`. The line key (`percent_covered`) is symmetric
+across both real and "expected" naming; the branch key is asymmetric.
+
+**Why:** S4-04's synthetic test fixtures used `percent_covered_branch`
+intuitively. The script silently read 0% for every real input until
+the real `coverage.json` was inspected. If the script had been
+deployed without an end-to-end run, every probe would have failed the
+carve-out check at every CI run regardless of actual coverage —
+exactly the Rule 12 "fail loud" violation S4-04 was designed to
+prevent.
+
+**Action:** When writing a verifier that consumes a tool's structured
+output, inspect at least one real artifact before committing the
+field-access paths. Inline alias-tolerance is cheap (`.get(real,
+.get(alias, default))`) and useful when the test harness predates the
+field check.
+
+---
+
+## S4-04 — When an old test pins a contract a new ADR overrides
+
+**Lesson:** If a Phase 0 test pins a comment string that a Phase 1
+ADR (e.g., ADR-0005) explicitly rewrites, the test must be updated in
+the same PR that rewrites the comment. Rule 7 (surface conflicts,
+don't average them) — keeping both means either the comment drifts
+back or the test silently averages two contradictory rules.
+
+**Why:** S4-04 ACs said "PR diff is *only* this story's files" *and*
+"rewrite the stale `87/77` comment". Both cannot be true if a test
+already pins `87/77`. Surfacing the necessary test update in the
+attempt log + commit message + PR description is the only honest
+resolution.
+
+**Action:** Before declaring a story's AC-list internally consistent,
+`grep` the test suite for *the prior contract's substrings* — any
+hit is an implicit dependency the story spec missed.

@@ -1,7 +1,7 @@
 # Story S4-04 — Coverage carve-outs declared in `pyproject.toml`
 
 **Step:** Step 4 — Ship `CIProbe`, `DeploymentProbe`, and `TestInventoryProbe`
-**Status:** Ready (HARDENED 2026-05-14)
+**Status:** Done (2026-05-15) — see [`_attempts/S4-04.md`](_attempts/S4-04.md). All 14 ACs verified; 13 new tests in `tests/unit/build/test_coverage_carve_outs.py` green; full suite 1451 passed (no new failures); ruff + ruff format + mypy --strict green; real coverage `probes/ci.py` 90.10% line / 85.09% branch, `probes/deployment.py` 87.35% line / 81.17% branch — both at or above the 85/75 carve-out floor (AC-14).
 **Effort:** S
 **Depends on:** S4-01 (`CIProbe` on disk), S4-02 (`DeploymentProbe` on disk)
 **ADRs honored:** **ADR-0005 (90/80 floor with 85/75 carve-out for `deployment.py` and `ci.py`)**

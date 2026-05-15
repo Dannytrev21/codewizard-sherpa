@@ -8,6 +8,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+# `tests/unit/build/` holds S4-04 build-system tests (coverage carve-outs),
+# not a Python build artifact — un-ignore so the test file is tracked.
+!tests/unit/build/
 
 # Tool caches
 .mypy_cache/
