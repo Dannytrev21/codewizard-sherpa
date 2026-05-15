@@ -53,6 +53,8 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0032](0032-language-search-adapters.md) | Language search adapters — bridging generic queries to language-specific indexers | adapters · code-search · scip · plugins |
 | [0033](0033-domain-modeling-discipline.md) | Domain modeling discipline — newtype + smart constructor + sum type + illegal-states-unrepresentable | typing · correctness · discipline |
 | [0034](0034-event-sourcing-canonical-primitive.md) | Event sourcing as canonical primitive for agent runs | event-sourcing · audit · replay · observability |
+| [0035](0035-operator-portal-architecture.md) | Operator portal — read-only-first, event-log-projected, GitHub-OAuth, with visibility/authority separated | ui · observability · audit · ops · phase-13.5 |
+| [0036](0036-plugin-task-enablement-dual-source-policy.md) | Plugin/task enablement — dual-source policy (operator Postgres + repo `codegenie.yaml`), OR resolution, fail-closed, stage-aware | policy · kill-switch · config-as-code · audit · phase-13.5 |
 
 ## Index — Deferred decisions
 

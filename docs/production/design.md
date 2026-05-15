@@ -84,6 +84,7 @@ The discipline this table enforces: **every LLM-using persona is a leaf in the S
 | Cross-cutting | **Trust-Aware Gate** | no | LangGraph `conditional_edge` | Per state-transition | Runs objective checks; advances, routes back with error context, or `interrupt()`s |
 | Cross-cutting | **Policy Engine (Agent RuleZ pattern)** | no | Tool-call hook | Per tool invocation | Sub-10ms deterministic allow / block / inject-context on every action |
 | Cross-cutting | **Continuous Gather Dispatcher** | no | Cron + repo / CVE webhooks | Always-on | Dispatches Probe Coordinator runs on push, PR, CVE feed, or schedule (§3.2) |
+| Cross-cutting | **Operator portal** (Phase 13.5) | no | GitHub OAuth session; SSE/WebSocket subscription to event log | Always-on; user-driven | Read-only views of workflows / repos / plugins / campaigns / costs projected off the canonical event log ([ADR-0035](adrs/0035-operator-portal-architecture.md)). Two role-scoped modes: ops (global read, own-repo write) and repo-owner (own-repo read+write). Surfaces plugin / task kill-switches ([ADR-0036](adrs/0036-plugin-task-enablement-dual-source-policy.md)); never overrides gate decisions |
 | 0 Discovery | Discovery Scanner | no | Temporal cron | Scheduled, one-shot per scan | Lists candidate repos; parses Dockerfiles; runs Syft baseline; emits `CandidateRepo` events |
 | 1 Assessment | Language Router | no | Supervisor | One-shot | Deterministic classifier (manifests, file extensions) selecting the assessor |
 | 1 Assessment | **Node Assessor Agent** | yes | Language Router via `conditional_edge` | One-shot per workflow | Classifies the repo as Cat 1/2/3 with cited evidence; emits `AssessmentResult` |
@@ -113,7 +114,7 @@ The discipline this table enforces: **every LLM-using persona is a leaf in the S
 
 † **Optional LLM** means the persona can ship as deterministic routing/templating in Phase 1 and upgrade to LLM-driven later without changing its contract. Decision deferred (§7).
 
-**Bold names** mark LLM-using personas. Note how few there are: across 28 personas the pipeline runs, only seven (Supervisor optional + Node/Python Assessors + LLM Planner + Autonomous Executor + Error Triage + LLM Judge + Retro PR Author optional) ever invoke an LLM. The remaining twenty-one are deterministic. This is commitment §2.4 rendered as a roster.
+**Bold names** mark LLM-using personas. Note how few there are: across 29 personas the pipeline runs, only seven (Supervisor optional + Node/Python Assessors + LLM Planner + Autonomous Executor + Error Triage + LLM Judge + Retro PR Author optional) ever invoke an LLM. The remaining twenty-two are deterministic. This is commitment §2.4 rendered as a roster.
 
 ### 3.2 Continuous context gathering: deterministic, automatic, incremental
 
@@ -470,6 +471,8 @@ plugins/vulnerability-remediation--*--*/         # universal base (orchestration
 
 **The extension-by-addition test.** Adding a new `(task × language × build-tool)` combination is one new plugin directory. Phase 3 of the roadmap ships `(vuln, node, npm)` as the first plugin; Phase 7 ships `(distroless, node, npm)` and proves the system end-to-end — adding it touches no file outside `plugins/distroless-migration--node--npm/`. Every future plugin reuses that proof. [ADR-0028](adrs/0028-task-class-introduction-order.md)'s task-class-introduction-order discipline generalizes to plugin-introduction-order: introduce one tuple at a time, prove the loader is sound on the second, scale outward.
 
+**Runtime enablement (kill-switches).** Beyond which plugins *exist* is the operational question of which plugins are *currently enabled*. Two sources answer it, consulted before the Supervisor dispatches and resolved with logical OR (either side can disable; fail-closed): the **operator-side** `plugin_enablement` Postgres table, edited via the Phase 13.5 portal at three scopes (global / per-repo / per-`repo × task`); and the **repo-side** `codegenie.yaml` policy file committed at each repo's root, loaded as a Layer-A probe and editable only by PR review against the repo. Operator and repo-side disablements are distinct, named, and both audited via the canonical event log ([ADR-0034](adrs/0034-event-sourcing-canonical-primitive.md)) — the audit trail differentiates "ops chose this" from "the repo team chose this." Kill-switches respect stage boundaries: stages that mutate state (Execution, Handoff) are non-interruptible if begun; observational stages short-circuit cleanly. See [ADR-0036](adrs/0036-plugin-task-enablement-dual-source-policy.md).
+
 ---
 
 ## 5. AgentOps and the Trust-Aware layer
@@ -508,7 +511,7 @@ Each agent runs under a scoped least-privilege identity. Tools are exposed via M
 
 ### Observability
 
-Reasoning traces, tool-call logs, state-transition history, and gate-evaluation events are all persisted to an audit store. Drift detection runs against task success rates per stage and per agent role — if Stage 3 Planning's recipe-match rate suddenly drops, the system surfaces the regression before quality cascades.
+Reasoning traces, tool-call logs, state-transition history, and gate-evaluation events are all persisted to an audit store. Drift detection runs against task success rates per stage and per agent role — if Stage 3 Planning's recipe-match rate suddenly drops, the system surfaces the regression before quality cascades. The Phase 13.5 operator portal ([ADR-0035](adrs/0035-operator-portal-architecture.md)) is the human-facing projection of this store: a live pipeline ribbon, repo inventory, plugin catalog, campaign rollups, and an audit log all rendered from the canonical event log ([ADR-0034](adrs/0034-event-sourcing-canonical-primitive.md)) and the cost ledger. It is read-only by design except for plugin/task enablement kill-switches ([ADR-0036](adrs/0036-plugin-task-enablement-dual-source-policy.md)); it never overrides gate decisions.
 
 ### Cost controls
 

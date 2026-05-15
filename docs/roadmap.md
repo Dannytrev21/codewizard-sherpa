@@ -31,6 +31,7 @@ This document sequences the work from a local bullet tracer through to a multi-t
 | 11 | Stage 6 Handoff + Stage 7 Learning | vuln + migration | GitHub PR opening, outcome ingestion, KG write-back |
 | 12 | Stage 3 deep planning + Stage 4 validation depth | vuln + migration | Cross-repo dep analysis, contract testing, regression suites beyond sandbox |
 | 13 | AgentOps — cost ledger + budget enforcement + ROI dashboard | vuln + migration | Three-tier cost ledger, Budget Enforcer, Grafana ROI dashboard |
+| 13.5 | **Operator portal** *(read-only views + plugin/task kill-switches)* | vuln + migration | Ops + repo-owner views projected off the canonical event log; GitHub OAuth; plugin/task kill-switches at three scopes; `codegenie.yaml` repo-side opt-outs |
 | 14 | Continuous gather + MCP servers operationalized | vuln + migration | Cron / webhook / PR / CVE-feed triggers; Context / Skills / KG / Policy MCP servers split |
 | 15 | **Agentic recipe authoring (deterministic → agentic)** | vuln + migration + recipe-authoring | LLM proposes new recipes/skills from solved examples; humans accept |
 | 16 | Production hardening | all | Deferred ADRs resolved; multi-tenancy, SSO/RBAC, audit, runbooks, on-call |
@@ -241,6 +242,20 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Testing.** Ledger schema migration tests. Budget Enforcer unit tests with synthetic spend traces (assert halt fires at exactly 100%). ROI ratio calculation tests against a fixture cost ledger plus outcome data.
 
 **Exit criteria.** Every workflow appears on the cost dashboard with attributed direct + amortized + overhead spend. Budget caps fire correctly on a synthetic runaway workflow.
+
+---
+
+## Phase 13.5 — Operator portal *(read-only views + plugin/task kill-switches)*
+
+**Scope.** The operator portal turns the canonical event log ([ADR-0034](production/adrs/0034-event-sourcing-canonical-primitive.md)) and the cost ledger ([ADR-0024](production/adrs/0024-cost-observability-end-to-end.md)) into an end-to-end view of the system: a live pipeline ribbon (every active workflow against the 7 stages), repo inventory, plugin catalog with TCCMs and recipes, multi-repo campaign rollups, embedded cost panels, and a searchable audit log. The portal is **read-only first** ([ADR-0035](production/adrs/0035-operator-portal-architecture.md)); the only mutation it surfaces is plugin/task enablement kill-switches ([ADR-0036](production/adrs/0036-plugin-task-enablement-dual-source-policy.md)), which prevent *new* work from starting (or short-circuit in-flight work at the next safe stage boundary) but never override gate decisions. Two role-scoped views ship: **ops** (admin allowlist; global read across workflows / campaigns / metrics; write-action scoped to repos the admin owns) and **repo owner** (sees only repos resolved by GitHub OAuth at session). Refresh is event-driven via SSE/WebSocket — no polling. Enablement is a **dual-source policy**: operator-side kill-switches in Postgres + repo-side `codegenie.yaml` opt-outs committed per repo. Resolution is logical OR (either side can disable; fail-closed). Plugin install / upgrade / removal is **explicitly out of scope** (display-only catalog v1; lifecycle deferred to a later phase). Multi-tenant org isolation is **out of scope** (single-org v1; `org_id` column added to new tables from day one for forward compatibility).
+
+**Tooling & setup.** A single-page application (framework choice deferred to phase design) served by a thin FastAPI/Starlette gateway. Postgres tables `plugin_enablement(org_id, scope_task, scope_plugin, scope_repo, enabled, updated_by, updated_at, reason, expires)` and `portal_admins(github_user_id, granted_by, granted_at, reason)`. SSE or WebSocket for the live ribbon (choice deferred). GitHub OAuth via standard OAuth library; session identity resolves to repo-visibility via GitHub API at session establishment. Cost panels embedded from the Phase 13 Grafana dashboard. Portal runs as a Kubernetes deployment in the same cluster as the Phase 14 MCP servers.
+
+**Testing.** Auth contract tests covering every visibility combination (admin/global-read; admin/own-repo-only-write; repo-owner/own-only-read+write; rejection of cross-repo writes). Four-quadrant kill-switch resolution matrix (operator-only / repo-only / both / neither). Mid-flight kill semantics — synthetic in-flight workflow at each of the 7 stages; kill mid-Discovery/Assessment/Scan/Planning/Validation/Learning short-circuits at the next boundary; kill mid-Execution and mid-Handoff is non-interruptible (clean candidate / clean PR). Audit-log replay test: every `PluginEnablementChanged` event in the canonical event log deterministically reconstructs the `plugin_enablement` table state.
+
+**Exit criteria.** An ops admin opens the portal, sees every active workflow at stage granularity, flips a plugin kill-switch for a specific repo, and the next workflow targeting that repo emits a `Skipped(reason="operator-disabled")` event without invoking any gate. A repo owner with GitHub access to `repo-x` opens the portal and sees only `repo-x` and its workflow history. A `codegenie.yaml` opt-out committed to a repo is loaded by the next gather; the portal surfaces it as a "repo-opt-out" badge on the repo page. Every operator action and every workflow skip writes to the canonical event log.
+
+**Depends on:** Phase 9 (canonical event log), Phase 13 (cost ledger + Grafana). Does **not** depend on Phase 14 (continuous gather), though the two phases compose naturally: Phase 14's webhook-driven re-gathers populate the live ribbon richer than the manual triggers available before it.
 
 ---
 
