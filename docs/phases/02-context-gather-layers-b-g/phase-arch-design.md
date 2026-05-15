@@ -503,11 +503,11 @@ sequenceDiagram
       max_stdout_bytes: int = 64 * 1024 * 1024,
   ) -> ProcessResult: ...
   ```
-- **Internal structure.** Delegates to `run_allowlisted(argv, ...)` with three additions: (a) env strip to Phase 0 allowlist (`PATH`, `HOME`, `LANG`, `LC_ALL`, `TERM`, `CODEGENIE_*`); (b) on **Linux only**, *optional* `bubblewrap --unshare-net --ro-bind <repo> /work --bind <tmpdir> /tmp/probe` wrap when `bwrap` is on PATH (graceful no-op when missing); (c) `stdout`/`stderr` capped, tail-included in failures.
+- **Internal structure.** Delegates to `run_allowlisted(argv, ...)` (on macOS / no-bwrap) or to the private `_spawn_with_invariants` helper (on Linux+bwrap, since `bwrap` is intentionally NOT in `ALLOWED_BINARIES` — see 02-ADR-0001 §Consequences last bullet) with three additions: (a) env strip to the Phase 0 4-key baseline (`PATH`, `HOME`, `LANG`, `LC_ALL`); (b) on **Linux only**, *optional* `bubblewrap --unshare-net --ro-bind <repo> /work --bind <tmpdir> /tmp/probe` wrap when `bwrap` is on PATH (graceful no-op when missing); (c) `stdout`/`stderr` capped on every call (success or failure), tail-included on truncation.
 - **Dependencies.** Phase 0 `run_allowlisted`. No new third-party deps.
 - **State.** None.
 - **Performance envelope.** Overhead vs raw `run_allowlisted`: < 5 ms (env strip + optional bwrap fork). Bandwidth-bound by tool's stdout (cap 64 MB).
-- **Failure behavior.** Non-zero exit → `ProcessResult(exit_code=N, stderr_tail=...)`. Caller (a scanner probe) wraps as `ScannerOutcome.ScannerFailed`. `bwrap` missing on Linux → single startup warning, no failure. Timeout via `asyncio.wait_for`.
+- **Failure behavior.** Non-zero exit → `ProcessResult(exit_code=N, stderr_tail=...)`. Caller (a scanner probe) wraps as `ScannerOutcome.ScannerFailed`. `bwrap` missing on Linux (or non-Linux platform) → single startup warning per process (`subproc.bwrap.skipped`), no failure. Timeout via `asyncio.wait_for`. Stdout/stderr are tail-truncated on every call when the per-stream cap is exceeded (success or failure).
 
 ### 4. `SecretRedactor` (extension of `src/codegenie/output/sanitizer.py`)
 

@@ -111,3 +111,15 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `TypeError: _ignore_python_name() takes 2 positional arguments but 3 were given` when calling `_MkdocsLoader.add_multi_constructor("tag:yaml.org,2002:python/name:", fn)` with `fn(loader, node)`.
 - **Fix:** The callback signature is `(loader, tag_suffix, node) -> Any`. PyYAML's multi-constructor passes the *tag suffix* (everything after the prefix) as the middle argument; this is documented but easy to overlook.
 - **Why it matters:** Any future probe / loader that needs to register a YAML constructor for a tag family — including S6-04 external docs loaders that might encounter custom MkDocs/MkDocs-Material tags — needs the 3-arg signature. Single-tag `add_constructor` *is* 2-arg, so the trap is the multi-vs-single split.
+
+## L19 — `mypy --strict` narrows `sys.platform` via `Literal`; indirect through a helper to avoid `unreachable`
+- **Source:** S1-07 (`_maybe_wrap_with_bwrap`).
+- **Symptom:** `src/codegenie/exec.py:448: error: Statement is unreachable [unreachable]` — mypy on darwin narrows `sys.platform` to the literal `"darwin"`, so `if not sys.platform.startswith("linux"): ... return ...` is "always taken" at type-check time, making the post-`return` `if shutil.which("bwrap") is None:` block unreachable.
+- **Fix:** Indirect through `def _platform_is_linux() -> bool: return sys.platform.startswith("linux")`. Mypy cannot narrow through function boundaries, so the post-check branch is reachable. Runtime semantics are identical and `monkeypatch.setattr(sys, "platform", "darwin")` still works (the helper reads `sys.platform` at call time).
+- **Why it matters:** Phase 5 (microVM, network namespaces) and any future Layer-C probe (S5-02 `RuntimeTraceProbe`, S5-05 `RuntimeTraceFreshness`) that branches on `sys.platform` under `mypy --strict` will hit the same trap. Reach for the helper on first cycle.
+
+## L20 — `codegenie.exec` cannot top-level import `codegenie.types.identifiers` (circular)
+- **Source:** S1-07 (added `ProbeId` annotation to `run_external_cli`).
+- **Symptom:** `ImportError: cannot import name 'PackageManager' from partially initialized module 'codegenie.probes.node_build_system' (most likely due to a circular import)`. Chain: `codegenie.exec` → `codegenie.types.identifiers` (re-exports `PackageManager`) → `codegenie.probes.node_build_system` (imports `codegenie.exec`).
+- **Fix:** Put the import under `TYPE_CHECKING`. `from __future__ import annotations` is already in `exec.py`, so the deferred annotation is a string at runtime — no actual lookup happens. Only valid when the imported name is used **only in annotations** (`probe_name: ProbeId`); if you ever need to *call* `ProbeId(...)` inside `exec.py`, this trick fails and you must restructure.
+- **Why it matters:** Any future `exec.py` extension that wants strict-mypy on a kernel-tier newtype identifier (Phase 2 S5-02's `RuntimeTraceProbe`, Phase 5's microVM wrapper) needs the same `TYPE_CHECKING` pattern. The S1-05 newtype family lives in a module that itself transitively pulls `exec.py`; this is structural.
