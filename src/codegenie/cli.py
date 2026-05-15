@@ -458,14 +458,43 @@ def _run_gather_pipeline(
     raw_log = structlog_mod.get_logger("codegenie.cli")
     run_id = structlog_mod.contextvars.get_contextvars().get("run_id")
 
+    import os as _os
+
     raw_artifacts: list[tuple[str, bytes]] = []
     for probe_name, output in gather_result.outputs.items():
         budget = budgets_by_probe.get(probe_name, default_resource_budget)
         for raw_path in getattr(output, "raw_artifacts", []) or []:
             if isinstance(raw_path, Path) and raw_path.is_file():
-                payload_bytes = raw_path.read_bytes()
+                # Size-check via ``os.fstat`` before reading so a 200 MB
+                # artifact never lands in RAM just to be truncated. The
+                # ``os.fstat`` codepath is the documented test seam for
+                # synthesizing oversized inputs without writing them to disk
+                # (S3-06 AC-8 — pattern of record from S3-01/02/03/05's
+                # parser-cap tests; B-2 unblocker).
+                budget_bytes = budget.raw_artifact_truncate_mb * 1_048_576
+                fd = _os.open(str(raw_path), _os.O_RDONLY)
+                try:
+                    original_bytes = _os.fstat(fd).st_size
+                    # Read at most ``budget_bytes`` so we always have enough
+                    # to build the truncation wrapper's ``data`` prefix
+                    # without slurping the full original payload. Loop to
+                    # accumulate against POSIX short-read semantics on
+                    # regular files.
+                    chunks: list[bytes] = []
+                    remaining = budget_bytes
+                    while remaining > 0:
+                        chunk = _os.read(fd, remaining)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        remaining -= len(chunk)
+                    payload_bytes = b"".join(chunks)
+                finally:
+                    _os.close(fd)
                 out_bytes, outcome = apply_truncation(
-                    payload_bytes, budget.raw_artifact_truncate_mb
+                    payload_bytes,
+                    budget.raw_artifact_truncate_mb,
+                    original_bytes=original_bytes,
                 )
                 if isinstance(outcome, truncated_marker):
                     raw_log.info(

@@ -64,7 +64,7 @@ TruncationOutcome = Untruncated | Truncated
 
 
 def apply_raw_artifact_truncation(
-    payload: bytes, truncate_mb: int
+    payload: bytes, truncate_mb: int, *, original_bytes: int | None = None
 ) -> tuple[bytes, TruncationOutcome]:
     """Apply the soft-truncation policy.
 
@@ -77,15 +77,28 @@ def apply_raw_artifact_truncation(
     M, "data": ...}`` wrapper and returns ``(wrapper_bytes,
     Truncated(original_bytes=N, budget_bytes=M))``.
 
+    ``original_bytes`` may be passed when the caller has size-checked the
+    file via ``os.fstat`` and read only a prefix (avoiding loading the full
+    payload into memory for files known to be over budget). When supplied,
+    the wrapper's ``original_bytes`` field carries the supplied size; when
+    omitted it defaults to ``len(payload)``. The truncation decision still
+    uses ``original_bytes`` if provided (else ``len(payload)``) so a caller
+    that reads only the prefix can still trigger truncation correctly.
+
     Raises:
         ValueError: when ``truncate_mb <= 0`` — silent acceptance of 0 means
             "truncate everything to nothing," an unrecoverable config error
             (Rule 12, fail loud).
+        ValueError: when ``original_bytes < 0`` — fail loud on a nonsensical
+            override.
     """
     if truncate_mb <= 0:
         raise ValueError(f"truncate_mb must be positive, got {truncate_mb}")
+    if original_bytes is not None and original_bytes < 0:
+        raise ValueError(f"original_bytes must be >= 0, got {original_bytes}")
     budget_bytes = truncate_mb * _ONE_MIB
-    if len(payload) <= budget_bytes:
+    effective_original = original_bytes if original_bytes is not None else len(payload)
+    if effective_original <= budget_bytes:
         return payload, Untruncated()
     prefix = payload[:budget_bytes]
     data: object
@@ -99,11 +112,11 @@ def apply_raw_artifact_truncation(
         data = prefix.decode("utf-8", errors="replace")
     wrapper = {
         "__truncated_at_budget__": True,
-        "original_bytes": len(payload),
+        "original_bytes": effective_original,
         "budget_bytes": budget_bytes,
         "data": data,
     }
     return (
         json.dumps(wrapper, ensure_ascii=False).encode("utf-8"),
-        Truncated(original_bytes=len(payload), budget_bytes=budget_bytes),
+        Truncated(original_bytes=effective_original, budget_bytes=budget_bytes),
     )

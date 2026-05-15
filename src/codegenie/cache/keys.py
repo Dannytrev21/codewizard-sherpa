@@ -88,6 +88,9 @@ def per_probe_schema_version(probe: _ProbeLike) -> str:
     return str(data["$id"])
 
 
+_OUTPUT_NAMESPACE = ".codegenie"
+
+
 def declared_inputs_for(probe: _ProbeLike, snapshot: RepoSnapshot) -> list[Path]:
     """Resolve a probe's ``declared_inputs`` globs against ``snapshot.root``.
 
@@ -96,12 +99,30 @@ def declared_inputs_for(probe: _ProbeLike, snapshot: RepoSnapshot) -> list[Path]
     that no longer exist on disk are silently dropped — the cache-miss layer
     is the right place to surface that, not this resolver (story implementer
     note in ``S3-01``).
+
+    Paths inside the codegenie output namespace (``<root>/.codegenie/``) are
+    filtered out: the cli writes raw artifacts under
+    ``.codegenie/context/raw/`` using basename-derived filenames (e.g. a
+    persisted ``pnpm-lock.yaml``). Without this filter, every subsequent
+    ``rglob("pnpm-lock.yaml")`` from a probe's declared inputs would match
+    the cli's own output, spuriously invalidating warm caches on re-runs
+    (S3-06 L-35, L-36; B-1 unblocker). Output dirs are never legitimate
+    probe inputs.
     """
     seen: set[Path] = set()
     for pattern in probe.declared_inputs:
         for match in snapshot.root.rglob(pattern):
-            if match.exists():
-                seen.add(match)
+            if not match.exists():
+                continue
+            try:
+                rel = match.relative_to(snapshot.root)
+            except ValueError:
+                # rglob can in principle produce paths outside root only
+                # when the root itself is symlinked; defensively skip.
+                continue
+            if rel.parts and rel.parts[0] == _OUTPUT_NAMESPACE:
+                continue
+            seen.add(match)
     return sorted(seen, key=lambda p: str(p))
 
 

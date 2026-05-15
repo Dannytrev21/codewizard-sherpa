@@ -449,8 +449,14 @@ class NodeManifestProbe(Probe):
             ),
         }
 
+        lockfile_path = repo.root / selected if selected is not None else None
         return self._build_output(
-            t0, primary=primary, warnings=warnings, errors=errors, confidence=confidence
+            t0,
+            primary=primary,
+            warnings=warnings,
+            errors=errors,
+            confidence=confidence,
+            raw_lockfile=lockfile_path,
         )
 
     def _build_output(
@@ -461,6 +467,7 @@ class NodeManifestProbe(Probe):
         warnings: list[str],
         errors: list[str],
         confidence: Literal["high", "medium", "low"],
+        raw_lockfile: Path | None = None,
     ) -> ProbeOutput:
         duration_ms = max(0, int((time.perf_counter() - t0) * 1000))
         event = EVENT_PROBE_SUCCESS if confidence == "high" else EVENT_PROBE_FAILURE
@@ -473,9 +480,15 @@ class NodeManifestProbe(Probe):
                 "errors": list(errors),
             }
         }
+        # Surface the selected lockfile as a raw artifact so the S1-09 soft
+        # truncation policy has a real input on portfolio-scale repos
+        # (S3-06 AC-8/9/10 unblocker).
+        raw_artifacts: list[Path] = []
+        if raw_lockfile is not None and raw_lockfile.is_file():
+            raw_artifacts.append(raw_lockfile)
         return ProbeOutput(
             schema_slice=slice_payload,
-            raw_artifacts=[],
+            raw_artifacts=raw_artifacts,
             confidence=confidence,
             duration_ms=duration_ms,
             warnings=warnings,

@@ -1,7 +1,7 @@
 # Story S3-06 — Manifest fixtures + integration tests + catalog-invalidation scope test
 
 **Step:** Step 3 — Ship `NodeManifestProbe` and the three lockfile parsers
-**Status:** BLOCKED — AC groups 1–4 + 6 GREEN; **AC group 5 (AC-8/9/10 — raw-artifact-budget) BLOCKED on three follow-ups** (cli-side raw-artifact filename namespacing OR `declared_inputs_for` `.codegenie/`-exclusion; `os.fstat` monkey-patch not applicable to `Path.read_bytes()` path; story-prescribed filename `node_manifest.json` mismatch). See `_attempts/S3-06.md` for the full blocker audit. **No Step 3 / Phase 1 downstream story may merge as "Step 3 done" until these blockers land.**
+**Status:** GREEN — all AC groups 1–6 land green (2026-05-14 attempt 2). The three follow-ups blocking AC group 5 in attempt 1 (B-1 `.codegenie/`-rglob collision; B-2 `os.fstat` vs. `Path.read_bytes()`; B-3 filename mismatch) landed via `declared_inputs_for` `.codegenie/` exclusion, `NodeManifestProbe.raw_artifacts` emission, cli `os.open`+`os.fstat` size pre-check, and `apply_raw_artifact_truncation(original_bytes=...)` extension. AC-9 filename deviation (D-7) is documented in `_attempts/S3-06.md`.
 **Effort:** L  *(was M — re-sized after validation: 4 new test files + 1 unit-test extension + 1 new fixture + monkeypatch + spy choreography pushes this past M)*
 **Validated:** 2026-05-14 — see `_validation/S3-06-manifest-fixtures-integration.md`
 **Depends on:** S3-05 (`NodeManifestProbe` on disk), S3-03 (`_yarn._HAS_PYARN` symbol monkey-patched here), S3-04 (yarn-parity oracle pattern of record reused), S1-05 (catalog loader + `NATIVE_MODULES_CATALOG_VERSION`), S1-09 (`ResourceBudget.raw_artifact_truncate_mb` truncation marker shape)
