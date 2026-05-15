@@ -1,10 +1,19 @@
 # Story S1-03 — Adapter `Protocol`s + `AdapterConfidence` discriminated union
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready (HARDENED 2026-05-15)
+**Status:** Done (GREEN 2026-05-15 — all 16 ACs verified)
 **Effort:** S
 **Depends on:** S1-01
 **ADRs honored:** 02-ADR-0007
+
+## Evidence
+
+- `src/codegenie/adapters/confidence.py` — `Trusted | Degraded | Unavailable` discriminated union.
+- `src/codegenie/adapters/protocols.py` — four `@runtime_checkable` Protocols + `Occurrence` (frozen + slots) + `TestId` newtype.
+- `src/codegenie/adapters/__init__.py` — `__all__` export surface.
+- `tests/unit/adapters/test_protocols.py` — 36 tests covering ACs 1, 3, 4, 5, 6 (dynamic + static), 7, 10, 11, 12, 13, 14, 15, 16.
+- Gates: `make lint` ✓, `make typecheck` (mypy --strict) ✓, `make lint-imports` ✓, full suite 1598 passed, coverage 93.38% (≥85% gate).
+- Attempt log: `_attempts/S1-03.md`.
 
 ## Validation notes (2026-05-15)
 
