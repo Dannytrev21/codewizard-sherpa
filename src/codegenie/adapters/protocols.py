@@ -119,10 +119,3 @@ class TestInventoryAdapter(Protocol):
 
     def tests_exercising(self, symbol: str) -> list[TestId]: ...
     def confidence(self) -> AdapterConfidence: ...
-
-
-# Signal to pytest not to collect ``TestInventoryAdapter`` as a test class —
-# the ``Test`` prefix is part of the domain term, not the testing framework.
-# Setting this *after* the class body keeps ``__test__`` out of the Protocol's
-# attribute set (otherwise ``isinstance`` would require stubs to declare it).
-TestInventoryAdapter.__test__ = False  # type: ignore[attr-defined]

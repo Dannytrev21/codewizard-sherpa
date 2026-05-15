@@ -27,10 +27,15 @@ from codegenie.adapters import (
     Occurrence,
     ScipAdapter,
     TestId,
-    TestInventoryAdapter,
     Trusted,
     Unavailable,
 )
+
+# Aliased on import: pytest collects classes named ``Test*`` from any test
+# module's namespace, which would warn on the ``TestInventoryAdapter`` Protocol.
+# An alias under a non-``Test``-prefixed name keeps the public domain name
+# stable while keeping pytest's collector quiet.
+from codegenie.adapters import TestInventoryAdapter as InventoryAdapter
 from codegenie.adapters import confidence as confidence_mod
 from codegenie.adapters import protocols as protocols_mod
 
@@ -268,7 +273,7 @@ class _IncompleteTestInventory:
         (_DepGraphStub, DepGraphAdapter),
         (_ImportGraphStub, ImportGraphAdapter),
         (_ScipStub, ScipAdapter),
-        (_TestInventoryStub, TestInventoryAdapter),
+        (_TestInventoryStub, InventoryAdapter),
     ],
 )
 def test_runtime_checkable_accepts_complete_stub(stub_cls: type, proto: type) -> None:
@@ -282,7 +287,7 @@ def test_runtime_checkable_accepts_complete_stub(stub_cls: type, proto: type) ->
         (_IncompleteDepGraph, DepGraphAdapter),
         (_IncompleteImportGraph, ImportGraphAdapter),
         (_IncompleteScip, ScipAdapter),
-        (_IncompleteTestInventory, TestInventoryAdapter),
+        (_IncompleteTestInventory, InventoryAdapter),
     ],
 )
 def test_runtime_checkable_rejects_incomplete_stub(stub_cls: type, proto: type) -> None:
@@ -298,7 +303,7 @@ ADAPTER_PROTOCOLS: tuple[type, ...] = (
     DepGraphAdapter,
     ImportGraphAdapter,
     ScipAdapter,
-    TestInventoryAdapter,
+    InventoryAdapter,
 )
 ADAPTER_PROTOCOL_NAMES: frozenset[str] = frozenset(proto.__name__ for proto in ADAPTER_PROTOCOLS)
 
