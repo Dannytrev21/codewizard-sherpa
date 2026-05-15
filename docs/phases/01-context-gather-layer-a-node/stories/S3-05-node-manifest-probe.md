@@ -1,7 +1,7 @@
 # Story S3-05 — `NodeManifestProbe` + sub-schema + native-module catalog cross-reference
 
 **Step:** Step 3 — Ship `NodeManifestProbe` and the three lockfile parsers
-**Status:** Ready (HARDENED)
+**Status:** Done (GREEN 2026-05-14 — see `_attempts/S3-05.md`)
 **Effort:** L
 **Validated:** 2026-05-14 — see `_validation/S3-05-node-manifest-probe.md`
 **Depends on:** S3-01 (`_pnpm`), S3-02 (`_npm`), S3-03 (`_yarn`), S1-05 (`catalogs.NATIVE_MODULES` + `NATIVE_MODULES_CATALOG_VERSION`), S1-09 (`ResourceBudget.raw_artifact_truncate_mb` + `apply_raw_artifact_truncation` writer hook)

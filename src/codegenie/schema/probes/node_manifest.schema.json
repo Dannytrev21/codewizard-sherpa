@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/node_manifest/v0.1.0.json",
+  "title": "NodeManifest probe output",
+  "description": "Slice of repo-context produced by the NodeManifest probe (Layer A, Phase 1; S3-05). Strict at the slice (`additionalProperties: false`) at every nested block, in keeping with Phase 1 ADR-0004. The slice is OPTIONAL at the envelope (ADR-0010): non-Node repos don't emit it and validation must pass. Warning IDs match the ADR-0007 pattern (`^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$`); typed-exception IDs land in `ProbeOutput.errors` rather than in the slice (the slice's `errors` array is forward-compatible per-slice carrier).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifests"],
+  "properties": {
+    "manifests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "catalog_version", "warnings", "errors"],
+      "properties": {
+        "primary": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "direct_dependencies",
+            "declared_engines",
+            "lockfile",
+            "native_modules",
+            "optional_dependencies",
+            "bundled_dependencies"
+          ],
+          "properties": {
+            "path": {"type": "string"},
+            "direct_dependencies": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["runtime", "dev"],
+              "properties": {
+                "runtime": {"type": "integer", "minimum": 0},
+                "dev": {"type": "integer", "minimum": 0}
+              }
+            },
+            "declared_engines": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            },
+            "lockfile": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["name"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "enum": ["pnpm-lock.yaml", "yarn.lock", "package-lock.json"]
+                }
+              }
+            },
+            "native_modules": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["detected", "packages"],
+              "properties": {
+                "detected": {"type": "boolean"},
+                "packages": {
+                  "type": "array",
+                  "items": {"$ref": "#/$defs/NativeModuleHit"}
+                }
+              }
+            },
+            "optional_dependencies": {"type": "integer", "minimum": 0},
+            "bundled_dependencies": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "catalog_version": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "File-top `catalog_version` from `native_modules.yaml`. Editing the catalog bumps this; the file is in `NodeManifestProbe.declared_inputs` so the bump invalidates the probe's cache (ADR-0006)."
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern. Example: `lockfile.multi_present`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "description": "Forward-compatible per-slice error IDs. Phase 1 emits these on `ProbeOutput.errors` rather than in the slice; this array exists for future probes/phases.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "NativeModuleHit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "requires_node_gyp",
+        "system_deps_required",
+        "binary_artifacts_glob",
+        "catalog_entry_version"
+      ],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "requires_node_gyp": {"type": "boolean"},
+        "system_deps_required": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "binary_artifacts_glob": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "catalog_entry_version": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

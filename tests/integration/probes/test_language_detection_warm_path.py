@@ -8,16 +8,20 @@ Two test functions:
   produced envelope's ``probes.language_detection`` slice carries
   ``framework_hints == ["express"]`` and ``monorepo is None``, (b) the
   ``probes.node_build_system`` slice carries ``package_manager ==
-  "pnpm"``, (c) neither probe logged a ``probe.failure`` event, (d) the
+  "pnpm"``, (c) no probe logged a ``probe.failure`` event, (d) the
   ``probe.success`` event each probe emitted reports
   ``confidence == "high"``, and (e) the structlog stream contains
-  **exactly one** ``probe.memo.miss`` and **exactly one**
-  ``probe.memo.hit`` for ``package.json`` — proving the memo eliminated
-  the redundant second parse across the two probes.
+  **exactly one** ``probe.memo.miss`` (the first consumer pays the
+  parse) and **one ``probe.memo.hit`` per subsequent consumer of
+  ``package.json`` — proving the memo eliminated the redundant parse
+  across every probe that reads the manifest. Today
+  :class:`LanguageDetectionProbe` (miss), :class:`NodeBuildSystemProbe`
+  (hit), and :class:`NodeManifestProbe` (hit, added by S3-05) all read
+  ``package.json``, so the expected pair is ``miss == 1, hit == 2``.
 
   The miss-then-hit assertion is the load-bearing one: ``0/0`` means
-  both probes bypassed the memo and called ``safe_json.load`` directly;
-  ``2/0`` means the memo was consulted but never returned a hit; either
+  every probe bypassed the memo and called ``safe_json.load`` directly;
+  ``N/0`` means the memo was consulted but never returned a hit; either
   is a regression of the S1-07 memo contract.
 
 - :func:`test_extra_field_under_node_build_system_rejected` — ADR-0004
@@ -60,9 +64,11 @@ FIXTURE = Path(__file__).resolve().parent.parent.parent / "fixtures" / "node_typ
 def test_warm_path_memo_hits_once_across_two_probes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Across :class:`LanguageDetectionProbe` (S2-01) +
-    :class:`NodeBuildSystemProbe` (S2-02), ``package.json`` is parsed
-    exactly once — second consumer hits the memo.
+    """Across the Phase 1 Layer-A probes that read ``package.json`` —
+    :class:`LanguageDetectionProbe` (S2-01),
+    :class:`NodeBuildSystemProbe` (S2-02), and
+    :class:`NodeManifestProbe` (S3-05) — the file is parsed exactly
+    once. The first consumer misses; each subsequent consumer hits.
     """
     # The ``node --version`` cross-check is environment-dependent; stub it
     # so the dev/CI installed Node version never disagrees with the
@@ -97,12 +103,12 @@ def test_warm_path_memo_hits_once_across_two_probes(
     # regression (silently appending a warning) surfaces here.
     assert build_system["warnings"] == [], build_system
 
-    # assert: no probe.failure events emitted by either probe.
+    # assert: no probe.failure events emitted by any of the Layer-A probes.
+    package_json_consumers = ("language_detection", "node_build_system", "node_manifest")
     failures = [
         e
         for e in events
-        if e.get("event") == "probe.failure"
-        and e.get("probe") in ("language_detection", "node_build_system")
+        if e.get("event") == "probe.failure" and e.get("probe") in package_json_consumers
     ]
     assert failures == [], f"unexpected probe.failure events: {failures}"
 
@@ -111,7 +117,7 @@ def test_warm_path_memo_hits_once_across_two_probes(
     # the ``confidence`` field — see ``language_detection.py:480`` and
     # ``node_build_system.py:618``. ``cache_key`` is the coordinator's
     # marker; filter it out to isolate the probe-emitted event.
-    for probe_name in ("language_detection", "node_build_system"):
+    for probe_name in package_json_consumers:
         probe_success = [
             e
             for e in events
@@ -127,13 +133,16 @@ def test_warm_path_memo_hits_once_across_two_probes(
 
     # assert: memo event-count invariant (load-bearing). Filter on the
     # structured ``allowlist_match`` key the memo emits, not a substring
-    # on ``path``.
+    # on ``path``. Expected one miss (first consumer) and one hit per
+    # subsequent consumer of ``package.json``.
+    expected_hits = len(package_json_consumers) - 1
     miss, hit = _count_memo_events(events, allowlist_match="package.json")
     assert miss == 1, (
         f"expected exactly 1 probe.memo.miss for package.json; got {miss}. events={events}"
     )
-    assert hit == 1, (
-        f"expected exactly 1 probe.memo.hit for package.json; got {hit}. events={events}"
+    assert hit == expected_hits, (
+        f"expected exactly {expected_hits} probe.memo.hit for package.json; "
+        f"got {hit}. events={events}"
     )
 
 

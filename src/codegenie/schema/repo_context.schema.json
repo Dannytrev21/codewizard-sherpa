@@ -40,6 +40,9 @@
         },
         "node_build_system": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/node_build_system/v0.2.0.json"
+        },
+        "node_manifest": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/node_manifest/v0.1.0.json"
         }
       }
     }
