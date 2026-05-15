@@ -1,10 +1,19 @@
 # Story S1-01 — `IndexFreshness` sum type at `codegenie.indices.freshness`
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready (hardened by phase-story-validator 2026-05-15)
+**Status:** Done (executed by phase-story-executor 2026-05-15; attempt log: [`_attempts/S1-01.md`](_attempts/S1-01.md))
 **Effort:** M
 **Depends on:** —
 **ADRs honored:** 02-ADR-0006
+
+## Execution evidence
+
+All 12 acceptance criteria pass with runtime evidence (see [`_attempts/S1-01.md`](_attempts/S1-01.md) §"Acceptance criteria — evidence" for the AC-by-AC mapping). Summary:
+
+- Tests added: 10 unit tests in [`tests/unit/indices/test_freshness.py`](../../../../tests/unit/indices/test_freshness.py) + 1 Hypothesis property test in [`tests/property/test_index_freshness_roundtrip.py`](../../../../tests/property/test_index_freshness_roundtrip.py).
+- Implementation: [`src/codegenie/indices/__init__.py`](../../../../src/codegenie/indices/__init__.py) + [`src/codegenie/indices/freshness.py`](../../../../src/codegenie/indices/freshness.py) (stdlib + Pydantic only; no logger, no I/O, no registry — Open/Closed seam for new index sources lives in S1-02).
+- Gates: `ruff format --check`, `ruff check`, `mypy --strict src/`, full pytest suite (1562 passed, coverage 93.20%).
+- Dep change: added `hypothesis` to `[project.optional-dependencies].dev` and regenerated `uv.lock`.
 
 ## Validation notes
 

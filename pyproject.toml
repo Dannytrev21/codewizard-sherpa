@@ -47,6 +47,9 @@ dev = [
   "pytest",
   "pytest-asyncio",
   "pytest-cov",
+  # 02 S1-01: Hypothesis is the property-test runner for the IndexFreshness
+  # round-trip deliverable named in 02-ADR-0006 §Consequences.
+  "hypothesis",
   "mypy",
   "ruff",
   "pre-commit",
