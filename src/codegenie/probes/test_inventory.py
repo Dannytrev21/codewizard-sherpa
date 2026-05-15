@@ -88,7 +88,8 @@ from codegenie.logging import (
     EVENT_PROBE_SUCCESS,
 )
 from codegenie.parsers import safe_json
-from codegenie.probes._lcov_scanner import LcovTotals, scan as _lcov_scan
+from codegenie.probes._lcov_scanner import LcovTotals
+from codegenie.probes._lcov_scanner import scan as _lcov_scan
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.language_detection import _SKIP_DIRS as _NOISE_DIRS
 from codegenie.probes.registry import register_probe
