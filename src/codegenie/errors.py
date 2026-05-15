@@ -50,6 +50,8 @@ __all__ = [
     "CatalogLoadError",
     # Phase 2 (Layers B–G) — S1-02.
     "FreshnessRegistryError",
+    # Phase 2 (Layers B–G) — S1-04.
+    "TCCMLoadError",
 ]
 
 
@@ -153,3 +155,12 @@ class FreshnessRegistryError(CodegenieError):
     ``@register_index_freshness_check`` decoration. Hard fail at import time
     (load-bearing fail-loud surface — a registry that silently shadows is
     worse than no registry; mirrors the Phase-0 ``ProbeError`` precedent)."""
+
+
+class TCCMLoadError(CodegenieError):
+    """Raised by ``codegenie.tccm.loader.TCCMLoader.load`` when a Task-Class
+    Context Manifest YAML fails to load. Reason carried as positional
+    ``args[0]`` prefix — one of ``"parse: …"``, ``"schema: …"``,
+    ``"unknown_query_primitive: …"``. Marker only: no ``__init__``, no
+    class state. Consumers parse the prefix; the structured reason lives at
+    the catch site (mirrors ``MalformedYAMLError`` / ``CatalogLoadError``)."""

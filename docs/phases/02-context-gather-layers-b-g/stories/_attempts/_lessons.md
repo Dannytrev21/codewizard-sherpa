@@ -81,3 +81,33 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `tests/unit/indices/test_freshness.py::test_all_exports_full_variant_set` asserted `set(m.__all__) == {<S1-01 names>}`; equality fails the moment any sibling story extends the package.
 - **Fix:** Loosen the assertion to a subset on the *story-specific* names (`s1_01_names <= set(m.__all__)`). The new sibling story checks its own surface independently. Keeps each story's `__all__` AC scoped to its own deliverable.
 - **Why it matters:** Same trap will fire when S1-04 (TCCM model + queries + loader) re-exports from `codegenie.tccm.__init__`, and again at S5-01 (`scenario_result` + `scanner_outcome`). Narrow each per-story assertion to a subset on the story-owned names.
+
+## L14 — `Annotated[Union[Generic[T], …], Field(...)]` aliases are NOT subscriptable
+- **Source:** S1-04 (`Result[T, E] = Annotated[Ok[T] | Err[E], Field(discriminator="kind")]`).
+- **Symptom:** `TypeAdapter(Result[int, str])` raises `TypeError: typing.Annotated[…] is not a generic class`. Python 3.13's `typing` module rejects subscripting an `Annotated[Union]` alias even when both branches are `Generic`. Tests that try `Result[int, str]` to round-trip a concrete pair will not collect.
+- **Fix:** Drop the subscript. Round-trip via the concrete classes directly: `Ok[int].model_validate_json(Ok[int](value=42).model_dump_json())`. Pydantic preserves the generic argument internally for validation; the discriminator-based polymorphic decode is exercised by `TypeAdapter(Result)` (unsubscripted) when needed.
+- **Why it matters:** Every Phase-2 loader story that consumes `Result` (S2-01 `SkillsLoader.load`, S2-02 `ConventionsCatalogLoader.load`, future S6-04 external-docs loaders) will be tempted to write `TypeAdapter(Result[Skill, SkillsLoadError])` for tests. It will fail at collection time. The right pattern is concrete-variant round-trip plus a *separate* `Result` polymorphic decode test (unsubscripted adapter, manual `isinstance` check).
+
+## L15 — Alias-on-import for `Test*` types: the *alias name* matters, not just the act of aliasing
+- **Source:** S1-04 (`TestsExercising` Pydantic class).
+- **Symptom:** Aliased as `from codegenie.tccm import TestsExercising as TestsExercisingQuery` — pytest **still** emitted `PytestCollectionWarning: cannot collect test class 'TestsExercising' …`. The collector's regex is on the *local name in the module's namespace*; `TestsExercisingQuery` still starts with `Test`.
+- **Fix:** Choose a non-`Test`-prefixed alias name. For S1-04 the chosen alias was `ExerciseTestsQuery`. Stage 1's L5 lesson recommended aliasing — extend it: the alias name must also fail pytest's `Test*` regex.
+- **Why it matters:** Any Phase-2 domain type whose name starts with `Test` (`TestMatrix`, `TestSuiteId`, `TestRunner`, `TestVerdict`, `TestExercising`-family) needs both the alias *and* a non-`Test`-prefixed alias name. The cost of getting it wrong is a spurious warning that does not fail CI but produces noise on every story that imports the class. Get it right on the first commit.
+
+## L16 — Pydantic v2 `union_tag_invalid` puts the discriminator name in `ctx`, not `loc`
+- **Source:** S1-04 (`TCCMLoader._classify` translation table).
+- **Symptom:** First `_classify` implementation checked `loc[-1] == "compute"` per the story sketch. Pydantic 2.13 actually returns `loc = ('derived_queries', 0)` (the *list index*, not the discriminator field name) on `union_tag_invalid`. The discriminator identity lives in `ctx['discriminator']` as the literal string `"'compute'"` (yes, with embedded single-quotes — Pydantic renders the field name with quotes inside `ctx`). Two `unknown_query_primitive` tests failed under the initial implementation.
+- **Fix:** When `type == "union_tag_invalid"`, check `ctx.get("discriminator") in {"'compute'", "compute"}`. Keep the `literal_error` arm checking `loc[-1] == "compute"` as a defensive fallback for the rare codepath where Pydantic emits `literal_error` instead of `union_tag_invalid`. Pin both behaviors in a docstring as the public translation contract — Rule 12: if a Pydantic upgrade breaks AC-8, fix the translation, not the test.
+- **Why it matters:** Every future Phase-2 sum-type loader (`SkillsLoader.load` returning `Result[Skill, SkillsLoadError]` with the same `kind` discriminator, S5-01 `scanner_outcome`, S6-06 curated-scanner outcomes) will need the same translation pattern. The shape of Pydantic's error dict is the load-bearing contract; do not infer from the story sketch alone.
+
+## L17 — `Annotated[Union, ...]` aliases composed of generic models break `unwrap()`/`unwrap_err()` mypy signatures
+- **Source:** S1-04 (`Ok.unwrap_err` and `Err.unwrap` mypy errors).
+- **Symptom:** `mypy --strict` reports `error: A function returning TypeVar should receive at least one argument containing the same TypeVar [type-var]` on always-raises methods that declared `-> E` or `-> T`.
+- **Fix:** Methods that always raise should declare `-> NoReturn`. Semantically accurate (the function never returns) and mypy-clean.
+- **Why it matters:** Any future `Result`-shaped API where one variant lacks a value will have always-raises helpers. `NoReturn` is the right type; do not work around by adding fake `-> object` or `-> Any` returns.
+
+## L18 — `add_multi_constructor` callbacks receive 3 args, not 2
+- **Source:** S1-04 (`_safe_load_mkdocs` helper for parsing `mkdocs.yml`'s `!!python/name:` tags).
+- **Symptom:** `TypeError: _ignore_python_name() takes 2 positional arguments but 3 were given` when calling `_MkdocsLoader.add_multi_constructor("tag:yaml.org,2002:python/name:", fn)` with `fn(loader, node)`.
+- **Fix:** The callback signature is `(loader, tag_suffix, node) -> Any`. PyYAML's multi-constructor passes the *tag suffix* (everything after the prefix) as the middle argument; this is documented but easy to overlook.
+- **Why it matters:** Any future probe / loader that needs to register a YAML constructor for a tag family — including S6-04 external docs loaders that might encounter custom MkDocs/MkDocs-Material tags — needs the 3-arg signature. Single-tag `add_constructor` *is* 2-arg, so the trap is the multi-vs-single split.

@@ -50,6 +50,12 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c
     hooks:
       - id: check-yaml
+        # `mkdocs.yml` uses `!!python/name:` tags (pymdownx.superfences custom
+        # fences) that are valid YAML but reject under the default SafeLoader.
+        # `--unsafe` tells check-yaml to verify syntax only without resolving
+        # tags — safe because the file is checked into version control and
+        # parsed by mkdocs itself, not the gather pipeline.
+        args: [--unsafe]
       - id: check-toml
       - id: end-of-file-fixer
       - id: trailing-whitespace

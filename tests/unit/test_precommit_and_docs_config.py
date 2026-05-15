@@ -28,6 +28,27 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+
+def _safe_load_mkdocs(text: str) -> dict[str, object]:
+    """Load mkdocs.yml under SafeLoader, treating ``!!python/name:`` tags as opaque.
+
+    mkdocs/pymdownx ships `!!python/name:pymdownx.superfences.fence_code_format`
+    in the curated `mkdocs.yml`; the default `SafeLoader` rejects the tag.
+    For schema-shape tests (nav layout, key presence) the tag's resolved value
+    is irrelevant — we ignore it and return the literal tag suffix so the rest
+    of the document parses normally. No code is evaluated.
+    """
+
+    class _MkdocsLoader(yaml.SafeLoader):
+        pass
+
+    def _ignore_python_name(loader: yaml.Loader, tag_suffix: str, node: yaml.Node) -> str:
+        return str(node.tag)
+
+    _MkdocsLoader.add_multi_constructor("tag:yaml.org,2002:python/name:", _ignore_python_name)
+    return yaml.load(text, Loader=_MkdocsLoader)  # type: ignore[no-any-return]
+
+
 # Mirrors AC-1 exactly. Equality test, not subset — duplication here is the point.
 REQUIRED_HOOKS: frozenset[str] = frozenset(
     {
@@ -345,7 +366,7 @@ def _flatten_nav(items: object) -> Iterator[str]:
 def test_mkdocs_nav_excludes_all_superseded_design_docs() -> None:
     mk = PROJECT_ROOT / "mkdocs.yml"
     assert mk.is_file(), "mkdocs.yml must exist at repo root"
-    cfg = yaml.safe_load(mk.read_text())
+    cfg = _safe_load_mkdocs(mk.read_text())
     refs = list(_flatten_nav(cfg.get("nav", [])))
     for ref in refs:
         assert isinstance(ref, str), (

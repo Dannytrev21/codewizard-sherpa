@@ -34,8 +34,10 @@ PHASE1_NEW = {
 PHASE2_NEW = {
     # Phase 2 (Layers B–G) — S1-02 adds the indices.registry duplicate-name
     # marker. Additional Phase-2 markers (SkillsLoadError, ConventionsError,
-    # TCCMLoadError, …) land in their own stories.
+    # …) land in their own stories.
     "FreshnessRegistryError",
+    # S1-04 adds the TCCM-loader marker. Reason prefix carried in args[0].
+    "TCCMLoadError",
 }
 
 EXPECTED_SUBCLASSES = (
@@ -72,6 +74,8 @@ DOCUMENTED_MODULE_SLUGS = {
     "catalogs",
     # Phase 2 additions (S1-02) — additive only.
     "indices",
+    # Phase 2 additions (S1-04) — TCCM loader slug.
+    "tccm",
 }
 MARKER_ALLOWED_DICT_KEYS = {
     "__module__",

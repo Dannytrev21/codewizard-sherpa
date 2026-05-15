@@ -17,6 +17,27 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_USER_RE = re.compile(r"@[A-Za-z0-9-]+(/[A-Za-z0-9_-]+)?")
 
 
+def _safe_load_mkdocs(text: str) -> dict[str, object]:
+    """Load mkdocs.yml under SafeLoader, treating ``!!python/name:`` tags as opaque.
+
+    The curated `mkdocs.yml` ships
+    `!!python/name:pymdownx.superfences.fence_code_format` per pymdownx
+    documentation; the default `SafeLoader` rejects the tag. Schema-shape
+    tests (nav layout, key presence) don't need the resolved value, so we
+    register a constructor that returns the tag suffix as a string. No code
+    is evaluated.
+    """
+
+    class _MkdocsLoader(yaml.SafeLoader):
+        pass
+
+    def _ignore_python_name(loader: yaml.Loader, tag_suffix: str, node: yaml.Node) -> str:
+        return str(node.tag)
+
+    _MkdocsLoader.add_multi_constructor("tag:yaml.org,2002:python/name:", _ignore_python_name)
+    return yaml.load(text, Loader=_MkdocsLoader)  # type: ignore[no-any-return]
+
+
 def _flatten_nav(node: object) -> list[str]:
     out: list[str] = []
     if isinstance(node, str):
@@ -180,7 +201,7 @@ def test_contributing_md_sections_and_content() -> None:
 
 
 def test_contributing_md_is_in_mkdocs_nav() -> None:
-    cfg = yaml.safe_load((REPO_ROOT / "mkdocs.yml").read_text(encoding="utf-8"))
+    cfg = _safe_load_mkdocs((REPO_ROOT / "mkdocs.yml").read_text(encoding="utf-8"))
     refs = _flatten_nav(cfg.get("nav") or [])
     hits = [p for p in refs if p.endswith("contributing.md")]
     assert len(hits) == 1, (

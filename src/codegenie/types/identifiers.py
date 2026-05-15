@@ -23,11 +23,16 @@ IndexId = NewType("IndexId", str)
 SkillId = NewType("SkillId", str)
 TaskClassId = NewType("TaskClassId", str)
 IndexName = NewType("IndexName", str)
+# Probe identifier — landed alongside S1-04's TCCM model (which carries
+# ``required_probes: list[ProbeId]``). Phase 0/1 did not ship a ProbeId
+# newtype; S1-04 routes the kernel-tier addition through this module.
+ProbeId = NewType("ProbeId", str)
 
 __all__ = [
     "IndexId",
     "IndexName",
     "PackageManager",
+    "ProbeId",
     "SkillId",
     "TaskClassId",
 ]

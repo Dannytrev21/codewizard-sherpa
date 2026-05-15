@@ -1,10 +1,29 @@
 # Story S1-04 — `TCCM` Pydantic model + `DerivedQuery` five variants + `TCCMLoader`
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready · **HARDENED 2026-05-15**
+**Status:** **Done — 2026-05-15** · HARDENED 2026-05-15
 **Effort:** M-to-L (Result type lifted in here per sibling-story dependency)
 **Depends on:** S1-01, S1-05
 **ADRs honored:** 02-ADR-0007
+
+## Evidence — every AC has runtime evidence
+
+- AC-0a..0e — `tests/unit/result/test_result.py` (13 tests; `__all__` exact set, immutability parametrized, round-trip identity, AST purity scan).
+- AC-1, AC-2, AC-7, AC-14, AC-15, AC-17, AC-18, AC-19, AC-24, AC-25 — `tests/unit/tccm/test_model.py` (13 tests).
+- AC-3, AC-6, AC-12, AC-13, AC-14, AC-15, AC-16 — `tests/unit/tccm/test_queries.py` (23 tests).
+- AC-4, AC-5, AC-8, AC-9, AC-20, AC-21, AC-22, AC-23 — `tests/unit/tccm/test_loader.py` (16 tests including audit-log allowlist).
+- AC-11 — `tests/property/test_tccm_roundtrip.py` (Hypothesis property over all 5 variants × random ASCII).
+- AC-10 — TDD red→green completed in this session.
+
+**Deliverables:**
+
+- `src/codegenie/result.py` — `Result[T, E] = Ok[T] | Err[E]` frozen Pydantic discriminated union (S2-01 / S2-02 reuse).
+- `src/codegenie/tccm/{__init__.py, model.py, queries.py, loader.py}` — `TCCM`, 5 `DerivedQuery` variants, `TCCMLoader` with `LoaderReason` typed alias and pinned `_TCCM_MAX_BYTES = 64 * 1024`.
+- `src/codegenie/errors.py` — `TCCMLoadError` bare marker appended.
+- `src/codegenie/types/identifiers.py` — `ProbeId` `NewType` added (S1-05 hard precondition addressed in-story).
+- `tests/unit/result/`, `tests/unit/tccm/`, `tests/property/test_tccm_roundtrip.py` — 66 story tests, 0 warnings.
+
+**Side fix:** the `docs(pages)` commit introduced `!!python/name:` tags in `mkdocs.yml` that broke 3 tests + the `check-yaml` pre-commit hook. Resolved in-PR by (a) `args: [--unsafe]` on the `check-yaml` hook and (b) a small `_safe_load_mkdocs` helper in the two affected tests that registers a no-op constructor for the `!python/name:` family.
 
 ## Validation notes (2026-05-15)
 
