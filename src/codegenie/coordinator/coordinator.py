@@ -456,6 +456,8 @@ async def gather(
     config: Any,
     cache: CacheStore,
     sanitizer: OutputSanitizer,
+    *,
+    runs_last_names: frozenset[str] = frozenset(),
 ) -> GatherResult:
     """Dispatch ``probes`` against ``snapshot`` under a bounded concurrency budget.
 
@@ -464,6 +466,15 @@ async def gather(
     ``language_stack.counts`` (Gap 4). On any prelude-degraded path, the
     second pass uses the original snapshot and a ``prelude.degraded`` event
     fires.
+
+    ``runs_last_names`` (02-ADR-0003 + S1-08 AC-13) is the set of probe
+    names whose registry entry has ``runs_last=True``. The partition step
+    hoists those probes out of the prelude (regardless of declared
+    ``tier``) and appends them to the *end* of the rest wave. ``runs_last``
+    is registry-side metadata — the coordinator never reads it from the
+    probe instance itself (the ``Probe`` ABC stays frozen). Per-wave order
+    is emitted on the ``coordinator.dispatch.order`` structlog event for
+    audit anchoring (AC-10).
     """
     run_id = secrets.token_hex(8)
     structlog.contextvars.bind_contextvars(run_id=run_id)
@@ -479,8 +490,37 @@ async def gather(
         bound = min(cpu, config.max_concurrent_probes, 8)
         sem = asyncio.Semaphore(bound)
 
-        base = [p for p in probes if getattr(p, "tier", "task_specific") == "base"]
-        rest = [p for p in probes if getattr(p, "tier", "task_specific") != "base"]
+        # AC-13 — runs_last=True probes are hoisted out of the prelude into
+        # the tail of the rest wave, regardless of their declared ``tier``.
+        # Order within each bucket is the order the seam handed us (which is
+        # already sorted_for_dispatch order for the production CLI path).
+        base = [
+            p
+            for p in probes
+            if getattr(p, "tier", "task_specific") == "base" and p.name not in runs_last_names
+        ]
+        rest_non_runs_last = [
+            p
+            for p in probes
+            if getattr(p, "tier", "task_specific") != "base" and p.name not in runs_last_names
+        ]
+        runs_last_probes = [p for p in probes if p.name in runs_last_names]
+        rest = rest_non_runs_last + runs_last_probes
+
+        # AC-10 — emit dispatch order once per wave so audit reviewers can
+        # answer "why did probes run in that order?" without re-running.
+        _log.info(
+            "coordinator.dispatch.order",
+            wave="prelude",
+            probe_order=[p.name for p in base],
+            run_id=run_id,
+        )
+        _log.info(
+            "coordinator.dispatch.order",
+            wave="rest",
+            probe_order=[p.name for p in rest],
+            run_id=run_id,
+        )
 
         outputs: dict[str, SanitizedProbeOutput] = {}
         executions: dict[str, ProbeExecution] = {}

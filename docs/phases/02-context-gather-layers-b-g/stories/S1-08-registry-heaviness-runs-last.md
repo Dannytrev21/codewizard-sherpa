@@ -1,10 +1,18 @@
 # Story S1-08 — `@register_probe(heaviness=, runs_last=)` + coordinator sort-order edit
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready (HARDENED 2026-05-15)
+**Status:** Done (GREEN 2026-05-15) — all 17 ACs verified; see `_attempts/S1-08.md`
 **Effort:** M
 **Depends on:** S1-05
 **ADRs honored:** 02-ADR-0003
+
+## Evidence — GREEN on attempt #1 (2026-05-15)
+
+- **Code:** `src/codegenie/probes/registry.py` (`Heaviness`, `_HEAVINESS_RANK`, `ProbeRegEntry`, `Registry.sorted_for_dispatch`, `Registry.sorted_for_task`, `Registry.decorator`, dual-shape `register_probe`), `src/codegenie/coordinator/coordinator.py` (`gather(..., *, runs_last_names)` partition + per-wave `coordinator.dispatch.order` log), `src/codegenie/cli.py` (`_seam_registry_for_task` → `sorted_for_dispatch`; new sibling `_seam_runs_last_names`).
+- **Tests added:** `tests/unit/probes/test_registry_heaviness.py` (16 tests, incl. Hypothesis property-based AC-15), `tests/unit/coordinator/test_coordinator_sort_order.py` (4 tests, incl. AC-13 cross-wave hoist + AC-10 per-wave log + AC-6b single semaphore), `tests/unit/test_cli_seam_sorted_dispatch.py` (3 tests, AC-6a).
+- **Gates green:** `ruff check` + `ruff format --check` clean on touched files; `mypy --strict src/` → "Success: no issues found in 67 source files"; full suite → 1790 passed / 3 deselected / 2 xfailed (the 2 xfailed are pre-existing tracked S4-02 / ADR-0006 limitations); `pre-commit run --all-files` passes every hook.
+- **AC-by-AC coverage:** see `_attempts/S1-08.md` §"AC coverage map".
+- **Phase 0 contract freeze:** `tests/unit/test_probe_contract.py` continues green — `Probe` ABC and `ProbeContext` untouched.
 
 ## Validation notes (2026-05-15, phase-story-validator)
 

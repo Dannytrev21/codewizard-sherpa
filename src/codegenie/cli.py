@@ -239,9 +239,11 @@ def _seam_git_rev_parse(repo_root: Path) -> str | None:
 def _seam_registry_for_task() -> list[Any]:
     """Step 6 — resolve the probes the gather dispatches.
 
-    Returns every probe registered at import time. The registry's
-    ``for_task`` filter is bypassed at the seam because pre-gather we only
-    know ``detected_languages = {"unknown"}``; the
+    Returns every probe registered at import time, **instantiated in
+    coordinator-dispatch order** (``heavy → medium → light``, then
+    ``runs_last=True`` at the tail — 02-ADR-0003 + S1-08 AC-6a). The
+    registry's ``for_task`` filter is bypassed at the seam because
+    pre-gather we only know ``detected_languages = {"unknown"}``; the
     :func:`codegenie.coordinator.coordinator.gather` prelude pass enriches
     the snapshot with real language counts after Wave 1 runs, and the
     coordinator dispatches every passed-in probe regardless. Per-probe
@@ -254,18 +256,53 @@ def _seam_registry_for_task() -> list[Any]:
     # ``@register_probe`` decorator (see ``codegenie/probes/__init__.py``).
     importlib.import_module("codegenie.probes")
     registry_mod = importlib.import_module("codegenie.probes.registry")
-    probe_classes = registry_mod.default_registry.all_probes()
-    return [cls() for cls in probe_classes]
+    entries = registry_mod.default_registry.sorted_for_dispatch()
+    return [e.cls() for e in entries]
+
+
+def _seam_runs_last_names() -> frozenset[str]:
+    """Step 6b — surface the set of probe names whose registry entry has
+    ``runs_last=True``.
+
+    The coordinator's partition reads this set to hoist a ``tier="base"`` +
+    ``runs_last=True`` probe out of the prelude (S1-08 AC-13). The
+    coordinator does NOT learn ``runs_last`` from the probe instance itself
+    — that would re-introduce the ``Probe`` ABC contract change 02-ADR-0003
+    explicitly rejected. The set is a frozen, hashable view of the
+    registry-side annotations and is read once per gather.
+    """
+    importlib.import_module("codegenie.probes")
+    registry_mod = importlib.import_module("codegenie.probes.registry")
+    return frozenset(
+        e.cls.name for e in registry_mod.default_registry.sorted_for_dispatch() if e.runs_last
+    )
 
 
 def _seam_coordinator_gather(
     snapshot: Any, task: Any, probes: list[Any], config: Any, cache: Any, sanitizer: Any
 ) -> Any:
-    """Step 7 — dispatch ``coordinator.gather`` synchronously."""
+    """Step 7 — dispatch ``coordinator.gather`` synchronously.
+
+    Threads the ``runs_last_names`` frozenset from :func:`_seam_runs_last_names`
+    onto the gather kwargs so the coordinator's partition can hoist
+    ``runs_last=True`` probes out of the prelude regardless of declared
+    ``tier`` (02-ADR-0003 + S1-08 AC-13).
+    """
     import asyncio
 
     coord_mod = importlib.import_module("codegenie.coordinator.coordinator")
-    return asyncio.run(coord_mod.gather(snapshot, task, probes, config, cache, sanitizer))
+    runs_last_names = _seam_runs_last_names()
+    return asyncio.run(
+        coord_mod.gather(
+            snapshot,
+            task,
+            probes,
+            config,
+            cache,
+            sanitizer,
+            runs_last_names=runs_last_names,
+        )
+    )
 
 
 def _seam_shallow_merge(envelope: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
