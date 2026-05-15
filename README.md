@@ -2,6 +2,8 @@
 
 > An autonomous agentic system that opens PRs to modify code across repos at portfolio scale — deterministic where it can be, probabilistic only where it must.
 
+📖 **Full docs:** [dannytrev21.github.io/codewizard-sherpa](https://dannytrev21.github.io/codewizard-sherpa/) — overview, get-started, architecture, ADRs, per-phase designs.
+
 The work in flight is a local Python CLI (`codegenie gather`) that produces a deterministic, cacheable `RepoContext` artifact from any repo. From that bullet tracer, the system grows into a 7-stage Temporal-orchestrated service that drives vulnerability remediation, container migrations, and (eventually) agentic recipe authoring across a portfolio of repos.
 
 **As of 2026-05:** Phase 0 (bullet-tracer foundations) is shipped. Phase 1 Step 1 (Layer A — Node primitives) is closed; Phase 1 Step 2 (`LanguageDetection` extension + `NodeBuildSystem` probe) lands the first new Phase 1 probe.

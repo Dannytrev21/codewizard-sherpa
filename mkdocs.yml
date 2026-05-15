@@ -1,28 +1,85 @@
-# mkdocs configuration (story S1-04 AC-5, AC-7).
+# mkdocs configuration (story S1-04 AC-5, AC-7; extended for GitHub Pages).
 #
-# nav is curated — the 5 superseded design docs are intentionally NOT linked:
-#   excluded: local.md, localv2.md, auto-agent-design.md,
-#             gemini-auto-agent-design.md, context.md
-# Rationale: see docs/phases/00-bullet-tracer-foundations/final-design.md
-# §2.2 / §5 — Phase 1 cleanup will fix or delete each.
+# Curated nav exposes the public-facing surface (overview, get-started,
+# architecture, roadmap, per-phase final-designs, ADRs, contributing).
+# Internal artifacts (stories, _attempts/, _validation/, per-lens design
+# drafts, critiques) remain on disk but stay out of nav. The five
+# superseded design docs (local.md, localv2.md, auto-agent-design.md,
+# gemini-auto-agent-design.md, context.md) are also intentionally omitted
+# from nav. Rationale: phase 0 final-design §2.2 / §5 — phase 1 cleanup
+# will fix or delete each.
 #
 # `validation.nav.omitted_files: ignore` keeps `mkdocs build --strict`
-# green over a docs/ tree that's larger than the nav (every phase ships
-# 7+ docs; promoting every one to nav would drown the table of contents).
+# green over a docs/ tree that's much larger than the nav (every phase
+# ships 7+ docs; promoting every one would drown the table of contents).
 
 site_name: codewizard-sherpa
 site_description: Autonomous agentic system that opens PRs to modify code across repos at portfolio scale.
+site_url: https://dannytrev21.github.io/codewizard-sherpa/
+repo_url: https://github.com/Dannytrev21/codewizard-sherpa
+repo_name: Dannytrev21/codewizard-sherpa
+edit_uri: edit/master/docs/
 docs_dir: docs
 
 theme:
   name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 validation:
-  # The docs/ tree is much larger than the curated nav (every phase ships
-  # 7+ documents). Without `omitted_files: ignore` the build floods strict
-  # mode with "file is not in nav" warnings; without `not_found: ignore`
-  # the cross-phase relative ADR links (which legitimately point outside
-  # the docs_dir) fail the build. Both belong to S5-02's cleanup pass.
   nav:
     omitted_files: ignore
     not_found: ignore
@@ -35,13 +92,38 @@ validation:
 
 nav:
   - Overview: index.md
+  - Get started: get-started.md
+  - Architecture:
+      - Overview: architecture.md
+      - Production design: production/design.md
+      - ADR index: production/adrs/README.md
   - Roadmap: roadmap.md
-  - Production target:
-      - Overview: production/README.md
-      - Design: production/design.md
-  - Phase 0 — Bullet tracer foundations:
-      - Overview: phases/00-bullet-tracer-foundations/README.md
-      - Final design: phases/00-bullet-tracer-foundations/final-design.md
-      - Architecture: phases/00-bullet-tracer-foundations/phase-arch-design.md
-      - High-level impl: phases/00-bullet-tracer-foundations/High-level-impl.md
+  - Phases:
+      - Phase 0 — Bullet tracer foundations:
+          - Overview: phases/00-bullet-tracer-foundations/README.md
+          - Final design: phases/00-bullet-tracer-foundations/final-design.md
+          - Architecture: phases/00-bullet-tracer-foundations/phase-arch-design.md
+          - High-level impl: phases/00-bullet-tracer-foundations/High-level-impl.md
+      - Phase 1 — Layer A (Node):
+          - Overview: phases/01-context-gather-layer-a-node/README.md
+          - Final design: phases/01-context-gather-layer-a-node/final-design.md
+          - Architecture: phases/01-context-gather-layer-a-node/phase-arch-design.md
+          - High-level impl: phases/01-context-gather-layer-a-node/High-level-impl.md
+      - Phase 2 — Layers B–G:
+          - Overview: phases/02-context-gather-layers-b-g/README.md
+          - Final design: phases/02-context-gather-layers-b-g/final-design.md
+          - Architecture: phases/02-context-gather-layers-b-g/phase-arch-design.md
+          - High-level impl: phases/02-context-gather-layers-b-g/High-level-impl.md
+      - Phase 3 — Vuln remediation (deterministic):
+          - Final design: phases/03-vuln-deterministic-recipe/final-design.md
+      - Phase 5 — Sandbox + Trust-Aware gates:
+          - Overview: phases/05-sandbox-trust-gates/README.md
+          - Final design: phases/05-sandbox-trust-gates/final-design.md
+          - Architecture: phases/05-sandbox-trust-gates/phase-arch-design.md
+          - High-level impl: phases/05-sandbox-trust-gates/High-level-impl.md
+      - Phase 6.5 — Per-task-class eval harness:
+          - Overview: phases/06.5-per-task-class-eval-harness/README.md
+          - Final design: phases/06.5-per-task-class-eval-harness/final-design.md
+          - Architecture: phases/06.5-per-task-class-eval-harness/phase-arch-design.md
+          - High-level impl: phases/06.5-per-task-class-eval-harness/High-level-impl.md
   - Contributing: contributing.md
