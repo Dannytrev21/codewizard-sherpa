@@ -49,6 +49,9 @@
         },
         "deployment": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/deployment/v0.1.0.json"
+        },
+        "test_inventory": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/test_inventory/v0.1.0.json"
         }
       }
     }

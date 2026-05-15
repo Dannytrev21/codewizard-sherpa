@@ -902,3 +902,61 @@ resources — that’s deliberate; the cap should fire regardless.
 intended to bound "declared inputs." The two are different
 invariants and conflating them lets adversarial inputs bypass the
 cap by supplying paths that fail later.
+
+## L-47 — Default-arg values bind at function definition; use a sentinel for monkeypatchable module constants (S4-03)
+
+`_lcov_scanner.scan(path, *, max_bytes: int = _LCOV_MAX_BYTES)`
+captured `50 * 1024 * 1024` at function-def time, so a test that
+ran `monkeypatch.setattr(_lcov_scanner, "_LCOV_MAX_BYTES", 16)` and
+then called `scan(p)` (no override) saw the original 50 MB cap and
+did NOT raise `SizeCapExceeded`.
+
+Switch to a `None` sentinel + module-level lookup at call time:
+
+```python
+def scan(path, *, max_bytes: int | None = None) -> LcovTotals:
+    effective_cap = _LCOV_MAX_BYTES if max_bytes is None else max_bytes
+    body = open_capped(path, max_bytes=effective_cap, parser_kind="lcov")
+```
+
+**Apply to:** any module-level constant that doubles as a tunable
+default for an external API and a monkeypatchable value in tests.
+Sentinel-then-lookup keeps the public default discoverable AND
+testable; the bare default-arg form makes the value silently
+test-resistant.
+
+**Don't:** ship a default-arg-bound module constant unless you also
+ban monkeypatching it in tests. The two use-cases collide; the
+sentinel pattern reconciles them.
+
+## L-48 — Strict-by-enumeration beats `additionalProperties: <subschema>` for closed-set object fields (S4-03)
+
+`commands` was first written as `{"type": "object", "additionalProperties": {"type": "string"}}` —
+i.e., "an open object whose values must be strings." That fails the
+walk-every-object `additionalProperties: false` invariant (AC-45).
+The probe already enforces the closed canonical-name set in
+`_extract_canonical_scripts`, so the schema can mirror it:
+
+```json
+"commands": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {"test": {"type": "string"}, "test:unit": {...}, ...}
+}
+```
+
+Now schema validation rejects non-canonical script names AT the
+envelope layer, not just at the probe layer (defense in depth).
+Adding a future canonical script name is one tuple entry +
+one schema property + one fixture row.
+
+**Apply to:** any object field whose key set is closed by the
+producer. Enumerating the keys + `additionalProperties: false`
+gives schema-level defense in depth on top of producer-level
+filtering.
+
+**Don't:** use `additionalProperties: <subschema>` (the
+value-validation form) for closed-key object fields just because
+"the values are all strings." That syntax means "any key is
+allowed if its value validates," which is the opposite of what
+a closed-key field needs.

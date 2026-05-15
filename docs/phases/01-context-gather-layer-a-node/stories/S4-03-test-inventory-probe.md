@@ -1,7 +1,7 @@
 # Story S4-03 — `TestInventoryProbe` + sub-schema + lcov scanner
 
 **Step:** Step 4 — Ship `CIProbe`, `DeploymentProbe`, and `TestInventoryProbe`
-**Status:** Ready (HARDENED 2026-05-14)
+**Status:** Done (2026-05-15) — see [`_attempts/S4-03.md`](_attempts/S4-03.md). All 57 ACs verified; 1454 pytest passing (incl. ~50 new); pre-commit (ruff + format + mypy) green; lint-imports green; coverage `test_inventory.py` 95%, `_lcov_scanner.py` 100%.
 **Effort:** M
 **Depends on:** S2-01 (`LanguageDetectionProbe` extension — `framework_hints`, monorepo, `ctx.parsed_manifest` plumbing), S2-02 (`NodeBuildSystemProbe` — `requires` for `engines.node` resolution and probe-shape conventions; `_SKIP_DIRS` re-use; `_demote`/`_CONFIDENCE_RANK` precedent), S4-01 (`CIProbe` — `_WARNING_IDS` + `_ERROR_IDS` frozenset + import-time ADR-0007 loop precedent), S4-02 (`DeploymentProbe` — `_DEPLOYMENT_PARSERS` dispatch registry precedent + sentinel-style adversarial test discipline)
 **ADRs honored:** ADR-0002 (`ParsedManifestMemo` + `input_snapshot` on `ProbeContext`; Phase-1 allowlist `{"package.json"}`), ADR-0004 (`additionalProperties: false` at root AND every nested block), ADR-0007 (warning-ID pattern `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$` — bare IDs only, no colon-suffix paths), ADR-0009 (no new C-extension parser deps — `lcov-parse`, `coverage-parser`, etc. forbidden), ADR-0010 (Layer A slices optional at envelope; slice is **always emitted by the probe** when it ran — absence-at-envelope is the for-task-filter signal, not a probe degrade signal)

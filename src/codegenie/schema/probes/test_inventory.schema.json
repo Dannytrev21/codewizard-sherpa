@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/test_inventory/v0.1.0.json",
+  "title": "TestInventory probe output",
+  "description": "Slice of repo-context produced by TestInventoryProbe (Layer A, Phase 1; S4-03). Strict (`additionalProperties: false`) at the slice root and at every nested object (`coverage_data`) per ADR-0004. The slice is OPTIONAL at the envelope (ADR-0010): non-Node repos may omit `test_inventory` entirely. `framework` is the closed UNIT-test framework enum (vitest|jest|mocha|tap|node_test); E2E frameworks (playwright, cypress) route to a separate `e2e_framework` field per CN-1 / arch line 756. `unit_test_count_is_file_count` is permanent in the contract: Phase 1 counts test FILES (not cases); Phase 2+ may add `unit_test_case_count` additively without changing this flag's semantics. `coverage_data` is ALWAYS emitted (CoverageBlock) when the probe ran; the `null` arm is the never-emitted-in-Phase-1 escape hatch reserved for the didn't-run case. Warning IDs match the ADR-0007 pattern.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["test_inventory"],
+  "properties": {
+    "test_inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "e2e_framework",
+        "unit_test_file_count",
+        "unit_test_count_is_file_count",
+        "commands",
+        "smoke_test_path",
+        "coverage_data",
+        "warnings"
+      ],
+      "properties": {
+        "framework": {
+          "type": ["string", "null"],
+          "enum": ["vitest", "jest", "mocha", "tap", "node_test", null],
+          "description": "Detected unit-test framework. Closed enum; E2E frameworks (playwright/cypress) route to `e2e_framework` instead. `node_test` is reported only when `engines.node >= 18` AND no other framework is declared."
+        },
+        "e2e_framework": {
+          "type": ["string", "null"],
+          "enum": ["playwright", "cypress", null],
+          "description": "Detected E2E framework. Independent axis from `framework` (a repo with jest + playwright populates BOTH)."
+        },
+        "unit_test_file_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of `*.test.{js,ts,jsx,tsx,mjs,cjs}` and `*.spec.{js,ts,jsx,tsx,mjs,cjs}` files under the repo root, excluding the Phase-0 noise-dir set (`node_modules`, `dist`, `build`, `.next`, `.git`, `__pycache__`, `coverage`, etc.)."
+        },
+        "unit_test_count_is_file_count": {
+          "type": "boolean",
+          "description": "Always true in Phase 1; signals that `unit_test_file_count` is a *file* count, not a *case* count. Phase 2+ may add `unit_test_case_count: int | null` additively."
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Verbatim canonical test scripts from `package.json#scripts`. Closed key set: only the six canonical names are accepted; non-canonical scripts are dropped at probe time. Keys are alpha-sorted in the emitted slice. Values are recorded verbatim and never evaluated (production ADR-0005).",
+          "properties": {
+            "test": {"type": "string"},
+            "test:unit": {"type": "string"},
+            "test:integration": {"type": "string"},
+            "test:smoke": {"type": "string"},
+            "test:e2e": {"type": "string"},
+            "test:coverage": {"type": "string"}
+          }
+        },
+        "smoke_test_path": {
+          "type": ["string", "null"],
+          "description": "POSIX repo-relative path to the first detected smoke entrypoint in precedence order: scripts/smoke.sh > scripts/smoke.js > scripts/smoke.ts > tests/smoke/."
+        },
+        "coverage_data": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["present", "parse_error", "totals"],
+              "properties": {
+                "present": {
+                  "type": "boolean",
+                  "description": "True iff `coverage/lcov.info` exists at probe time."
+                },
+                "parse_error": {
+                  "type": "boolean",
+                  "description": "True iff parsing `coverage/lcov.info` raised (size cap, symlink refusal, OSError, etc.). Use the `coverage.lcov_parse_error` / `coverage.size_cap_exceeded` warning IDs to discriminate."
+                },
+                "totals": {
+                  "oneOf": [
+                    {"type": "null"},
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "lines_found",
+                        "lines_hit",
+                        "functions_found",
+                        "functions_hit",
+                        "branches_found",
+                        "branches_hit"
+                      ],
+                      "properties": {
+                        "lines_found": {"type": "integer", "minimum": 0},
+                        "lines_hit": {"type": "integer", "minimum": 0},
+                        "functions_found": {"type": "integer", "minimum": 0},
+                        "functions_hit": {"type": "integer", "minimum": 0},
+                        "branches_found": {"type": "integer", "minimum": 0},
+                        "branches_hit": {"type": "integer", "minimum": 0}
+                      }
+                    }
+                  ],
+                  "description": "Summed lcov totals across every record in `coverage/lcov.info`. Null when `parse_error` is true OR when the file is absent."
+                }
+              }
+            }
+          ],
+          "description": "Always a CoverageBlock when the probe ran (Phase 1). The `null` arm is reserved for the unreachable-in-Phase-1 didn't-run case (CN-2 escape hatch)."
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        }
+      }
+    }
+  }
+}

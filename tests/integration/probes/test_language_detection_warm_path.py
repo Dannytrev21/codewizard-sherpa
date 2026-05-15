@@ -104,7 +104,12 @@ def test_warm_path_memo_hits_once_across_two_probes(
     assert build_system["warnings"] == [], build_system
 
     # assert: no probe.failure events emitted by any of the Layer-A probes.
-    package_json_consumers = ("language_detection", "node_build_system", "node_manifest")
+    package_json_consumers = (
+        "language_detection",
+        "node_build_system",
+        "node_manifest",
+        "test_inventory",
+    )
     failures = [
         e
         for e in events

@@ -21,6 +21,7 @@ from codegenie.probes import (
     node_build_system,
     node_manifest,
     registry,
+    test_inventory,
 )
 from codegenie.probes.registry import default_registry
 
@@ -33,4 +34,5 @@ __all__ = [
     "node_build_system",
     "node_manifest",
     "registry",
+    "test_inventory",
 ]
