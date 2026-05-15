@@ -1072,3 +1072,35 @@ in the story as a target order of magnitude. Use the smallest
 value that comfortably exceeds the cap; document the deviation
 inline in the builder's docstring so the next reader doesn't try
 to "fix" it back to the story's literal number.
+
+## L-? — Tests-only stories should not pre-emptively edit production code (S5-02)
+
+When a HARDENED story's `Files to touch` table contains only test
+files and the validation block explicitly states "production code
+already correct, this is a permanent-fixture pin," trust it. The S5-02
+green pass landed 5 tests with **zero** production-code changes —
+every defense the tests target was already in place from S1-03
+(`CSafeLoader`), S2-04 (`run_allowlisted` + `_is_sensitive`), and
+S3-03 (`_yarn._parse_handrolled`). Verify the test passes by *running*
+it, not by editing production code to "make sure" — Rule 3 (surgical
+changes) holds harder when the validator's block has already audited
+the production surface.
+
+**Action:** When the story says tests-only, run the tests first; if
+they pass on the first try, that is the expected outcome, not a
+suspicious sign. Skip to the validator pass; do not pre-emptively
+"refactor" or "improve" production code.
+
+## L-? — `SENTINEL_FILE` belongs in `env_extra`, not `monkeypatch.setenv` (S5-02)
+
+The `exec.run_allowlisted` chokepoint builds the child env by *inclusion*
+of `{PATH, HOME, LANG, LC_ALL}` plus sanitized `env_extra`. The parent
+`os.environ` is **never copied** — so `monkeypatch.setenv("SENTINEL_FILE",
+...)` is structurally invisible to any child. The S5-02 validator
+caught the original draft's broken sentinel-file plumbing for this
+reason.
+
+**Action:** When a test needs an out-of-band communication channel from
+a real subprocess back to the parent, pass the channel's path through
+`env_extra`. The same rule applies to a `PATH` override (prepend the
+shim dir via `env_extra["PATH"]`, not `monkeypatch.setenv("PATH", ...)`).

@@ -1,7 +1,7 @@
 # Story S5-02 — Lockfile + exec adversarial corpus: yarn regex-DoS, planted `node` shim, unsafe YAML tag
 
 **Step:** Step 5 — Adversarial corpus + integration end-to-end + fixture portfolio
-**Status:** Ready
+**Status:** Done — 2026-05-15. See `_attempts/S5-02.md`. All 16 ACs across 5 named groups verified by tests in `tests/adv/test_regex_dos_yarn_lock.py`, `tests/adv/test_planted_node_on_path_ignored.py`, `tests/adv/test_yaml_unsafe_tag.py`. Full suite green (1474 passed); walltime 0.65 s.
 **Effort:** M
 **Depends on:** S3-04 (yarn parity oracle ⇒ confirms hand-rolled path), S5-01 (registers the `adv` pytest marker in `pyproject.toml` so `pytest -m adv` selects this story's tests)
 **ADRs honored:** [Phase 0 ADR-0012](../../00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md) (subprocess chokepoint — env built by *inclusion*, not deletion), ADR-0001 (`node` in `ALLOWED_BINARIES`), ADR-0003 (`pyarn` vs hand-rolled yarn-lock parser; land-time selection chose hand-rolled), ADR-0007 (typed-exception → ID mapping lands on `errors`, never `warnings`), ADR-0008 (in-process parse caps; `CSafeLoader` only), ADR-0009 (no new C-extension parser dependencies)
