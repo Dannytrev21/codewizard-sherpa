@@ -515,6 +515,19 @@ async def gather(
 
         enriched_snapshot = dataclasses.replace(snapshot, detected_languages=dict(merged_counts))
 
+        # Observability seam (S5-05 AC-PR-2): the prelude pass enriched the
+        # snapshot; surface ``detected_languages`` on a single structured
+        # event before Wave-2 dispatch so the prelude invariant is testable
+        # from the event stream (causally bound — empty/missing → broken
+        # prelude) and visible in production logs. Always fires, even when
+        # ``rest`` is empty.
+        _log.info(
+            "coordinator.wave_2.dispatch",
+            detected_languages=tuple(sorted(enriched_snapshot.detected_languages.keys())),
+            rest_count=len(rest),
+            run_id=run_id,
+        )
+
         rest_results = await asyncio.gather(
             *(_dispatch_one(p, enriched_snapshot, task, sem, cache, sanitizer, memo) for p in rest)
         )

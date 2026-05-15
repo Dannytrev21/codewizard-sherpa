@@ -276,9 +276,22 @@ def _seam_shallow_merge(envelope: dict[str, Any], outputs: dict[str, Any]) -> di
     a :class:`ProbeNameCollisionError` is raised (AC-24); the registry
     already enforces uniqueness at registration time (S2-05) so in practice
     this is defense in depth.
+
+    A failure-isolated probe carries ``schema_slice = {}`` (see
+    :func:`codegenie.coordinator.coordinator._build_failure_output`).
+    Per ADR-0010 "Layer A slices optional at envelope", the empty slice
+    is **omitted** from ``probes_block`` rather than written as an empty
+    dict — emitting ``{}`` would violate the per-probe sub-schema's
+    ``required: [...]`` contract and surface as a misleading
+    ``exit_code=3 schema_invalid`` outcome that masks the real failure.
+    The probe's failure remains visible via the audit run-record's
+    ``exit_status = "error"`` row (Phase-1 failure-isolation contract;
+    S5-05 AC-ERR-1).
     """
     probes_block = envelope["probes"]
     for name, output in outputs.items():
+        if not output.schema_slice:
+            continue
         if name in probes_block and probes_block[name] != {}:
             raise ProbeNameCollisionError(name)
         probes_block[name] = dict(output.schema_slice)

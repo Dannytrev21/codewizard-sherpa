@@ -103,7 +103,7 @@ def test_probe_contract_attributes_pin_acs() -> None:
     cls = NodeManifestProbe
     assert cls.name == "node_manifest"
     assert cls.layer == "A"
-    assert cls.tier == "base"
+    assert cls.tier == "task_specific"
     assert cls.applies_to_languages == ["javascript", "typescript"]
     assert cls.applies_to_tasks == ["*"]
     assert cls.requires == ["language_detection"]

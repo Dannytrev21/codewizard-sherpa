@@ -64,9 +64,10 @@ from __future__ import annotations
 
 import shutil
 import types
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final
 
 import pytest
 import yaml
@@ -75,28 +76,76 @@ import codegenie.exec as _exec_mod
 import codegenie.probes.node_build_system as _nbs_mod
 from tests.smoke.conftest import _install_scandir_counter
 
+if TYPE_CHECKING:
+    from click.testing import Result
+
 __all__ = [
+    "PHASE_1_PROBE_NAMES",
+    "PHASE_1_PROBE_TO_SLICE",
     "WARM_PATH_CACHE_HIT_PROBES",
     "_copy_tree",
     "_count_memo_events",
     "_install_scandir_counter",
+    "_invoke_gather",
     "_load_envelope",
     "_minimal_valid_envelope",
     "_stat_snapshot",
     "_stub_node_version_check",
+    "assert_monorepo_markers",
+    "assert_only_language_stack",
+    "assert_phase_1_slices_present",
 ]
 
 
-WARM_PATH_CACHE_HIT_PROBES: Final[frozenset[str]] = frozenset(
-    {"language_detection", "node_build_system"}
+PHASE_1_PROBE_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "language_detection",
+        "node_build_system",
+        "node_manifest",
+        "ci",
+        "deployment",
+        "test_inventory",
+    }
 )
-"""Probes whose warm-path cache invariant is asserted by S2-05's
-metamorphic pair. S5-05 extends to all six Layer-A probes by adding
-entries here — the test bodies parametrize over this frozenset, so no
-test-function-body edits are required.
+"""All Phase-1 Layer-A probe names. Adding a 7th probe in Phase 2 = one
+frozenset insertion + one :data:`PHASE_1_PROBE_TO_SLICE` entry; zero
+edits to any S5-05 test function body. (Open/Closed at the file
+boundary; CLAUDE.md 'Extension by addition'.)"""
+
+
+PHASE_1_PROBE_TO_SLICE: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "language_detection": "language_stack",
+        "node_build_system": "build_system",
+        "node_manifest": "manifests",
+        "ci": "ci",
+        "deployment": "deployment",
+        "test_inventory": "test_inventory",
+    }
+)
+"""Probe-name → declared slice-key. The envelope path is
+``probes[<probe>][<slice>]``; this mapping is the source of truth (the
+slice name does NOT always match the probe name — note
+``language_detection``→``language_stack``,
+``node_build_system``→``build_system``,
+``node_manifest``→``manifests``). First-draft S5-05 conflated the two."""
+
+
+WARM_PATH_CACHE_HIT_PROBES: Final[frozenset[str]] = PHASE_1_PROBE_NAMES
+"""Probes whose warm-path cache invariant is asserted by
+``test_cache_hit_on_real_repo.py``'s metamorphic pair. Aliased to
+:data:`PHASE_1_PROBE_NAMES` so a Phase-2 probe addition updates both
+frozensets atomically; the module-load invariant below refuses to load
+if they diverge.
 
 (Open/Closed at the file boundary; CLAUDE.md "Extension by addition".)
 """
+
+
+assert WARM_PATH_CACHE_HIT_PROBES == PHASE_1_PROBE_NAMES, (
+    "S5-05 invariant: WARM_PATH_CACHE_HIT_PROBES must equal "
+    "PHASE_1_PROBE_NAMES. Phase 2's new probes must update both."
+)
 
 
 def _copy_tree(src: Path, dst: Path) -> Path:
@@ -222,6 +271,75 @@ def _stub_node_version_check(monkeypatch: pytest.MonkeyPatch) -> None:
             setattr(shim, attr, getattr(_exec_mod, attr))
     shim.run_allowlisted = _refusing
     monkeypatch.setattr(_nbs_mod, "_exec", shim)
+
+
+def _invoke_gather(repo: Path) -> Result:
+    """Invoke ``codegenie --no-gitignore gather <repo>`` via the click runner.
+
+    Promoted from ``test_cache_hit_on_real_repo.py`` (S5-05 AC-INFRA-3):
+    seven+ call sites across Phase-1's integration tests cross the
+    rule-of-three threshold. ``--no-gitignore`` is the documented Phase-0
+    override that avoids coupling integration tests to TTY-prompt
+    behavior; global flags MUST precede the subcommand (click left-to-
+    right option binding).
+    """
+    from click.testing import CliRunner
+
+    from codegenie.cli import cli
+
+    return CliRunner().invoke(cli, ["--no-gitignore", "gather", str(repo)])
+
+
+def assert_phase_1_slices_present(envelope: Mapping[str, Any]) -> None:
+    """Assert every Phase-1 probe has its declared slice non-empty.
+
+    Walks :data:`PHASE_1_PROBE_TO_SLICE` and raises ``AssertionError``
+    with a structured message naming which probe/slice failed. Pure
+    helper (no I/O); reusable by S6-01's golden-file regen test.
+    """
+    probes = envelope.get("probes", {})
+    for probe_name, slice_key in PHASE_1_PROBE_TO_SLICE.items():
+        assert probe_name in probes, f"missing probe entry: {probe_name!r}; got={sorted(probes)!r}"
+        slice_obj = probes[probe_name].get(slice_key)
+        assert slice_obj, f"empty slice: probes.{probe_name}.{slice_key} = {slice_obj!r}"
+
+
+def assert_only_language_stack(envelope: Mapping[str, Any]) -> None:
+    """Assert the three Node-only probes are ABSENT (ADR-0010 contract).
+
+    ``ci`` and ``deployment`` (``applies_to_languages = ["*"]``) MAY be
+    present with empty inner slices — ADR-0010 permits both shapes for
+    ``"*"``-applicability probes. Only the three Node-only probes
+    (``node_build_system``, ``node_manifest``, ``test_inventory``) MUST
+    be absent on a non-Node repo.
+    """
+    probes = envelope.get("probes", {})
+    assert "language_detection" in probes, (
+        f"language_detection must be present; got={sorted(probes)!r}"
+    )
+    assert "language_stack" in probes["language_detection"], probes["language_detection"]
+    for forbidden in ("node_build_system", "node_manifest", "test_inventory"):
+        assert forbidden not in probes, (
+            f"{forbidden!r} must be absent on a non-Node repo "
+            f"(ADR-0010 absence-is-the-contract); got={sorted(probes)!r}"
+        )
+
+
+def assert_monorepo_markers(
+    envelope: Mapping[str, Any],
+    *,
+    expected_tool: str,
+    expected_markers: Sequence[str],
+) -> None:
+    """Assert the ``monorepo`` block matches the expected tool + sorted markers.
+
+    ``markers`` is the sorted union of hit marker basenames per the
+    ``language_detection`` schema (S2-01).
+    """
+    monorepo = envelope["probes"]["language_detection"]["language_stack"]["monorepo"]
+    assert monorepo is not None, "monorepo block must not be None on a monorepo fixture"
+    assert monorepo["tool"] == expected_tool, monorepo
+    assert monorepo["markers"] == sorted(expected_markers), monorepo
 
 
 @pytest.fixture(autouse=True)

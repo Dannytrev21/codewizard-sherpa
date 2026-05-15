@@ -91,7 +91,7 @@ def test_contract_attributes_pinned() -> None:
 
     assert TestInventoryProbe.name == "test_inventory"
     assert TestInventoryProbe.layer == "A"
-    assert TestInventoryProbe.tier == "base"
+    assert TestInventoryProbe.tier == "task_specific"
     assert TestInventoryProbe.applies_to_languages == ["javascript", "typescript"]
     assert TestInventoryProbe.applies_to_tasks == ["*"]
     assert TestInventoryProbe.requires == ["language_detection", "node_build_system"]

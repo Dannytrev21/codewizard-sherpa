@@ -92,7 +92,8 @@ from codegenie.logging import (
     EVENT_PROBE_SUCCESS,
 )
 from codegenie.parsers import jsonc, safe_json
-from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
+from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot, Task
+from codegenie.probes.language_filter import _admits_node_project
 from codegenie.probes.registry import register_probe
 
 __all__ = ["NodeBuildSystemProbe"]
@@ -528,9 +529,13 @@ class NodeBuildSystemProbe(Probe):
     name: str = "node_build_system"
     version: str = "0.1.0"
     layer = "A"
-    tier = "base"
+    tier = "task_specific"
     applies_to_tasks: list[str] = ["*"]
     applies_to_languages: list[str] = ["javascript", "typescript"]
+
+    def applies(self, repo: RepoSnapshot, task: Task) -> bool:  # noqa: D401
+        return _admits_node_project(self.applies_to_languages, repo.detected_languages, repo.root)
+
     requires: list[str] = ["language_detection"]
     timeout_seconds: int = 30
     declared_inputs: list[str] = [

@@ -151,7 +151,7 @@ def test_probe_contract_attributes_match_arch_design() -> None:
     assert P.name == "node_build_system"
     assert P.version == "0.1.0"
     assert P.layer == "A"
-    assert P.tier == "base"
+    assert P.tier == "task_specific"
     assert P.applies_to_languages == ["javascript", "typescript"]  # list, not tuple
     assert P.applies_to_tasks == ["*"]
     assert P.requires == ["language_detection"]

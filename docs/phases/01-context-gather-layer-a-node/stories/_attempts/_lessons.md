@@ -1134,3 +1134,43 @@ reason.
 a real subprocess back to the parent, pass the channel's path through
 `env_extra`. The same rule applies to a `PATH` override (prepend the
 shim dir via `env_extra["PATH"]`, not `monkeypatch.setenv("PATH", ...)`).
+
+
+## L-? — Story ACs may presuppose architecture that does not yet exist (S5-05)
+
+S5-05's AC-NN-3 ("the three Node-only probes are ABSENT on a non-Node
+repo") read like a contract test, but the per-probe
+`applies_to_languages` filter that would have made it true did not
+exist on disk — all six Phase-1 probes declared `tier = "base"` and
+ran concurrently against the original (empty) snapshot, so the filter
+never engaged. The probes ran, produced empty no-evidence slices, and
+were *present* with `type: "none"` shapes (not absent).
+
+The fix was architectural: move `node_build_system` /
+`node_manifest` / `test_inventory` to `tier = "task_specific"`, add a
+pure `_admits_node_project` predicate (with a `package.json`-at-root
+fallback to keep greenfield Node repos working when LD finds no
+source files), override `applies()` in the three probes to consult
+it, and update three unit tests that pin `tier == "base"`.
+
+**Action:** When a story's ACs read like contract tests that the
+current architecture cannot satisfy, surface the gap explicitly. The
+story's implementer-notes anticipated 1–3 small probe follow-ups;
+expect at least one of them to be a small architectural fix rather
+than a probe edit. Prefer hexagonal/Open-Closed solutions (a pure
+predicate in a dedicated module) over leaking probe-specific
+knowledge into the coordinator.
+
+## L-? — A failure-isolated probe must NOT pollute `envelope.probes[<name>]` (S5-05)
+
+`coordinator._build_failure_output` returns a `ProbeOutput` with
+`schema_slice = {}`. `_seam_shallow_merge` historically wrote that
+empty dict to `envelope.probes[<probe>]`, which violates the
+per-probe sub-schema's `required: ["<slice>"]` contract and
+surfaces as a misleading `exit_code=3 schema_invalid` outcome that
+masks the real failure.
+
+**Action:** Per ADR-0010 "Layer A slices optional at envelope", the
+seam now `continue`s on empty `schema_slice`. The failure is still
+visible via the audit run-record's `exit_status = "error"` row —
+that is the right place for it, not the envelope.

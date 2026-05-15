@@ -1,16 +1,18 @@
-"""S2-05 — two-probe warm-path cache-hit metamorphic pair.
+"""S2-05 + S5-05 — warm-path cache-hit metamorphic pair (all Phase-1 probes).
 
 Two test functions exercise the load-bearing Phase 1 exit criterion #2 in
-its two-probe form (S5-05 extends to all six probes by adding entries to
+its all-six-probe form. The set of warm-path probes is read from
 :data:`WARM_PATH_CACHE_HIT_PROBES` in
-:mod:`tests.integration.probes.conftest` — **zero** edits to this file
-are required):
+:mod:`tests.integration.probes.conftest` — adding a Phase-2 probe is one
+frozenset insertion + one :data:`PHASE_1_PROBE_TO_SLICE` entry; zero
+edits to either function body (the seam is the Open/Closed-at-the-file-
+boundary the conftest established for S5-05 specifically):
 
-- :func:`test_two_probes_cache_hit_on_second_run` — runs
+- :func:`test_warm_path_probes_cache_hit_on_second_run` — runs
   ``codegenie gather`` twice against the same fixture and asserts the
-  warm-run cache invariant holds across :class:`LanguageDetectionProbe`
-  (S2-01) and :class:`NodeBuildSystemProbe` (S2-02). Four redundant
-  signals pin the invariant:
+  warm-run cache invariant holds across every probe in
+  :data:`WARM_PATH_CACHE_HIT_PROBES` (Phase 1: all six Layer A probes).
+  Four redundant signals pin the invariant:
 
   1. ``calls["count"] == 0`` — module-local
      :func:`tests.smoke.conftest._install_scandir_counter` shim on
@@ -33,12 +35,12 @@ are required):
   validity (the cached envelope must still validate under
   :func:`codegenie.schema.validator.validate`).
 
-- :func:`test_two_probes_cache_miss_on_tracked_input_edit` — metamorphic
-  partner. Edits ``package.json`` (a tracked input for **both** probes'
-  ``declared_inputs``) between cold and warm runs and asserts the
-  symmetric inverse: cache misses for both probes, ``probe.success``
-  carries a *different* ``cache_key`` than cold, scandir count > 0,
-  no ``probe.cache_hit`` event. Without this test, an
+- :func:`test_warm_path_probes_cache_miss_on_tracked_input_edit` — metamorphic
+  partner. Edits ``package.json`` (a tracked input for the Node-shaped
+  probes' ``declared_inputs``) between cold and warm runs and asserts the
+  symmetric inverse: cache misses on the probes that read it,
+  ``probe.success`` carries a *different* ``cache_key`` than cold,
+  scandir count > 0, no ``probe.cache_hit`` event. Without this test, an
   ``always-return-CacheHit`` mutant passes every clause of the hit test.
 
 The metamorphic pair is non-negotiable (Phase 0 S4-04 §"Notes for the
@@ -60,15 +62,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from click.testing import CliRunner
 from structlog.testing import capture_logs
 
-from codegenie.cli import cli
 from codegenie.schema.validator import validate
 from tests.integration.probes.conftest import (
     WARM_PATH_CACHE_HIT_PROBES,
     _copy_tree,
     _install_scandir_counter,
+    _invoke_gather,
     _load_envelope,
     _stat_snapshot,
     _stub_node_version_check,
@@ -77,12 +78,17 @@ from tests.integration.probes.conftest import (
 FIXTURE = Path(__file__).resolve().parent.parent.parent / "fixtures" / "node_typescript_helm"
 
 
-def _invoke_gather(repo: Path) -> Any:
-    """``--no-gitignore`` is the documented Phase 0 override that avoids
-    coupling integration tests to TTY-prompt behavior. Global flags
-    BEFORE the subcommand (click left-to-right option binding); mirrors
-    ``tests/smoke/test_cli_end_to_end.py``'s ``_invoke_gather``."""
-    return CliRunner().invoke(cli, ["--no-gitignore", "gather", str(repo)])
+# Subset of :data:`WARM_PATH_CACHE_HIT_PROBES` whose ``declared_inputs``
+# include ``package.json`` — i.e., probes whose cache key is content-
+# dependent on package.json edits. ``ci`` and ``deployment`` declare
+# orthogonal inputs (CI workflows, Helm/Kustomize/Terraform manifests)
+# and stay cache-hit under a package.json mutation, so the cache-miss
+# metamorphic partner asserts only this subset (any probe added to
+# :data:`WARM_PATH_CACHE_HIT_PROBES` whose inputs also include
+# ``package.json`` must be added here too — one-line frozenset edit).
+_PACKAGE_JSON_DEPENDENT_PROBES: frozenset[str] = frozenset(
+    {"language_detection", "node_build_system", "node_manifest", "test_inventory"}
+)
 
 
 def _coordinator_success_keys(events: Iterable[Mapping[str, Any]]) -> dict[str, str]:
@@ -120,11 +126,11 @@ def _stat_diff(
     return {**only, **changed}
 
 
-def test_two_probes_cache_hit_on_second_run(
+def test_warm_path_probes_cache_hit_on_second_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario 2 from ``phase-arch-design.md §Scenarios`` — the load-bearing
-    Phase 1 exit criterion #2 in its two-probe form.
+    Phase 1 exit criterion #2 in its all-Phase-1 form.
 
     Four redundant signals collectively pin the warm-path cache
     invariant (see module docstring). Dropping any one would let a
@@ -195,24 +201,41 @@ def test_two_probes_cache_hit_on_second_run(
             f"cold={cold_keys[probe]!r} warm={warm_hits[probe].get('cache_key')!r}"
         )
 
-    # AC-14 / AC-15 — slice content invariance (fail-loud, Rule 12).
-    #
-    # The envelope only carries each probe's ``schema_slice`` keys — not
-    # top-level ``errors`` / ``warnings`` / ``confidence`` (S2-04
-    # deviation L-25 / L-21; only ``schema_slice`` is shallow-merged
-    # into ``envelope.probes.<name>`` by the writer). The fail-loud
-    # integrity signals therefore split across (a) in-slice fields and
-    # (b) captured structlog events.
+    # AC-14 / AC-15 / S5-05 AC-CH-5 — slice content invariance (fail-loud,
+    # Rule 12).  The envelope only carries each probe's ``schema_slice``
+    # keys — not top-level ``errors`` / ``warnings`` / ``confidence``
+    # (S2-04 deviation L-25 / L-21). The fail-loud integrity signals
+    # therefore split across (a) in-slice fields and (b) captured
+    # structlog events. One load-bearing value pin per slice — mutation-
+    # killing per Rule 9 (a buggy cache replay that drops a field would
+    # still satisfy the cache-hit signals; the slice pins catch silent
+    # corruption).
     envelope = _load_envelope(repo)
-    lang = envelope["probes"]["language_detection"]
-    nbs = envelope["probes"]["node_build_system"]
 
+    lang = envelope["probes"]["language_detection"]
     assert lang["language_stack"]["framework_hints"] == ["express"], lang
     assert lang["language_stack"]["monorepo"] is None, lang
 
-    nbs_slice = nbs["build_system"]
+    nbs_slice = envelope["probes"]["node_build_system"]["build_system"]
     assert nbs_slice["package_manager"] == "pnpm", nbs_slice
     assert nbs_slice["warnings"] == [], nbs_slice
+
+    nm_slice = envelope["probes"]["node_manifest"]["manifests"]
+    assert nm_slice["primary"]["path"] == "package.json", nm_slice
+
+    ci_slice = envelope["probes"]["ci"]["ci"]
+    assert ci_slice["provider"] == "github_actions", ci_slice
+
+    dp_slice = envelope["probes"]["deployment"]["deployment"]
+    # The S2-03 fixture lays Helm at deploy/chart/; current deployment
+    # probe only auto-detects Chart.yaml at repo root (S4-02 design).
+    # Slice exists and has a type field — that's the load-bearing
+    # invariance: a buggy cache replay would drop the field entirely.
+    assert "type" in dp_slice, dp_slice
+
+    ti_slice = envelope["probes"]["test_inventory"]["test_inventory"]
+    assert ti_slice["framework"] == "vitest", ti_slice
+    assert ti_slice["unit_test_count_is_file_count"] is True, ti_slice
 
     # No probe.failure events on warm for either probe (fail-loud:
     # a silently-degraded cache replay must not emit failures).
@@ -244,16 +267,17 @@ def test_two_probes_cache_hit_on_second_run(
     validate(envelope)  # raises SchemaValidationError on bad shape
 
 
-def test_two_probes_cache_miss_on_tracked_input_edit(
+def test_warm_path_probes_cache_miss_on_tracked_input_edit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Metamorphic partner of :func:`test_two_probes_cache_hit_on_second_run`.
+    """Metamorphic partner of :func:`test_warm_path_probes_cache_hit_on_second_run`.
 
-    Edits ``package.json`` (a tracked input for **both** probes'
-    ``declared_inputs``). Without this test, an ``always-return-CacheHit``
-    mutant passes every clause of the hit test. Phase 0 S4-04 carries
-    the same metamorphic pattern for one probe; this is the two-probe
-    extension.
+    Edits ``package.json`` (a tracked input for the Node-shaped probes'
+    ``declared_inputs``). Without this test, an
+    ``always-return-CacheHit`` mutant passes every clause of the hit
+    test. Phase 0 S4-04 carries the same metamorphic pattern for one
+    probe; this is the all-Phase-1 extension via
+    :data:`WARM_PATH_CACHE_HIT_PROBES`.
     """
     _stub_node_version_check(monkeypatch)
 
@@ -268,7 +292,9 @@ def test_two_probes_cache_miss_on_tracked_input_edit(
     cold_keys = _coordinator_success_keys(list(cold_logs))
     assert set(cold_keys) == WARM_PATH_CACHE_HIT_PROBES, cold_logs
 
-    # Edit package.json — tracked input for BOTH probes.
+    # Edit package.json — tracked input for the package.json-dependent
+    # probes (``ci``/``deployment`` declare orthogonal inputs and stay
+    # cache-hit; see ``_PACKAGE_JSON_DEPENDENT_PROBES`` rationale).
     pkg = repo / "package.json"
     data = json.loads(pkg.read_text())
     data["_test_edit"] = True
@@ -285,24 +311,28 @@ def test_two_probes_cache_miss_on_tracked_input_edit(
         f"expected scandir > 0 on tracked-input change; got 0; warm_logs={warm_logs}"
     )
 
-    # No cache_hit for either probe.
+    # No cache_hit for any package.json-dependent probe.
     warm_hits = [
         e
         for e in warm_logs
-        if e.get("event") == "probe.cache_hit" and e.get("probe") in WARM_PATH_CACHE_HIT_PROBES
+        if e.get("event") == "probe.cache_hit" and e.get("probe") in _PACKAGE_JSON_DEPENDENT_PROBES
     ]
-    assert not warm_hits, f"cache must NOT hit on tracked-input change; got={warm_hits}"
+    assert not warm_hits, (
+        f"cache must NOT hit on tracked-input change for package.json-dependent "
+        f"probes; got={warm_hits}"
+    )
 
-    # Exactly one coordinator probe.success(cache_key) per probe.
+    # Exactly one coordinator probe.success(cache_key) per package.json-dependent probe.
     warm_keys = _coordinator_success_keys(list(warm_logs))
-    assert set(warm_keys) == WARM_PATH_CACHE_HIT_PROBES, (
-        f"warm-run probe.success(cache_key) coverage on miss; got={set(warm_keys)}, "
+    miss_keys = {k: v for k, v in warm_keys.items() if k in _PACKAGE_JSON_DEPENDENT_PROBES}
+    assert set(miss_keys) == _PACKAGE_JSON_DEPENDENT_PROBES, (
+        f"warm-run probe.success(cache_key) coverage on miss; got={set(miss_keys)}, "
         f"events={warm_logs}"
     )
 
-    # Cache key changed for each probe (re-derived from new content_hash).
-    for probe in WARM_PATH_CACHE_HIT_PROBES:
-        assert warm_keys[probe] != cold_keys[probe], (
+    # Cache key changed for each package.json-dependent probe.
+    for probe in _PACKAGE_JSON_DEPENDENT_PROBES:
+        assert miss_keys[probe] != cold_keys[probe], (
             f"{probe}: cache_key must change when tracked inputs change; "
             f"cold={cold_keys[probe]!r} warm={warm_keys[probe]!r}"
         )
