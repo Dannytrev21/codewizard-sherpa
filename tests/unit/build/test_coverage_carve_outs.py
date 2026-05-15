@@ -71,9 +71,7 @@ def test_carve_out_table_has_exactly_two_entries() -> None:
         f"got {len(table)}. Adding a third requires an ADR amendment."
     )
     seen_paths = {entry["path"] for entry in table}
-    assert seen_paths == set(EXPECTED_CARVE_OUTS), (
-        f"unexpected carve-out paths: {seen_paths}"
-    )
+    assert seen_paths == set(EXPECTED_CARVE_OUTS), f"unexpected carve-out paths: {seen_paths}"
     for entry in table:
         expected = EXPECTED_CARVE_OUTS[entry["path"]]
         assert entry["module"] == expected["module"], (
@@ -81,12 +79,10 @@ def test_carve_out_table_has_exactly_two_entries() -> None:
             f"{entry['module']!r} != expected {expected['module']!r}"
         )
         assert entry["line"] == expected["line"], (
-            f"{entry['path']} line floor must be exactly 85 (ADR-0005); "
-            f"got {entry['line']}"
+            f"{entry['path']} line floor must be exactly 85 (ADR-0005); got {entry['line']}"
         )
         assert entry["branch"] == expected["branch"], (
-            f"{entry['path']} branch floor must be exactly 75 (ADR-0005); "
-            f"got {entry['branch']}"
+            f"{entry['path']} branch floor must be exactly 75 (ADR-0005); got {entry['branch']}"
         )
         assert entry["adr"] == "phase-01/ADR-0005"
 
@@ -207,9 +203,9 @@ def test_check_function_flags_under_floor_ci_py() -> None:
     )
     assert violations, "AC-7: under-floor ci.py must produce a violation"
     joined = "\n".join(violations)
-    assert (
-        "codegenie.probes.ci" in joined or "src/codegenie/probes/ci.py" in joined
-    ), f"AC-7: violation must name the offending module/path; got: {violations!r}"
+    assert "codegenie.probes.ci" in joined or "src/codegenie/probes/ci.py" in joined, (
+        f"AC-7: violation must name the offending module/path; got: {violations!r}"
+    )
 
 
 def test_check_function_flags_under_floor_deployment_py() -> None:
@@ -221,10 +217,7 @@ def test_check_function_flags_under_floor_deployment_py() -> None:
     )
     assert violations
     joined = "\n".join(violations)
-    assert (
-        "codegenie.probes.deployment" in joined
-        or "src/codegenie/probes/deployment.py" in joined
-    )
+    assert "codegenie.probes.deployment" in joined or "src/codegenie/probes/deployment.py" in joined
 
 
 def test_check_function_passes_when_all_at_floor() -> None:
@@ -261,9 +254,7 @@ def test_script_smoke_exits_nonzero_on_violation(tmp_path: Path) -> None:
     """AC-7 end-to-end: invoking the script with a synthetic ``coverage.json``
     where ``ci.py`` is below floor must exit non-zero and name the module."""
     cov_json = tmp_path / "coverage.json"
-    cov_json.write_text(
-        json.dumps(_coverage_json(ci_line=60.0, ci_branch=50.0))
-    )
+    cov_json.write_text(json.dumps(_coverage_json(ci_line=60.0, ci_branch=50.0)))
     result = subprocess.run(
         [sys.executable, str(SCRIPT), str(cov_json), str(PYPROJECT)],
         capture_output=True,
@@ -290,8 +281,7 @@ def test_script_smoke_exits_zero_when_all_above_floor(tmp_path: Path) -> None:
         cwd=PROJECT_ROOT,
     )
     assert result.returncode == 0, (
-        f"above-floor invocation must exit 0; "
-        f"got {result.returncode}, stderr={result.stderr!r}"
+        f"above-floor invocation must exit 0; got {result.returncode}, stderr={result.stderr!r}"
     )
 
 
@@ -325,12 +315,9 @@ def test_check_function_is_pure_no_io() -> None:
     sig = inspect.signature(mod.check)  # type: ignore[attr-defined]
     params = list(sig.parameters)
     assert len(params) == 2, (
-        f"DP-2: check() must take exactly 2 args (coverage_data, carve_outs); "
-        f"got {params}"
+        f"DP-2: check() must take exactly 2 args (coverage_data, carve_outs); got {params}"
     )
     src = inspect.getsource(mod.check)  # type: ignore[attr-defined]
     forbidden = ("open(", "os.environ", "sys.exit", "print(", "Path(")
     leaks = [tok for tok in forbidden if tok in src]
-    assert not leaks, (
-        f"DP-2: check() must be pure; found I/O tokens in body: {leaks!r}"
-    )
+    assert not leaks, f"DP-2: check() must be pure; found I/O tokens in body: {leaks!r}"
