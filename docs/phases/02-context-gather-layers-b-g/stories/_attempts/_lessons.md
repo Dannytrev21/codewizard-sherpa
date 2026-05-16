@@ -147,3 +147,15 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `Argument 1 has incompatible type "Callable[..., list[dict[str, object]], Any]"; expected "Callable[..., list[Mapping[str, Any]], Any]"`. `list` is invariant — `list[dict[str, object]]` is NOT a subtype of `list[Mapping[str, Any]]` even though `dict[str, object]` is a subtype of `Mapping[str, Any]`.
 - **Fix:** Match the alias' inner type exactly. The story TDD plan's `list[dict[str, object]]` is a structural superset but mypy strict rejects it. For test fixtures, prefer `list[Mapping[str, Any]] = [{"name": "@org/a"}]` — Python doesn't care, mypy does.
 - **Why it matters:** Every Phase-2 registry/strategy alias that uses `list[T]` (S4-05 dep graph strategy consumer; future S5-02 `RuntimeTraceProbe` runner args) will hit the same trap. Use `Sequence[T]` if you want covariance; use `list[T]` and copy the inner type exactly if you don't.
+
+## L25 — `dataclass(slots=True)` + `from __future__ import annotations` needs `sys.modules` registration when loaded via `spec_from_file_location`
+- **Source:** S1-11 (`tests/unit/pre_commit/test_forbidden_patterns_rule_shape.py` introspecting `scripts/check_forbidden_patterns.py`).
+- **Symptom:** `AttributeError: 'NoneType' object has no attribute '__dict__'` raised from inside `dataclasses._is_type` during slot synthesis.
+- **Fix:** When loading a non-package script via `importlib.util.spec_from_file_location` + `exec_module`, register the module in `sys.modules[name] = mod` BEFORE `spec.loader.exec_module(mod)`. Slot synthesis under string-form annotations resolves via `sys.modules[cls.__module__].__dict__`; no registration → `None.__dict__` → AttributeError.
+- **Why it matters:** Any future Phase-2 (or Phase-3) test that introspects a `scripts/` file holding a `dataclass(slots=True)` will hit this. The script does NOT need to weaken `slots=True` — the test bends.
+
+## L26 — `forbidden-patterns` Phase-2+ rules MUST scope via `applies_when`, not pre-commit YAML
+- **Source:** S1-11 (Phase-2 `model_construct` ban under seven packages).
+- **Symptom:** N/A — this is a discipline lesson the story §AC-1 prose already pins, not a runtime symptom.
+- **Fix:** Path-scope rules inside `scripts/check_forbidden_patterns.py` via the rule's `applies_when` predicate. NEVER scope via `.pre-commit-config.yaml`'s `files:`/`exclude:` regex.
+- **Why it matters:** The test surface (subprocess invocation in `tmp_path`) and the runtime surface (pre-commit invocation on staged files) MUST be the same. YAML scoping bypasses the test surface and produces silent rule-coverage gaps; structural Open/Closed (AC-15) breaks. Every future path-scoped rule (Phase-3 `httpx` ban under `plugins/`, future SBOM-scoped rules) inherits the discipline.

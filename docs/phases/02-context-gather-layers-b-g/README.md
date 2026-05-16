@@ -26,6 +26,26 @@ The synthesis explicitly resolved five tensions the critic surfaced:
 
 When other documents link to *this phase's design*, link to [final-design.md](final-design.md), not the per-lens drafts. The per-lens drafts and the critique are kept for audit, not for execution.
 
+## Phase 2 ADRs
+
+The nine Step-1 ADRs (0001–0009) ship with the Step-1 code in story S1-11; each is **Accepted** and frozen. 02-ADR-0010 is pre-drafted in this directory but its enforcement code (the `RedactedSlice` smart constructor) lands in S3-02 (Step 3) — it is listed under a separate sub-bullet so a casual reader does not assume it is Step-1-active.
+
+**Step-1 (land with S1-11):**
+
+- [0001 — Add docker + security CLIs to ALLOWED_BINARIES](ADRs/0001-add-docker-and-security-cli-tools-to-allowed-binaries.md) — Accepted
+- [0002 — Tree-sitter grammars Phase 2 amendment](ADRs/0002-tree-sitter-grammars-phase-2-amendment.md) — Accepted
+- [0003 — Coordinator heaviness sort + annotation](ADRs/0003-coordinator-heaviness-sort-annotation.md) — Accepted
+- [0004 — Image digest as declared-input token](ADRs/0004-image-digest-as-declared-input-token.md) — Accepted
+- [0005 — Secret findings: no plaintext persistence](ADRs/0005-secret-findings-no-plaintext-persistence.md) — Accepted
+- [0006 — IndexFreshness sum-type location](ADRs/0006-index-freshness-sum-type-location.md) — Accepted
+- [0007 — No plugin loader in Phase 2](ADRs/0007-no-plugin-loader-in-phase-2.md) — Accepted
+- [0008 — No event stream in Phase 2](ADRs/0008-no-event-stream-in-phase-2.md) — Accepted
+- [0009 — pytest-xdist veto preserved](ADRs/0009-pytest-xdist-veto-preserved.md) — Accepted
+
+**Pre-drafted; enforcement code lands in S3-02 (Step 3):**
+
+- [0010 — RedactedSlice smart constructor at the writer boundary](ADRs/0010-redacted-slice-smart-constructor-at-writer-boundary.md) — Accepted (file present; the runtime `RedactedSlice` ships in story S3-02)
+
 ## Provenance
 
 - **Roadmap:** [`docs/roadmap.md`](../../roadmap.md)
