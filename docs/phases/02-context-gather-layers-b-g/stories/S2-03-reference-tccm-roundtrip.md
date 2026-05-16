@@ -1,7 +1,7 @@
 # Story S2-03 — Reference TCCM + roundtrip integration exercising every Protocol method
 
 **Step:** Step 2 — Plant kernel-side loaders (`SkillsLoader`, `ConventionsCatalogLoader`) and reference TCCM
-**Status:** Ready (HARDENED 2026-05-15)
+**Status:** Done (2026-05-16) — see [`_attempts/S2-03.md`](_attempts/S2-03.md)
 **Effort:** S
 **Depends on:** S1-04 (Done — `TCCMLoader`, `TCCM` model, 5-variant `DerivedQuery` discriminated union, `TCCMLoadError` marker), S1-05 (`SkillId` newtype — `required_skills` carries `list[SkillId]`). **Not** S2-01: the reference TCCM names `required_skills` as data only; `SkillsLoader.find_applicable(...)` is never invoked (Out of scope §5). The story is implementable today against the current `master`.
 **ADRs honored:** 02-ADR-0007 (kernel-side scaffolding only; reference TCCM lives in `docs/`, **not** in `plugins/` — "documentation as code, deliberately outside the plugin namespace"), production ADR-0029 (Task-Class Context Manifests), production ADR-0030 (graph-aware context queries — five primitives), production ADR-0032 (Language Search Adapters — four `Protocol`s); closes **Gap 1** from `../phase-arch-design.md §"Gap analysis"` ("Adapter Protocol drift between Phase 2 and Phase 3" / "Protocols defined, never called in Phase 2")

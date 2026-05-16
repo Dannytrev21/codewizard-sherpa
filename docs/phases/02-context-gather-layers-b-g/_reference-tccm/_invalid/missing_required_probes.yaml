@@ -1,0 +1,6 @@
+schema_version: "1"
+task_class: index-health-self-check
+required_skills: []
+confidence_floor:
+  kind: trusted
+derived_queries: []

@@ -1,0 +1,22 @@
+schema_version: "1"
+task_class: index-health-self-check
+required_probes:
+  - b2_index_health
+  - b1_scip
+  - b3_tree_sitter_imports
+required_skills:
+  - diagnose-stale-scip
+confidence_floor:
+  kind: degraded
+  reason: stale_scip_acceptable_for_self_check
+derived_queries:
+  - compute: consumers_of
+    pkg: "@codegenie/scip"
+  - compute: producers_of
+    pkg: "@codegenie/scip"
+  - compute: reverse_lookup
+    module: "codegenie/probes/layer_b/index_health.py"
+  - compute: refs_to
+    symbol: "codegenie/indices/freshness.IndexFreshness"
+  - compute: tests_exercising
+    symbol: "codegenie/probes/layer_b/index_health.py"
