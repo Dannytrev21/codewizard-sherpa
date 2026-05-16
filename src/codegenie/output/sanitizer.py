@@ -1,4 +1,4 @@
-"""Two-pass output sanitizer chokepoint (ADR-0008, ADR-0010).
+"""Two-pass output sanitizer chokepoint + Phase 2 `redact_secrets` (S3-01).
 
 ADR-0008 designates :meth:`OutputSanitizer.scrub` as the **single path** from
 a :class:`~codegenie.probes.base.ProbeOutput` to a persisted byte:
@@ -26,29 +26,82 @@ function. The typed signal "scrubbing ran" lives at *this* step; the
 downstream writer (ADR-0008 §Consequences) takes a merged ``dict`` envelope
 because the coordinator collapses many ``SanitizedProbeOutput.schema_slice``
 values into a single dict before YAML serialization.
+
+Phase 2 — ``redact_secrets`` (S3-01, see ``phase-arch-design.md §"Component
+design" #4 SecretRedactor`` + 02-ADR-0005 + 02-ADR-0010)
+-------------------------------------------------------------------------
+
+``redact_secrets`` is the Phase 2 plaintext-redaction chokepoint. It walks
+a probe slice (``dict[str, JSONValue]``), replaces matched cleartext
+secrets with ``<REDACTED:fingerprint=<8hex>>`` inline, and returns a
+``RedactedSlice`` + a sibling in-memory ``list[SecretFinding]``. The
+findings list is the audit trail the CLI summary consumes; it is **never**
+persisted to disk (02-ADR-0005 — "no plaintext persistence"; the smart
+constructor in 02-ADR-0010 closes the type-system bypass surface).
+
+Pattern table:
+
+- ``aws_access_key`` — ``AKIA[0-9A-Z]{16}``
+- ``github_token`` — ``ghp_[A-Za-z0-9]{36}``
+- ``jwt`` — ``eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+``
+- ``rsa_private_key`` — ``-----BEGIN[ A-Z]*PRIVATE KEY-----[\\s\\S]+?``
+  ``-----END[ A-Z]*PRIVATE KEY-----``
+- ``npm_token`` — ``npm_[A-Za-z0-9]{36}``
+- ``anthropic_key`` — ``sk-ant-[A-Za-z0-9_-]{50,}``
+
+After every named pattern fires, an **entropy fallback** redacts any
+remaining string of byte length ``>= 32`` whose Shannon entropy is at
+least ``4.5`` bits/char. The threshold + length floor are tuned against
+the ``gitleaks`` pattern pack
+(``phase-arch-design.md §"Component design" #4``); changes to either
+must travel via an ADR amendment and update both the
+``_ENTROPY_THRESHOLD_BITS_PER_CHAR`` and ``_ENTROPY_MIN_LEN`` module-level
+constants. The mutation-test discipline (see
+``tests/unit/output/test_secret_redactor.py``) makes pattern coverage a
+build invariant: each weakened regex must fail to redact its canonical
+example, so a regression that loosens a pattern is caught at CI time.
+
+The ``_PATTERNS`` table and ``_ENTROPY_THRESHOLD_BITS_PER_CHAR`` constant
+are **module-level names by design**. The mutation tests
+``monkeypatch.setattr`` against these symbols; moving them function-local
+would silently disable the harness.
+
+``pattern_class`` is a closed ``Literal[...]`` set; adding a seventh
+class (e.g. ``"slack_webhook"``) is an **ADR amendment**, not Open/Closed
+extension, mirroring the discipline ratified in S1-01 (``IndexFreshness``)
+and S1-03 (``AdapterConfidence``).
 """
 
 from __future__ import annotations
 
+import math
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
+from pydantic import BaseModel, ConfigDict
 
 from codegenie.coordinator.validator import (
     SECRET_FIELD_ALLOWLIST,
     SECRET_FIELD_PATTERN,
 )
 from codegenie.errors import SecretLikelyFieldNameError
+from codegenie.hashing import content_hash_bytes
+from codegenie.output.redacted_slice import RedactedSlice
+from codegenie.parsers import JSONValue
 from codegenie.probes.base import ProbeOutput
+from codegenie.types.identifiers import ProbeId
 
 __all__ = [
     "OutputSanitizer",
     "SECRET_FIELD_ALLOWLIST",
     "SECRET_FIELD_PATTERN",
     "SanitizedProbeOutput",
+    "SecretFinding",
+    "redact_secrets",
 ]
 
 _log = structlog.get_logger(__name__)
@@ -184,3 +237,204 @@ class OutputSanitizer:
             warnings=scrubbed_warnings,
             errors=scrubbed_errors,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — ``redact_secrets`` (S3-01)
+# ---------------------------------------------------------------------------
+
+
+PatternClass = Literal[
+    "aws_access_key",
+    "github_token",
+    "jwt",
+    "rsa_private_key",
+    "npm_token",
+    "anthropic_key",
+    "entropy",
+]
+
+
+class SecretFinding(BaseModel):
+    """In-memory audit-trail record produced once per redaction.
+
+    ``cleartext`` is **never** stored on the finding — the plaintext lives
+    only inside the regex-substitution closure for the lifetime of one
+    ``re.sub`` callback invocation, then is discarded once the BLAKE3
+    fingerprint is computed (02-ADR-0005 §Decision).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    probe_name: ProbeId
+    fingerprint: str
+    pattern_class: PatternClass
+    cleartext_len: int
+
+
+# NOTE: ``_PATTERNS`` and ``_ENTROPY_THRESHOLD_BITS_PER_CHAR`` are module-level
+# constants by deliberate design. The mutation-test suite
+# (``tests/unit/output/test_secret_redactor.py::test_ac18_*``) calls
+# ``monkeypatch.setattr(sanitizer, "_PATTERNS", ...)`` and
+# ``monkeypatch.setattr(sanitizer, "_ENTROPY_THRESHOLD_BITS_PER_CHAR", 5.0)``
+# to verify that a weakened regex (or a raised entropy floor) causes the
+# canonical example to slip through; that mechanism only works against
+# module-level bindings.
+_PATTERNS: list[tuple[PatternClass, re.Pattern[str]]] = [
+    ("aws_access_key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("github_token", re.compile(r"ghp_[A-Za-z0-9]{36}")),
+    (
+        "jwt",
+        re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    ),
+    (
+        "rsa_private_key",
+        re.compile(
+            r"-----BEGIN[ A-Z]*PRIVATE KEY-----[\s\S]+?"
+            r"-----END[ A-Z]*PRIVATE KEY-----"
+        ),
+    ),
+    ("npm_token", re.compile(r"npm_[A-Za-z0-9]{36}")),
+    ("anthropic_key", re.compile(r"sk-ant-[A-Za-z0-9_-]{50,}")),
+]
+
+_ENTROPY_THRESHOLD_BITS_PER_CHAR: float = 4.5
+_ENTROPY_MIN_LEN: int = 32
+
+
+def _shannon_entropy(s: str) -> float:
+    """Return the Shannon entropy of ``s`` in bits-per-character.
+
+    Returns ``0.0`` for the empty string and for single-character
+    inputs (and any string whose unique-char count is 1) — the formula
+    ``-sum(p * log2(p))`` over a one-element frequency table is zero. The
+    function is total over ``str``: it does not raise for any input,
+    including non-ASCII / multi-byte codepoints (the iteration is per
+    Unicode codepoint, not per byte).
+    """
+    if not s:
+        return 0.0
+    counts = Counter(s)
+    length = len(s)
+    return -sum((c / length) * math.log2(c / length) for c in counts.values())
+
+
+def _fingerprint(cleartext: str) -> str:
+    """Return the 8-hex BLAKE3 fingerprint of ``cleartext`` bytes.
+
+    ``content_hash_bytes`` returns the prefix-tagged ``"blake3:<64hex>"``
+    per Phase-0 ADR-0001; stripping the ``"blake3:"`` prefix then slicing
+    yields the 8 lowercase hex chars that survive in persisted artifacts.
+    Privacy-preserving by construction: BLAKE3 first-8-hex is not
+    reversible to the cleartext.
+    """
+    return content_hash_bytes(cleartext.encode("utf-8")).removeprefix("blake3:")[:8]
+
+
+def _redact_string(s: str, probe_name: ProbeId, findings_out: list[SecretFinding]) -> str:
+    """Apply each named pattern and the entropy fallback to ``s``.
+
+    The entropy fallback fires only on strings that NO named pattern
+    matched. Otherwise a long string containing a named secret (e.g.,
+    ``"Authorization: token ghp_<36>"``) would emit two findings — the
+    GitHub-token finding plus an entropy finding over the post-regex
+    string — silently double-counting one cleartext credential.
+    """
+    out = s
+    matched_any_named = False
+    for pattern_class, pattern in _PATTERNS:
+        new_out, n = pattern.subn(_make_repl(probe_name, pattern_class, findings_out), out)
+        if n:
+            matched_any_named = True
+        out = new_out
+
+    if matched_any_named:
+        return out
+
+    if len(s.encode("utf-8")) >= _ENTROPY_MIN_LEN and (
+        _shannon_entropy(s) >= _ENTROPY_THRESHOLD_BITS_PER_CHAR
+    ):
+        fp = _fingerprint(s)
+        findings_out.append(
+            SecretFinding(
+                probe_name=probe_name,
+                fingerprint=fp,
+                pattern_class="entropy",
+                cleartext_len=len(s.encode("utf-8")),
+            )
+        )
+        return f"<REDACTED:fingerprint={fp}>"
+    return out
+
+
+def _make_repl(
+    probe_name: ProbeId,
+    pattern_class: PatternClass,
+    findings_out: list[SecretFinding],
+) -> Any:
+    """Build a ``re.sub`` replacement callback for one pattern class."""
+
+    def _repl(m: re.Match[str]) -> str:
+        cleartext = m.group(0)
+        fp = _fingerprint(cleartext)
+        findings_out.append(
+            SecretFinding(
+                probe_name=probe_name,
+                fingerprint=fp,
+                pattern_class=pattern_class,
+                cleartext_len=len(cleartext.encode("utf-8")),
+            )
+        )
+        return f"<REDACTED:fingerprint={fp}>"
+
+    return _repl
+
+
+def _walk(node: JSONValue, probe_name: ProbeId, findings_out: list[SecretFinding]) -> JSONValue:
+    """Recursively redact every string ``leaf`` reached through values.
+
+    Dict keys are not walked (Phase 0's field-name regex already covers
+    that surface — see ``OutputSanitizer.scrub`` pass-1).
+    """
+    if isinstance(node, str):
+        return _redact_string(node, probe_name, findings_out)
+    if isinstance(node, dict):
+        return {k: _walk(v, probe_name, findings_out) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_walk(item, probe_name, findings_out) for item in node]
+    return node
+
+
+def redact_secrets(
+    slice_: dict[str, JSONValue], probe_name: ProbeId
+) -> tuple[RedactedSlice, list[SecretFinding]]:
+    """Walk ``slice_`` and replace every matched secret with an in-place token.
+
+    Returns ``(RedactedSlice, list[SecretFinding])``:
+
+    - The :class:`RedactedSlice` is the only thing the writer accepts
+      (02-ADR-0010 — type-system defense). It carries the redacted dict,
+      the total findings count (each match is one finding, including
+      entropy hits), and the deduplicated, stably-ordered list of
+      fingerprints.
+    - The ``list[SecretFinding]`` is the **in-memory** audit trail
+      consumed by the CLI summary. It is **never** persisted (02-ADR-0005).
+
+    The function is stateless across calls: no global accumulators, no
+    ``ContextVar``, no module-level findings list. The input ``slice_``
+    is not mutated; the returned dict is freshly constructed.
+    """
+    findings: list[SecretFinding] = []
+    redacted = _walk(slice_, probe_name, findings)
+    if not isinstance(redacted, dict):
+        # Defensive: ``_walk`` returns a dict when its input is a dict.
+        raise TypeError(f"redact_secrets expected dict input, got {type(slice_)!r}")
+    fingerprints = list(dict.fromkeys(f.fingerprint for f in findings))
+    return (
+        RedactedSlice(
+            slice=redacted,
+            findings_count=len(findings),
+            fingerprints=fingerprints,
+        ),
+        findings,
+    )

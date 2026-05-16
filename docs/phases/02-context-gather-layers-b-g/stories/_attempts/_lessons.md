@@ -195,3 +195,27 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** A `_memo: dict[...]` as a regular field broke `extra="forbid"`-style serialization and forced `arbitrary_types_allowed=True`; `object.__setattr__` from inside `apply` was structurally noisy and tripped frozen-write warnings.
 - **Fix:** Declare `_memo: dict[int, list[ConventionResult]] = PrivateAttr(default_factory=dict)`. `PrivateAttr` is excluded from serialization, equality, and the frozen write-block; mutating the dict in place (`self._memo[key] = ...`) is allowed by design. Key on `id(repo)` for per-snapshot memoization; a fresh snapshot wires a fresh evaluation.
 - **Why it matters:** Every Phase-2+ pure-functional Pydantic model that needs per-instance memoization (catalog evaluators, future planner pre-computation caches) should reach for `PrivateAttr` first.
+
+## L10 — Entropy fallback double-fires on post-redacted strings
+- **Source:** S3-01.
+- **Symptom:** A long string carrying a named secret (`"Authorization: token ghp_<36>"`) yields two findings — the GitHub-token match plus an entropy hit on the post-replacement string (the 8-hex fingerprint is high-entropy). Tests AC-15b / AC-27 / AC-34 fail with `findings_count` off by one.
+- **Fix:** In `_redact_string`, set `matched_any_named = True` when any named pattern's `re.subn` returns `n > 0`; skip the entropy fallback entirely on that leaf. Entropy is the catch-all for unknown shapes, not a redundant second pass over redacted output. Documented in `sanitizer.py` module docstring.
+- **Why it matters:** S3-03 reads `findings_count` for the `secrets_redacted_count` structured-event field; the CLI summary depends on a one-finding-per-cleartext invariant.
+
+## L11 — Pydantic v2 + recursive `JSONValue` requires `TypeAliasType`, not plain union
+- **Source:** S3-02 (`RedactedSlice.slice: dict[str, JSONValue]`).
+- **Symptom:** `RecursionError: maximum recursion depth exceeded` in Pydantic's `_generate_schema._union_schema` on the first instantiation of any Pydantic model with a `JSONValue`-typed field. The Phase-1 alias form `JSONValue = bool | int | float | str | None | list["JSONValue"] | dict[str, "JSONValue"]` works fine as a return-type annotation but not as a Pydantic schema source — forward-string references aren't resolved to a named alias.
+- **Fix:** Redefine `JSONValue` in `src/codegenie/parsers/__init__.py` via `typing_extensions.TypeAliasType("JSONValue", "bool | int | float | str | None | list[JSONValue] | dict[str, JSONValue]")`. Static type-checking semantics are unchanged. PEP 695 `type JSONValue = ...` is **not** an option because the project pins `requires-python = ">=3.11"`.
+- **Why it matters:** Any future Phase-2 / Phase-3 Pydantic model that carries a JSONValue field (RAG ingest, audit-anchor, persistent telemetry) hits the same wall otherwise.
+
+## L12 — Mutation regexes must be unable-to-match the canonical, not merely "weaker"
+- **Source:** S3-01 (six pattern-class mutation tests).
+- **Symptom:** The story's prescribed mutation `AKIA[0-9A-Z]{15}` (one fewer required char) is *more permissive* than the production `AKIA[0-9A-Z]{16}` and still matches the 19-char prefix of the 20-char canonical, so `re.sub` redacts and the mutation-test assertion (`canonical in result`) fails.
+- **Fix:** Mutate to a pattern that fundamentally cannot match the canonical: length-quantified rules → `{N+1}` (require one more char than the canonical has); literal-prefix rules (JWT) → swap the literal; multi-line block (RSA) → `[^\n]` between BEGIN/END so a newline breaks the match.
+- **Why it matters:** Every Phase-2 mutation-test story (S6-07 gitleaks fixtures, S5-04 SBOM regex pack, etc.) inherits the precision discipline: "weaker" is ambiguous; "unable-to-match" is testable.
+
+## L13 — Pydantic v2 `@field_validator` on a `list[T]` field receives the whole list
+- **Source:** S3-02 (`fingerprints` validator).
+- **Symptom:** A `def _validate_fingerprints(cls, v: str) -> str` validator declared on a `list[str]` field fails mypy strict because Pydantic v2 `mode="after"` (the default) passes the post-coerced field value — the whole list — not per-element strings.
+- **Fix:** Type as `def _validate_fingerprints(cls, v: list[str]) -> list[str]` and iterate inside the validator. `isinstance(fp, str)` is defensive against non-str coercions.
+- **Why it matters:** Any future Phase-2 / Phase-3 field validator targeting a `list[T]` field (the fingerprint family expanding into RAG ingest, audit-anchor, etc.) inherits the discipline.

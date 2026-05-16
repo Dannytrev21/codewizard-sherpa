@@ -19,10 +19,21 @@ so callers can spell ``codegenie.parsers.JSONValue`` or
 ``codegenie.parsers.safe_json.JSONValue`` interchangeably.
 """
 
-from __future__ import annotations
+from typing_extensions import TypeAliasType
 
 # JSONValue is a recursive union; ``str`` precedes ``bool|int|float`` only for
 # readability — the stdlib ``json`` module decodes to these exact Python types.
-JSONValue = bool | int | float | str | None | list["JSONValue"] | dict[str, "JSONValue"]
+#
+# Defined via :class:`typing_extensions.TypeAliasType` (the runtime form of the
+# PEP 695 ``type`` statement, available on Python 3.11) so Pydantic v2's
+# schema generator resolves the recursion as a named alias. Without it, the
+# forward-string ``"JSONValue"`` references trigger infinite recursion in
+# Pydantic's ``_generate_schema`` whenever ``JSONValue`` is used as a Pydantic
+# field annotation — first surfaced by S3-02 ``RedactedSlice``. Static typing
+# semantics are unchanged: every existing call site sees the same union.
+JSONValue = TypeAliasType(
+    "JSONValue",
+    "bool | int | float | str | None | list[JSONValue] | dict[str, JSONValue]",
+)
 
 __all__ = ["JSONValue"]

@@ -1,7 +1,7 @@
 # Story S3-02 — `RedactedSlice` smart constructor private to `redact_secrets`
 
 **Step:** Step 3 — Plant `SecretRedactor` + `RedactedSlice` smart constructor at the writer chokepoint
-**Status:** Ready
+**Status:** Done (2026-05-16) — see [`_attempts/S3-02.md`](_attempts/S3-02.md). Paired with S3-01. Evidence: src/codegenie/output/redacted_slice.py + tests/unit/output/test_redacted_slice.py (54 tests, all 26 ACs).
 **Effort:** S
 **Depends on:** S3-01 (the redactor body that uses `RedactedSlice` as its return type), S1-11 (Done — `forbidden-patterns` script extended with the `model_construct` rule scoped to `_PHASE2_BANNED_PACKAGES` via the `applies_when` predicate; `"output"` is in that frozenset on master)
 **ADRs honored:** 02-ADR-0010 (`RedactedSlice` smart constructor at the writer boundary — the Gap-4 typed-defense ladder), 02-ADR-0005 (no plaintext persistence — the runtime defense this story upgrades to a type-level defense), [production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md) (newtype + smart-constructor discipline applied at the I/O boundary, not the wire-type boundary)

@@ -1,7 +1,7 @@
 # Story S3-01 — `SecretRedactor` pattern classes + entropy threshold + BLAKE3 fingerprint
 
 **Step:** Step 3 — Plant `SecretRedactor` + `RedactedSlice` smart constructor at the writer chokepoint
-**Status:** Ready
+**Status:** Done (2026-05-16) — see [`_attempts/S3-01.md`](_attempts/S3-01.md). Paired with S3-02. Evidence: sanitizer.py::redact_secrets + tests/unit/output/test_secret_redactor.py (45 tests, 28 ACs).
 **Effort:** M
 **Depends on:** S1-11 (`forbidden-patterns` extension that will later cover `model_construct` under `src/codegenie/output/**`, plus the nine new ADRs; Phase-2 ADRs 0005 + 0010 are landed)
 **ADRs honored:** 02-ADR-0005 (no plaintext persistence anywhere in Phase 2), 02-ADR-0010 (`RedactedSlice` smart constructor at the writer boundary), [production ADR-0005](../../../production/adrs/0005-no-llm-in-gather-pipeline.md) (no LLM in gather — the chokepoint guarantee inherits to Phase 4 RAG ingestion), [production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md) (newtype discipline; informs the deferred `Fingerprint` newtype — see Validation notes #11)
