@@ -331,16 +331,17 @@ def test_base_py_carries_codeowners_todo_for_s5_02() -> None:
     )
 
 
-# --- Tier 7 — ADR-0002 sentinel + Phase-1 mutation killers (S1-06) ---------
+# --- Tier 7 — ADR-0002 + ADR-0004 sentinel + Phase-1/2 mutation killers ----
 
-_ADR_0002_ALLOWED_PROBE_CONTEXT_FIELDS: tuple[str, ...] = (
+_ALLOWED_PROBE_CONTEXT_FIELDS: tuple[str, ...] = (
     "cache_dir",
     "output_dir",
     "workspace",
     "logger",
     "config",
-    "parsed_manifest",
-    "input_snapshot",
+    "parsed_manifest",         # Phase 1 ADR-0002
+    "input_snapshot",          # Phase 1 ADR-0002
+    "image_digest_resolver",   # Phase 2 ADR-0004
 )
 _ADR_0002_PATH = (
     REPO_ROOT
@@ -350,20 +351,33 @@ _ADR_0002_PATH = (
     / "ADRs"
     / "0002-parsed-manifest-memo-on-probe-context.md"
 )
+_ADR_0004_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "phases"
+    / "02-context-gather-layers-b-g"
+    / "ADRs"
+    / "0004-image-digest-as-declared-input-token.md"
+)
+_FIELD_LIST_DRIFT_MESSAGE = (
+    "ProbeContext field list {actual} does not match the allowed set. "
+    "Current additions are gated by ADR-0002 (parsed_manifest, input_snapshot) "
+    "and ADR-0004 (image_digest_resolver). Any new field requires a new "
+    "Phase ADR amendment. See "
+    "docs/phases/01-context-gather-layer-a-node/ADRs/"
+    "0002-parsed-manifest-memo-on-probe-context.md and "
+    "docs/phases/02-context-gather-layers-b-g/ADRs/"
+    "0004-image-digest-as-declared-input-token.md."
+)
 
 
-def test_probe_context_field_list_matches_adr_0002_amendment() -> None:
-    # AC-5: explicit ADR-0002 sentinel. A third future field fails CI here
-    # with a self-documenting message that names the ADR.
+def test_probe_context_field_list_matches_allowed() -> None:
+    # AC-5: allowed-field tuple spans ADR-0002 and ADR-0004. A third future
+    # field fails CI here with a self-documenting message naming both ADRs.
     import dataclasses
 
     actual = tuple(f.name for f in dataclasses.fields(base.ProbeContext))
-    assert actual == _ADR_0002_ALLOWED_PROBE_CONTEXT_FIELDS, (
-        f"ProbeContext field list {actual} does not match ADR-0002. "
-        f"Adding fields to ProbeContext is gated by ADR-0002 amendment. "
-        f"See docs/phases/01-context-gather-layer-a-node/ADRs/"
-        f"0002-parsed-manifest-memo-on-probe-context.md."
-    )
+    assert actual == _ALLOWED_PROBE_CONTEXT_FIELDS, _FIELD_LIST_DRIFT_MESSAGE.format(actual=actual)
 
 
 def test_probe_context_new_field_annotations_pinned() -> None:
@@ -376,6 +390,19 @@ def test_probe_context_new_field_annotations_pinned() -> None:
     assert "Mapping" in repr(ann["parsed_manifest"])
     assert "frozenset" in repr(ann["input_snapshot"])
     assert "InputFingerprint" in repr(ann["input_snapshot"])
+
+
+def test_image_digest_resolver_annotation_pinned() -> None:
+    # AC-7 (S1-09): catches silent retypes — drop `| None` return arm, drop
+    # `Path` arg, or widen to `dict[Path, str]`. Mirrors the Phase 1 annotation
+    # pin shape.
+    import inspect as _inspect
+
+    ann = _inspect.get_annotations(base.ProbeContext)
+    rendered = repr(ann["image_digest_resolver"])
+    assert "Callable" in rendered, rendered
+    assert "Path" in rendered, rendered
+    assert "str | None" in rendered, rendered
 
 
 def test_probe_context_phase0_construction_keeps_working(tmp_path: Path) -> None:
@@ -392,6 +419,56 @@ def test_probe_context_phase0_construction_keeps_working(tmp_path: Path) -> None
     )
     assert ctx.parsed_manifest is None
     assert ctx.input_snapshot is None
+
+
+def test_probe_context_image_digest_resolver_is_optional_with_none_default(tmp_path: Path) -> None:
+    # AC-9 (S1-09): backward compatible with Phase 0/1 callers — constructing
+    # without the new kwarg succeeds and defaults to None.
+    import logging
+
+    ctx = base.ProbeContext(
+        cache_dir=tmp_path / "c",
+        output_dir=tmp_path / "o",
+        workspace=tmp_path / "w",
+        logger=logging.getLogger("test"),
+        config={},
+    )
+    assert ctx.image_digest_resolver is None
+
+
+def test_probe_context_image_digest_resolver_accepts_callable_returning_none(tmp_path: Path) -> None:
+    # AC-10 (S1-09): the `| None` return arm is part of the contract; a
+    # resolver may legitimately report "no image built yet". Catches a future
+    # widener who silently drops `| None` from the return.
+    import logging
+
+    def _none_resolver(_p: Path) -> str | None:
+        return None
+
+    def _digest_resolver(_p: Path) -> str | None:
+        return "sha256:cafef00d"
+
+    ctx_none = base.ProbeContext(
+        cache_dir=tmp_path / "c",
+        output_dir=tmp_path / "o",
+        workspace=tmp_path / "w",
+        logger=logging.getLogger("test"),
+        config={},
+        image_digest_resolver=_none_resolver,
+    )
+    assert ctx_none.image_digest_resolver is _none_resolver
+    assert ctx_none.image_digest_resolver(tmp_path / "img") is None
+
+    ctx_dig = base.ProbeContext(
+        cache_dir=tmp_path / "c",
+        output_dir=tmp_path / "o",
+        workspace=tmp_path / "w",
+        logger=logging.getLogger("test"),
+        config={},
+        image_digest_resolver=_digest_resolver,
+    )
+    assert ctx_dig.image_digest_resolver is not None
+    assert ctx_dig.image_digest_resolver(tmp_path / "img") == "sha256:cafef00d"
 
 
 def test_input_fingerprint_is_tuple_subclass() -> None:
@@ -448,6 +525,15 @@ def test_localv2_section_4_shows_phase1_probe_context_fields() -> None:
     )
 
 
+def test_localv2_section_4_shows_image_digest_resolver() -> None:
+    # AC-8 (S1-09): names *what* drifted when Tier 1 doc_fingerprint fires.
+    # Mirrors the Phase 1 doc-grep test shape.
+    body = extract_section_4_body(LOCALV2_PATH.read_text(encoding="utf-8"))
+    assert "image_digest_resolver:" in body, (
+        "localv2.md §4 ProbeContext is missing image_digest_resolver (02-ADR-0004)"
+    )
+
+
 def test_adr_0002_names_input_snapshot_and_input_fingerprint() -> None:
     # AC-11: the ADR text is the human-facing record; an ADR that doesn't
     # name input_snapshot is rot the moment Phase 2 reads it for context.
@@ -456,13 +542,24 @@ def test_adr_0002_names_input_snapshot_and_input_fingerprint() -> None:
     assert "InputFingerprint" in text
 
 
+def test_adr_0004_names_image_digest_resolver() -> None:
+    # AC-6 companion (S1-09): the ADR text is the human-facing record; an
+    # ADR that doesn't name its own field is rot the moment a contributor
+    # reads it.
+    text = _ADR_0004_PATH.read_text(encoding="utf-8")
+    assert "image_digest_resolver" in text
+
+
 def test_probe_context_sentinel_fires_on_synthetic_third_field() -> None:
-    # AC-18: exercise the sentinel's failure-message contract. A throwaway
-    # dataclass with a third field stands in for the future amendment.
+    # AC-18 (Phase 1): exercise the sentinel's failure-message contract via
+    # a synthetic 8-field dataclass (one more than the Phase 1 allowed set —
+    # i.e., the canonical ADR-0002 violation). Updated for S1-09: the
+    # failure message now routes through ADR-0002 *or* ADR-0004 since the
+    # sentinel tuple spans both ADRs.
     import dataclasses as _dc
 
     @_dc.dataclass
-    class _SyntheticThreeField:
+    class _SyntheticPhase1ViolatingField:
         cache_dir: Path
         output_dir: Path
         workspace: Path
@@ -470,13 +567,73 @@ def test_probe_context_sentinel_fires_on_synthetic_third_field() -> None:
         config: dict[str, Any]
         parsed_manifest: Any = None
         input_snapshot: Any = None
-        future_third_field: Any = None  # the offending addition
+        future_third_field: Any = None  # the offending addition (no ADR-0004 field)
 
-    actual = tuple(f.name for f in _dc.fields(_SyntheticThreeField))
-    with pytest.raises(AssertionError, match=r"ADR-0002"):
-        assert actual == _ADR_0002_ALLOWED_PROBE_CONTEXT_FIELDS, (
-            f"ProbeContext field list {actual} does not match ADR-0002. "
-            f"Adding fields to ProbeContext is gated by ADR-0002 amendment. "
-            f"See docs/phases/01-context-gather-layer-a-node/ADRs/"
-            f"0002-parsed-manifest-memo-on-probe-context.md."
+    actual = tuple(f.name for f in _dc.fields(_SyntheticPhase1ViolatingField))
+    with pytest.raises(AssertionError, match=r"ADR-0002|ADR-0004"):
+        assert actual == _ALLOWED_PROBE_CONTEXT_FIELDS, _FIELD_LIST_DRIFT_MESSAGE.format(
+            actual=actual
         )
+
+
+def test_probe_context_sentinel_fires_on_synthetic_phase_2_addition() -> None:
+    # AC-6 (S1-09): mirror the Phase-1 synthetic-third-field test but for
+    # the ADR-0004 amendment. A synthetic 9-field dataclass (all eight allowed
+    # plus one bogus addition) stands in for the future amendment violation.
+    # The regex pin on `ADR-0004` ensures the failure message routes
+    # contributors to *this* phase's ADR specifically.
+    import dataclasses as _dc
+
+    @_dc.dataclass
+    class _SyntheticNineField:
+        cache_dir: Path
+        output_dir: Path
+        workspace: Path
+        logger: Any
+        config: dict[str, Any]
+        parsed_manifest: Any = None
+        input_snapshot: Any = None
+        image_digest_resolver: Any = None
+        future_extra_field: Any = None  # the offending addition
+
+    actual = tuple(f.name for f in _dc.fields(_SyntheticNineField))
+    with pytest.raises(AssertionError, match=r"ADR-0004"):
+        assert actual == _ALLOWED_PROBE_CONTEXT_FIELDS, _FIELD_LIST_DRIFT_MESSAGE.format(
+            actual=actual
+        )
+
+
+# --- Tier 8 — regen-script idempotence (S1-09 AC-11) ------------------------
+
+_REGEN_SCRIPT = REPO_ROOT / "scripts" / "regen_probe_contract_snapshot.py"
+
+
+def test_regen_script_is_idempotent() -> None:
+    # AC-11 (S1-09): running the regen script twice consecutively must
+    # produce a byte-identical snapshot — guards against non-determinism in
+    # `_stable_type_repr` or `structural_signature` across Python sub-processes.
+    # Also asserts the committed snapshot is up-to-date (no diff vs. before),
+    # which catches a contributor who edited base.py or localv2.md without
+    # regenerating the snapshot.
+    import subprocess
+    import sys as _sys
+
+    assert _REGEN_SCRIPT.exists(), _REGEN_SCRIPT
+    before = SNAPSHOT_PATH.read_bytes()
+    r1 = subprocess.run(
+        [_sys.executable, str(_REGEN_SCRIPT)], capture_output=True, text=True, check=False
+    )
+    assert r1.returncode == 0, r1.stderr
+    after_first = SNAPSHOT_PATH.read_bytes()
+    r2 = subprocess.run(
+        [_sys.executable, str(_REGEN_SCRIPT)], capture_output=True, text=True, check=False
+    )
+    assert r2.returncode == 0, r2.stderr
+    after_second = SNAPSHOT_PATH.read_bytes()
+    assert after_first == after_second, (
+        "regen script is not idempotent — running twice produced different snapshots"
+    )
+    assert before == after_second, (
+        "committed snapshot is stale; run "
+        "`python scripts/regen_probe_contract_snapshot.py` and commit the diff"
+    )
