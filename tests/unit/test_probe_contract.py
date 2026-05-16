@@ -339,9 +339,9 @@ _ALLOWED_PROBE_CONTEXT_FIELDS: tuple[str, ...] = (
     "workspace",
     "logger",
     "config",
-    "parsed_manifest",         # Phase 1 ADR-0002
-    "input_snapshot",          # Phase 1 ADR-0002
-    "image_digest_resolver",   # Phase 2 ADR-0004
+    "parsed_manifest",  # Phase 1 ADR-0002
+    "input_snapshot",  # Phase 1 ADR-0002
+    "image_digest_resolver",  # Phase 2 ADR-0004
 )
 _ADR_0002_PATH = (
     REPO_ROOT
@@ -436,7 +436,9 @@ def test_probe_context_image_digest_resolver_is_optional_with_none_default(tmp_p
     assert ctx.image_digest_resolver is None
 
 
-def test_probe_context_image_digest_resolver_accepts_callable_returning_none(tmp_path: Path) -> None:
+def test_probe_context_image_digest_resolver_accepts_callable_returning_none(
+    tmp_path: Path,
+) -> None:
     # AC-10 (S1-09): the `| None` return arm is part of the contract; a
     # resolver may legitimately report "no image built yet". Catches a future
     # widener who silently drops `| None` from the return.

@@ -1,6 +1,6 @@
 {
   "snapshot_schema_version": 1,
-  "doc_fingerprint": "60c62870af5649a0350ac4084a59ce2bdf006294f02dc6f768ae3890d339d8c8",
+  "doc_fingerprint": "540932b49f6fd0c1d743e9bb63465bdde56e164ce45a1bcb65e5658ce33d794d",
   "structural_signature": {
     "InputFingerprint": {
       "bases": [
@@ -132,6 +132,11 @@
         {
           "name": "input_snapshot",
           "type": "frozenset['InputFingerprint'] | None",
+          "default": "None"
+        },
+        {
+          "name": "image_digest_resolver",
+          "type": "collections.abc.Callable[[pathlib.Path], str | None] | None",
           "default": "None"
         }
       ],

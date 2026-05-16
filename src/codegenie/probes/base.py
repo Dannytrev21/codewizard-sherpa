@@ -11,6 +11,12 @@ This module is stdlib-only on purpose: the contract surface must not pull
 Pydantic / attrs / third-party validators into Phase 0. The Pydantic
 trust-boundary wrapper is an internal coordinator concern (ADR-0010) and
 lands in S3-02, not here.
+
+Phase 2 ADR-0004 adds **one** optional field, ``image_digest_resolver``,
+mirroring Phase 1 ADR-0002's ``parsed_manifest`` precedent. Adding a
+third future field requires a new phase ADR amendment; the sentinel test
+in ``tests/unit/test_probe_contract.py`` fails CI with an explicit
+pointer.
 """
 
 # TODO(S5-02): CODEOWNERS entry required for src/codegenie/probes/base.py, docs/localv2.md, tests/snapshots/ — see ADR-0007 §Reversibility
@@ -52,6 +58,8 @@ class ProbeContext:
     # Phase 1 additions (ADR-0002). No further extensions without ADR amendment.
     parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
     input_snapshot: frozenset["InputFingerprint"] | None = None
+    # Phase 2 ADR-0004. No further extensions without ADR amendment.
+    image_digest_resolver: Callable[[Path], str | None] | None = None
 
 @dataclass
 class ProbeOutput:

@@ -318,6 +318,8 @@ class ProbeContext:
     # Phase 1 additions (ADR-0002). No further extensions without ADR amendment.
     parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
     input_snapshot: frozenset["InputFingerprint"] | None = None
+    # Phase 2 ADR-0004. No further extensions without ADR amendment.
+    image_digest_resolver: Callable[[Path], str | None] | None = None
 
 @dataclass
 class ProbeOutput:
