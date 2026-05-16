@@ -550,9 +550,7 @@ async def test_no_sources_registered_path(
         (Stale(reason=IndexerError(message="z")), "low"),
     ],
 )
-def test_confidence_derivation_exhaustive(
-    freshness: IndexFreshness, expected: str
-) -> None:
+def test_confidence_derivation_exhaustive(freshness: IndexFreshness, expected: str) -> None:
     """T-13 — AC-9: every IndexFreshness variant → expected confidence."""
     assert _derive_confidence(freshness) == expected
 
@@ -681,9 +679,9 @@ def test_no_sibling_probe_imports() -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             found_imports.append(node.module)
-            assert not any(
-                node.module.startswith(p) for p in forbidden_prefixes
-            ), f"forbidden sibling-probe import: {node.module}"
+            assert not any(node.module.startswith(p) for p in forbidden_prefixes), (
+                f"forbidden sibling-probe import: {node.module}"
+            )
             # No sibling layer_b imports (other than self).
             if node.module.startswith("codegenie.probes.layer_b"):
                 # self-import is OK (relative — never triggers, but defensive)
@@ -692,9 +690,9 @@ def test_no_sibling_probe_imports() -> None:
                 )
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                assert not alias.name.startswith(
-                    "codegenie.probes.layer_a"
-                ), f"forbidden sibling-probe import: {alias.name}"
+                assert not alias.name.startswith("codegenie.probes.layer_a"), (
+                    f"forbidden sibling-probe import: {alias.name}"
+                )
 
     # Positive — required imports are present.
     assert "codegenie.probes.base" in found_imports
@@ -769,9 +767,7 @@ def test_forbidden_patterns_bans_mtime_in_index_health(tmp_path: Path) -> None:
     script = repo_root / "scripts" / "check_forbidden_patterns.py"
     assert script.is_file()
 
-    production = (
-        repo_root / "src" / "codegenie" / "probes" / "layer_b" / "index_health.py"
-    )
+    production = repo_root / "src" / "codegenie" / "probes" / "layer_b" / "index_health.py"
     assert production.is_file(), "index_health.py must exist before AC-2 verification"
 
     # Prove the production file itself contains zero mtime hits.
@@ -781,9 +777,7 @@ def test_forbidden_patterns_bans_mtime_in_index_health(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    assert proc.returncode == 0, (
-        f"production index_health.py has mtime hits: {proc.stdout}"
-    )
+    assert proc.returncode == 0, f"production index_health.py has mtime hits: {proc.stdout}"
 
     # Build a sibling tree under tmp_path: <tmp>/codegenie/probes/layer_b/index_health.py
     # so the predicate's ``parts.index("codegenie")`` + tail-match scope fires.
@@ -1007,6 +1001,5 @@ async def test_runs_last_dispatch_order_via_coordinator(
     sib_ends = [timestamps["sib1"]["end"], timestamps["sib2"]["end"]]
     b2_start = timestamps["index_health"]["start"]
     assert b2_start >= max(sib_ends), (
-        f"B2 must start after every sibling ends; "
-        f"b2_start={b2_start}, sib_ends={sib_ends}"
+        f"B2 must start after every sibling ends; b2_start={b2_start}, sib_ends={sib_ends}"
     )

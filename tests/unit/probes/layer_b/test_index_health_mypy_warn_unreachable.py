@@ -24,9 +24,7 @@ def _mypy_available() -> bool:
 
 
 def _python_has_mypy() -> bool:
-    proc = subprocess.run(
-        [sys.executable, "-c", "import mypy"], capture_output=True, check=False
-    )
+    proc = subprocess.run([sys.executable, "-c", "import mypy"], capture_output=True, check=False)
     return proc.returncode == 0
 
 
@@ -63,8 +61,7 @@ def test_mypy_warn_unreachable_fires_on_removed_arm(tmp_path: Path) -> None:
     # brittle to that phrase so a refactor renames everything atomically.
     target = "case IndexerError():"
     assert target in src, (
-        f"expected production module to contain {target!r} — refactor "
-        "should update this test"
+        f"expected production module to contain {target!r} — refactor should update this test"
     )
     # Delete the entire case-arm block (case header + indented body until
     # next dedent or function end). Implement as a line-scoped excision so
