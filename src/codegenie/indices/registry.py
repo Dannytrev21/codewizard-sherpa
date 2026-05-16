@@ -47,10 +47,21 @@ from typing import TYPE_CHECKING
 import structlog
 
 from codegenie.errors import FreshnessRegistryError
-from codegenie.types.identifiers import IndexName
 
 if TYPE_CHECKING:
     from codegenie.indices.freshness import IndexFreshness
+
+    # ``IndexName`` is a ``NewType("IndexName", str)`` — identity-to-``str`` at
+    # runtime, so we never need the symbol at runtime in this module. Pulling
+    # it in eagerly would trip the import cycle that crystallizes once
+    # ``codegenie.probes.__init__`` transitively triggers a Phase 2 layer-B
+    # probe whose own imports come back through this very module:
+    #     types.identifiers → probes.node_build_system → probes/__init__
+    #     → probes.layer_b.index_health → indices.registry (mid-load) → BOOM
+    # Type-checking-only import keeps the cycle broken without losing
+    # nominal typing (mypy still treats ``IndexName`` as distinct from
+    # ``str`` under ``--strict``).
+    from codegenie.types.identifiers import IndexName
 
 # JSONValue forward-reference is intentionally lenient. See module docstring.
 FreshnessCheck = Callable[[dict[str, object], str], "IndexFreshness"]
@@ -161,6 +172,28 @@ class FreshnessRegistry:
         is the right place to catch (Phase 0 coordinator-isolation precedent).
         """
         return {name: check(slices.get(name, {}), head) for name, check in self._checks.items()}
+
+    def dispatch_one(
+        self,
+        name: IndexName,
+        slices: dict[IndexName, dict[str, object]],
+        head: str,
+    ) -> IndexFreshness:
+        """Invoke a single registered check by name; return its freshness.
+
+        Used by ``IndexHealthProbe`` (S4-01, AC-8) as the per-name fallback
+        when :meth:`dispatch_all` raises — the call site wraps each
+        invocation in its own ``try`` so one misbehaving check cannot poison
+        the whole map. Exceptions from the underlying check still propagate
+        unchanged (the **caller** is responsible for wrapping); this method
+        is mechanically the same single-name lookup ``dispatch_all`` performs
+        per-iteration, exposed as a public surface so the failure-isolation
+        site at S4-01 does not need to reach into ``_checks`` directly.
+
+        Added in S4-01 (additive). No existing callers of
+        :meth:`dispatch_all` are affected.
+        """
+        return self._checks[name](slices.get(name, {}), head)
 
     def unregister_for_tests(self, index_name: IndexName) -> None:
         """**Test-only** convenience for cleaning the module-level singleton.

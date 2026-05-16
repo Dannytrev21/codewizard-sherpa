@@ -23,16 +23,20 @@ from codegenie.probes import (
     registry,
     test_inventory,
 )
-from codegenie.probes.registry import default_registry
+from codegenie.probes.layer_b import index_health  # noqa: F401 — S4-01 registration
 
 __all__ = [
     "base",
     "ci",
     "default_registry",
     "deployment",
+    "index_health",
     "language_detection",
     "node_build_system",
     "node_manifest",
     "registry",
     "test_inventory",
 ]
+
+# Imported here so the public-import expression in the loader stays additive.
+from codegenie.probes.registry import default_registry  # noqa: E402 — see above

@@ -114,10 +114,11 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
     envelope = _load_envelope(repo)
     actual = set(envelope["probes"].keys())
 
-    # The three Node-only probes are filter-absent; ``language_detection``
-    # / ``ci`` / ``deployment`` (``applies_to_languages = ["*"]``) ran
-    # and produced (possibly empty) slices.
-    expected = {"language_detection", "ci", "deployment"}
+    # The three Node-only probes are filter-absent; the universal probes
+    # (``applies_to_languages = ["*"]``) ran and produced (possibly empty)
+    # slices: ``language_detection`` / ``ci`` / ``deployment`` and (Phase 2
+    # S4-01) ``index_health`` — the load-bearing freshness probe.
+    expected = {"language_detection", "ci", "deployment", "index_health"}
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "
         f"actual={sorted(actual)}, expected={sorted(expected)}"

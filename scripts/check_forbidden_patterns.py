@@ -81,6 +81,29 @@ def _is_under_phase2_banned_package(path: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 S4-01 — mtime ban scoped to ``probes/layer_b/index_health.py``
+# ---------------------------------------------------------------------------
+
+
+def _is_index_health_module(path: Path) -> bool:
+    """Return True iff *path* is the load-bearing ``index_health.py`` module.
+
+    The ``IndexHealthProbe`` observes a *moving* fact (HEAD vs.
+    last_indexed); caching that on filesystem mtime is "the same bug as
+    caching ``Date.now()``" — see the module docstring + S4-01 story.
+    A future contributor proposing "let's cache B2 for performance" trips
+    this rule and gets redirected.
+    """
+    parts = path.parts
+    try:
+        idx = parts.index("codegenie")
+    except ValueError:
+        return False
+    tail = parts[idx:]
+    return tail[-3:] == ("probes", "layer_b", "index_health.py")
+
+
+# ---------------------------------------------------------------------------
 # Rules
 # ---------------------------------------------------------------------------
 
@@ -155,6 +178,39 @@ _RULES: list[Rule] = [
         label="__import__(",
         pattern=re.compile(r"\b__import__\("),
         advice="ADR-0012: __import__ enables dynamic import-based escapes.",
+    ),
+    # Phase 2 S4-01 — mtime ban scoped to ``probes/layer_b/index_health.py``.
+    # B2's ``cache_strategy="none"`` discipline is load-bearing — caching a
+    # *moving* fact (HEAD vs. last_indexed) is "the same bug as caching
+    # ``Date.now()``". A contributor proposing performance caching gets
+    # redirected by failing here.
+    Rule(
+        label="os.path.getmtime (index_health.py)",
+        pattern=re.compile(r"\bos\.path\.getmtime\("),
+        advice=(
+            "02-S4-01 AC-2: mtime is not a freshness signal. B2 observes a "
+            "moving fact (HEAD vs last_indexed); cache_strategy='none' is "
+            "load-bearing."
+        ),
+        applies_when=_is_index_health_module,
+    ),
+    Rule(
+        label="Path.stat().st_mtime (index_health.py)",
+        pattern=re.compile(r"\.stat\(\)\.st_mtime\b"),
+        advice="02-S4-01 AC-2: mtime is not a freshness signal in B2.",
+        applies_when=_is_index_health_module,
+    ),
+    Rule(
+        label="os.stat(...).st_mtime (index_health.py)",
+        pattern=re.compile(r"\bos\.stat\([^)]*\)\.st_mtime\b"),
+        advice="02-S4-01 AC-2: mtime is not a freshness signal in B2.",
+        applies_when=_is_index_health_module,
+    ),
+    Rule(
+        label="lstat(...).st_mtime (index_health.py)",
+        pattern=re.compile(r"\blstat\([^)]*\)\.st_mtime\b"),
+        advice="02-S4-01 AC-2: mtime is not a freshness signal in B2.",
+        applies_when=_is_index_health_module,
     ),
     # Phase 2 — model_construct ban (02-ADR-0010 + production ADR-0033)
     Rule(
