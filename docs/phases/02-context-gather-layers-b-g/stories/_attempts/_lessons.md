@@ -126,7 +126,7 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 
 ## L21 — Adding a new runtime dep is a 4-file commit, not a 1-file commit
 - **Source:** S1-10 (`networkx` joined the runtime closure).
-- **Symptom:** Adding `networkx>=3.2` to `[project].dependencies` broke three tests at once: `test_runtime_dependencies_are_exactly_adr_0006_closure` (pins the closure as a frozenset), `tests/unit/depgraph/test_registry.py` strict-mypy run (`networkx` lacks `py.typed`), and `uv.lock`-parity (L1). 
+- **Symptom:** Adding `networkx>=3.2` to `[project].dependencies` broke three tests at once: `test_runtime_dependencies_are_exactly_adr_0006_closure` (pins the closure as a frozenset), `tests/unit/depgraph/test_registry.py` strict-mypy run (`networkx` lacks `py.typed`), and `uv.lock`-parity (L1).
 - **Fix:** Land all four edits in the same commit: (a) `pyproject.toml [project].dependencies` widening, (b) `tests/unit/test_packaging.py RUNTIME_DEPS` frozenset widening with a rationale comment, (c) `[[tool.mypy.overrides]]` entry with `ignore_missing_imports = true` for packages without `py.typed`, (d) `uv lock` regen.
 - **Why it matters:** Phase 2's remaining stories add several runtime deps (S4-03 grammars lockfile, S4-04 tree-sitter, S5-04 SBOM/CVE scanners). Each will trip the same quadruple. The frozenset-pin in `test_packaging.py` IS the ADR-0006 fence — widen it explicitly with a one-line rationale comment, not silently.
 
