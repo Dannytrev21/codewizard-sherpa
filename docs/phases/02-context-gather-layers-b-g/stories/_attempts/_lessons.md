@@ -177,3 +177,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `IsADirectoryError` bubbled out of `_read_frontmatter_bytes` because the loader only caught `OSError` on `os.open`. On macOS, opening a directory read-only succeeds; the failure surfaces at the first `os.read`.
 - **Fix:** Wrap the read+hash block in a second `try/except OSError`, translating to `IoFailure(errno_name=...)` — matches the open-time discipline. Two-layer handler shape is what AC-20 actually pins.
 - **Why it matters:** Catching only at the open call leaks every read-time errno (TOCTOU file disappearance, EISDIR, EACCES, partial-read EIO) as an unhandled exception, breaking the partial-success invariant. Phase-2 multi-file loaders MUST handle BOTH open- and read-time OS errors; one without the other is a false sense of robustness.
+
+## L30 — Pydantic v2 discriminator-tag failures locate at the list slot, not `kind`
+- **Source:** S2-02 (`ConventionsCatalogLoader._classify_validation_error`).
+- **Symptom:** AC-8 (`unknown pattern kind`) and AC-13b (`partial success under mixed-quality catalogs`) misclassified the failure as `SchemaError` instead of `UnknownPatternType` because the row's `loc` did not end in `"kind"`. Pydantic v2 reports `loc=['rules', 0]` (or `[<idx>, '<variant_kind>']`) with `type='union_tag_invalid'` and the offending tag in `ctx.tag`.
+- **Fix:** Filter rows by `type ∈ {union_tag_invalid, union_tag_not_found}` (independent of `loc`); extract the tag from `ctx.tag` (fallback: `input['kind']` when `ctx` is absent). Document the Pydantic v2 contract in a comment — the introspection shape has been revised twice and is likely to drift again.
+- **Why it matters:** Every Phase-2+ loader that wraps a Pydantic discriminated union and emits typed per-file errors needs the same classifier — getting the `loc` semantics wrong silently demotes every tag failure to a generic schema error and breaks operator triage.
+
+## L31 — `ValidationError.errors()` may carry non-JSON-serialisable values from `model_validator` failures
+- **Source:** S2-02 (`SchemaError.details` serialization through structlog).
+- **Symptom:** `pydantic_core.PydanticSerializationError: Unable to serialize unknown type: <class 'ValueError'>` raised from `_logger.warning(_EVENT_LOAD_FAILED, **err.model_dump(mode="json"))` when a regex `model_validator(mode="after")` re-raised `re.error` as `ValueError`. Pydantic stuffed the `ValueError` *object* into `errors()[i].ctx.error`; storing the row directly let construction succeed but blew up at dump.
+- **Fix:** Round-trip the rows through `exc.json()` (Pydantic's JSON-safe serializer) and `json.loads` back to Python — one line, alias-resistant. The resulting `list[dict[str, object]]` carries only str/int/list/dict primitives.
+- **Why it matters:** Every Pydantic discriminated-union loader that surfaces `ValidationError.errors()` to a logger or wire format must apply the same round-trip. Storing the raw rows is a latent bomb that detonates the first time a downstream `model_dump(mode="json")` is called.
+
+## L32 — Pydantic `frozen=True` + per-instance memo cache wants `PrivateAttr`
+- **Source:** S2-02 (`Catalog._memo` for `apply()` idempotency under repeated calls — AC-12).
+- **Symptom:** A `_memo: dict[...]` as a regular field broke `extra="forbid"`-style serialization and forced `arbitrary_types_allowed=True`; `object.__setattr__` from inside `apply` was structurally noisy and tripped frozen-write warnings.
+- **Fix:** Declare `_memo: dict[int, list[ConventionResult]] = PrivateAttr(default_factory=dict)`. `PrivateAttr` is excluded from serialization, equality, and the frozen write-block; mutating the dict in place (`self._memo[key] = ...`) is allowed by design. Key on `id(repo)` for per-snapshot memoization; a fresh snapshot wires a fresh evaluation.
+- **Why it matters:** Every Phase-2+ pure-functional Pydantic model that needs per-instance memoization (catalog evaluators, future planner pre-computation caches) should reach for `PrivateAttr` first.

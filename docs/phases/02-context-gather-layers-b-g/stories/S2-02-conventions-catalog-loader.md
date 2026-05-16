@@ -1,7 +1,7 @@
 # Story S2-02 — `ConventionsCatalogLoader` with discriminated-union pattern types
 
 **Step:** Step 2 — Plant kernel-side loaders (`SkillsLoader`, `ConventionsCatalogLoader`) and reference TCCM
-**Status:** Ready
+**Status:** Done (GREEN 2026-05-16, all ACs satisfied — see [`_attempts/S2-02.md`](_attempts/S2-02.md))
 **Effort:** M
 **Depends on:** S1-04 (`TCCM` model + loader establishes the `Result[T, E]` + `safe_yaml`-chokepoint + Pydantic discriminated-union pattern this story repeats). Sibling-and-precedent: S2-01 (`SkillsLoader`) — same multi-file partial-success loader shape; this story reuses the `SkillsLoadError`-style `reason: Literal[…]` discriminator + `LoadOutcome` + `per_file_errors` convention.
 **ADRs honored:** 02-ADR-0007 (kernel-side scaffolding only — no plugin loader), Phase 1 ADR-0006 (`safe_yaml` chokepoint preserved), Phase 1 ADR-0008 (in-process parse caps + `O_NOFOLLOW`), Phase 0 ADR-0007 (probe-contract surface frozen — `RepoSnapshot` extension policy, see Validation notes B1), production ADR-0033 §1, §3–4 (newtypes for every domain primitive — `ConventionId`, `RegexPatternSource`; make-illegal-states-unrepresentable — every pattern type a discriminated-union variant; one `match` per type with `assert_never` on unreachable)

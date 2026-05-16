@@ -32,8 +32,17 @@ ProbeId = NewType("ProbeId", str)
 # newtype so the kernel-side ``Skill.applies_to_languages`` is typed against
 # accidental ``TaskClassId`` substitution (ADR-0033 §1 primitive-obsession).
 Language = NewType("Language", str)
+# Convention identifier — landed alongside S2-02's ``ConventionsCatalogLoader``
+# (which carries ``ConventionRule*.id: ConventionId`` and propagates the
+# id into every ``Pass`` / ``Fail`` / ``NotApplicable`` result). Five Phase-2+
+# consumers (loader.py, model.py, catalog.py, the future Layer-D
+# ``ConventionsProbe``, Layer-E stubs) import from this canonical home;
+# AST source-scans under ``src/codegenie/conventions/`` forbid local
+# ``NewType("ConventionId", ...)`` redefinition (S2-02 AC-1a / B2).
+ConventionId = NewType("ConventionId", str)
 
 __all__ = [
+    "ConventionId",
     "IndexId",
     "IndexName",
     "Language",
