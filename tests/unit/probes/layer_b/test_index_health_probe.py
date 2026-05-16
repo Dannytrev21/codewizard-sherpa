@@ -185,7 +185,7 @@ def test_scip_freshness_fresh_path() -> None:
     }
     result = scip_freshness(slice_, HEAD_SHA)
     assert isinstance(result, Fresh)
-    assert result.indexed_at == dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    assert result.indexed_at == dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
 
 
 def test_scip_freshness_commits_behind_path_pure_default() -> None:
@@ -346,7 +346,7 @@ async def test_freshness_construction_failure_is_typed(
 
     @reg.register(scip)
     def good_scip(slice_: dict[str, object], head: str) -> IndexFreshness:
-        return Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc))
+        return Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC))
 
     @reg.register(broken)
     def bad(slice_: dict[str, object], head: str) -> IndexFreshness:
@@ -399,7 +399,7 @@ async def test_head_unresolvable_path(
 
     @reg.register(scip)
     def scip_check(slice_: dict[str, object], head: str) -> IndexFreshness:
-        return Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc))
+        return Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC))
 
     async def fake_run_allowlisted(
         argv: list[str], *, cwd: Path, timeout_s: float, env_extra: Any = None
@@ -541,7 +541,7 @@ async def test_no_sources_registered_path(
 @pytest.mark.parametrize(
     "freshness, expected",
     [
-        (Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)), "high"),
+        (Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC)), "high"),
         (Stale(reason=CoverageGap(files_indexed=95, files_in_repo=100)), "medium"),
         (Stale(reason=CoverageGap(files_indexed=89, files_in_repo=100)), "low"),
         (Stale(reason=CoverageGap(files_indexed=0, files_in_repo=0)), "low"),
@@ -892,7 +892,7 @@ def test_read_raw_slices_handles_missing_dir(tmp_path: Path) -> None:
 
 
 def test_last_indexed_at_fresh() -> None:
-    fr = Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc))
+    fr = Fresh(indexed_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC))
     assert _last_indexed_at(fr) == "2026-01-01T00:00:00+00:00"
 
 
