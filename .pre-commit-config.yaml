@@ -56,6 +56,11 @@ repos:
         # tags — safe because the file is checked into version control and
         # parsed by mkdocs itself, not the gather pipeline.
         args: [--unsafe]
+        # S2-03 reference-TCCM `_invalid/` siblings are deliberately malformed
+        # fixtures — they exist to drive `TCCMLoader`'s `parse:` / `schema:` /
+        # `unknown_query_primitive:` failure paths. Checking them for valid
+        # YAML defeats the fixture.
+        exclude: '^docs/phases/02-context-gather-layers-b-g/_reference-tccm/_invalid/'
       - id: check-toml
       - id: end-of-file-fixer
       - id: trailing-whitespace
