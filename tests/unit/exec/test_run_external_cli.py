@@ -490,13 +490,25 @@ async def test_invalid_probe_name_rejected(
 
 
 def test_only_exec_module_calls_create_subprocess_exec() -> None:
-    """AC-9: no new spawn callsite outside src/codegenie/exec.py."""
+    """AC-9: no new spawn callsite outside the ``codegenie.exec`` package.
+
+    Phase 2 / S4-03 promoted ``codegenie.exec`` from a module to a package
+    (``src/codegenie/exec/__init__.py`` + ``src/codegenie/exec/tool_versions.py``)
+    so the additional ``tool_versions`` submodule could live under the same
+    namespace without expanding the spawn-callsite surface.
+    """
     src_root = Path(__file__).resolve().parents[3] / "src" / "codegenie"
+    exec_pkg = src_root / "exec"
     offenders: list[Path] = []
     for py in src_root.rglob("*.py"):
-        if py.name == "exec.py":
-            continue
+        try:
+            py.relative_to(exec_pkg)
+            continue  # any file inside the exec package is exempt
+        except ValueError:
+            pass
         text = py.read_text()
         if "asyncio.create_subprocess_exec" in text:
             offenders.append(py)
-    assert offenders == [], f"asyncio.create_subprocess_exec found outside exec.py in: {offenders}"
+    assert offenders == [], (
+        f"asyncio.create_subprocess_exec found outside codegenie.exec package in: {offenders}"
+    )

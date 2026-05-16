@@ -23,7 +23,10 @@ from codegenie.probes import (
     registry,
     test_inventory,
 )
-from codegenie.probes.layer_b import index_health  # noqa: F401 — S4-01 registration
+from codegenie.probes.layer_b import (
+    index_health,  # noqa: F401 — S4-01 registration
+    scip_index,  # noqa: F401 — S4-03 registration
+)
 
 __all__ = [
     "base",
@@ -35,6 +38,7 @@ __all__ = [
     "node_build_system",
     "node_manifest",
     "registry",
+    "scip_index",
     "test_inventory",
 ]
 

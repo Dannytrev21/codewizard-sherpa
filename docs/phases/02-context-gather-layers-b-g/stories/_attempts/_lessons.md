@@ -255,3 +255,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `@pytest.mark.timeout(10)` silently does nothing if `pytest-timeout` isn't installed (it's not a registered marker; the decorator becomes a no-op via the `unknown-marker` strict path).
 - **Fix:** Start `time.perf_counter()` at the test entry, assert `(time.perf_counter() - started) < BUDGET` at the end. The story permits the substitution explicitly; carry forward to S5-05/S6-07 etc. Don't add `pytest-timeout` as a dep without an ADR — the existing `--cov-fail-under` + adversarial budgets cover the same surface.
 - **Why it matters:** Every future adversarial in `tests/adv/phase02/` that pins a walltime AC will face this choice.
+
+## L17 — `content_hash_of_inputs` hashes `(path, st_size)`, not file contents
+- **Source:** S4-03 (T-06 cache-key sensitivity test).
+- **Symptom:** A test that mutates `main.ts` to a different string of the *same length* expects the cache key to change; it doesn't. `src/codegenie/hashing.py::content_hash_of_inputs` hashes the manifest of `(str(path), st_size)` tuples — content-addressed *fingerprinting*, not full content. The same-size-edit-doesn't-invalidate behavior is the documented ADR-0006 §Tradeoffs row 4 finding, pinned by an xfail in `tests/unit/test_cache_invalidation_scope.py`.
+- **Fix:** Test cache-key sensitivity by changing the *path set* (add or remove a file) or the file *size* (longer/shorter content), not by mutating content to the same length.
+- **Why it matters:** S5-04 (SBOM/CVE probes), S5-05 (runtime-trace freshness), S6-08 (semgrep coverage-mapping) will all write tests that look like "change the input, assert cache invalidates". Pre-frame the test to mutate path or size, not just content.
+
+## L18 — Promoting `codegenie.exec` from module to package
+- **Source:** S4-03 (AC-19 required `codegenie.exec.tool_versions` as a sibling import).
+- **Symptom:** Adding a sibling like `codegenie.exec.tool_versions` requires `codegenie/exec/` to be a package. A `git mv src/codegenie/exec.py src/codegenie/exec/__init__.py` works but the test pinning "only `exec.py` calls `asyncio.create_subprocess_exec`" needs to be relaxed to "any file inside the `exec/` package is exempt".
+- **Fix:** When promoting any module-to-package, grep for tests that reference the filename literally and adapt them to package-scoped checks.
+- **Why it matters:** Future kernel extractions (S4-05 `depgraph/`, S5-04 sbom helpers) will face the same trade. The structural test must not pin the literal `.py` filename.
+
+## L19 — On a typed-failure slice, set `files_in_repo=0` so B2's `scip_freshness` reads IndexerError, not CoverageGap
+- **Source:** S4-03 (AC-6 / AC-7 / AC-8 → S4-01 hand-off).
+- **Symptom:** `scip_freshness` evaluates `(d) files_indexed < files_in_repo` BEFORE `(e) indexer_errors > 0` (see `src/codegenie/probes/layer_b/index_health.py:190-196`). A failure slice with `(files_indexed=0, files_in_repo=<actual>)` surfaces as `Stale(CoverageGap(...))` — masking the true "indexer ran but failed" signal.
+- **Fix:** On every probe-side failure path (timeout / non-zero exit / tool-missing / raw-dir unwritable), set `files_in_repo=0` so the coverage check passes and the indexer-errors check fires. Document at the deletion site.
+- **Why it matters:** S5-05 (runtime_trace), S6-08 (semgrep/gitleaks/conventions sidecars) all write the same kind of failure slice. Follow this pattern verbatim or they'll mis-signal CoverageGap on their own typed errors.

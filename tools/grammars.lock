@@ -1,0 +1,10 @@
+schema_version: 1
+grammars:
+  - language: javascript
+    version: "0.20.4"
+    file: tools/grammars/javascript.so
+    blake3: dfbfe873b12c409ca11780e72f07f39e9a54a4c7ea3355dc052ebb60174703c3
+  - language: typescript
+    version: "0.20.6"
+    file: tools/grammars/typescript.so
+    blake3: 975bebcecef3cdcfa4d34eb0b2cb4bf0935f77e580b88a3c5ce1d321297130e6

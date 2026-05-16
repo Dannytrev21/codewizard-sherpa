@@ -1,7 +1,34 @@
 # Story S4-03 — `ScipIndexProbe` via `scip-typescript` + grammars-lock infrastructure
 
+**Status:** Done
+**Completed:** 2026-05-16
+**Attempts:** 1
+**Evidence:**
+- Files created:
+  `src/codegenie/exec/__init__.py` (promoted from module),
+  `src/codegenie/exec/tool_versions.py`,
+  `src/codegenie/grammars/{__init__,lock}.py`,
+  `src/codegenie/probes/layer_b/{scip_index,scip_slice}.py`,
+  `tests/unit/{exec/test_tool_versions,grammars/test_lock,tools/test_grammars_lock,probes/layer_b/test_scip_index}.py`,
+  `tools/grammars.lock`, `tools/regenerate_grammars_lock.sh`,
+  `tools/grammars/{typescript,javascript}.so` (placeholders — see `tools/grammars/README.md`),
+  `tools/grammars/README.md`, `.gitattributes`.
+- Files edited (additive):
+  `src/codegenie/probes/__init__.py` (import `scip_index`),
+  `tests/unit/exec/test_run_external_cli.py` (S4-03 promoted exec.py to a package — test loosened to "anywhere inside the exec package is exempt").
+- Tests (40 added, all green):
+  `tests/unit/probes/layer_b/test_scip_index.py` (20),
+  `tests/unit/exec/test_tool_versions.py` (6),
+  `tests/unit/grammars/test_lock.py` (9),
+  `tests/unit/tools/test_grammars_lock.py` (5).
+- Full suite: 2097 passed, 5 skipped, 1 xfail, 2 pre-existing env-only failures
+  (`test_lint_imports_canary` — `lint-imports` console script not in local `.venv`;
+  passes in CI per S1-05 wiring).
+- Tooling: `ruff check`, `ruff format --check`, `mypy --strict src/`, `pre-commit run`,
+  `shellcheck tools/regenerate_grammars_lock.sh` all green.
+
 **Step:** Step 4 — Ship `IndexHealthProbe` (B2) + Layer B structural probes
-**Status:** Ready · VALIDATED (HARDENED — see `_validation/S4-03-scip-index-probe.md`)
+**Story status (pre-execution):** Ready · VALIDATED (HARDENED — see `_validation/S4-03-scip-index-probe.md`)
 **Effort:** M
 **Depends on:** S1-07 (`run_external_cli` on disk, `ALLOWED_BINARIES` extended with `scip-typescript` + `tree-sitter` + nine others), S1-08 (`@register_probe(heaviness="heavy")` registry annotation; coordinator dispatches heavy probes first), S4-01 (B2's `read_raw_slices` reads `<output_dir>/raw/scip.json` — this story produces that file)
 
