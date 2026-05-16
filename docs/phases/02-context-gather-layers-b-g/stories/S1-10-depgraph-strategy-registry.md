@@ -1,7 +1,7 @@
 # Story S1-10 — `codegenie.depgraph` package + `@register_dep_graph_strategy` registry
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready (HARDENED by phase-story-validator 2026-05-15)
+**Status:** Done (GREEN 2026-05-15, all 16 ACs satisfied — see `_attempts/S1-10.md`)
 **Effort:** S
 **Depends on:** S1-05
 **ADRs honored:** production ADR-0033 (typed identifiers), 02-ADR-0006 §Decisions noted (registry symmetry)

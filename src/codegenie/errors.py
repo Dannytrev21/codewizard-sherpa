@@ -52,6 +52,8 @@ __all__ = [
     "FreshnessRegistryError",
     # Phase 2 (Layers B–G) — S1-04.
     "TCCMLoadError",
+    # Phase 2 (Layers B–G) — S1-10.
+    "DepGraphRegistryError",
 ]
 
 
@@ -164,3 +166,18 @@ class TCCMLoadError(CodegenieError):
     ``"unknown_query_primitive: …"``. Marker only: no ``__init__``, no
     class state. Consumers parse the prefix; the structured reason lives at
     the catch site (mirrors ``MalformedYAMLError`` / ``CatalogLoadError``)."""
+
+
+class DepGraphRegistryError(CodegenieError):
+    """Raised by ``codegenie.depgraph.registry`` (S1-10) on duplicate
+    ``register_dep_graph_strategy`` decoration (hard fail at import time —
+    mirrors ``FreshnessRegistryError``) and on
+    :meth:`DepGraphRegistry.dispatch` for an unregistered
+    :data:`PackageManager` ecosystem (the structural-prefix
+    ``no_strategy_for_ecosystem: <repr>`` lives in ``args[0]``; S4-05's
+    ``DepGraphProbe`` translates the prefix to a low-confidence slice).
+
+    The decorator-application token (``@`` + symbol) is intentionally
+    omitted from this docstring to keep the AC-6 source scan honest — the
+    only file in ``src/codegenie/`` that contains the decorator-applied
+    token is ``depgraph/registry.py`` itself."""

@@ -38,6 +38,9 @@ PHASE2_NEW = {
     "FreshnessRegistryError",
     # S1-04 adds the TCCM-loader marker. Reason prefix carried in args[0].
     "TCCMLoadError",
+    # S1-10 adds the depgraph-registry marker. Duplicate/unknown ecosystem;
+    # ``no_strategy_for_ecosystem: <repr>`` prefix on dispatch.
+    "DepGraphRegistryError",
 }
 
 EXPECTED_SUBCLASSES = (
@@ -76,6 +79,8 @@ DOCUMENTED_MODULE_SLUGS = {
     "indices",
     # Phase 2 additions (S1-04) — TCCM loader slug.
     "tccm",
+    # Phase 2 additions (S1-10) — depgraph strategy registry slug.
+    "depgraph",
 }
 MARKER_ALLOWED_DICT_KEYS = {
     "__module__",

@@ -123,3 +123,27 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** `ImportError: cannot import name 'PackageManager' from partially initialized module 'codegenie.probes.node_build_system' (most likely due to a circular import)`. Chain: `codegenie.exec` → `codegenie.types.identifiers` (re-exports `PackageManager`) → `codegenie.probes.node_build_system` (imports `codegenie.exec`).
 - **Fix:** Put the import under `TYPE_CHECKING`. `from __future__ import annotations` is already in `exec.py`, so the deferred annotation is a string at runtime — no actual lookup happens. Only valid when the imported name is used **only in annotations** (`probe_name: ProbeId`); if you ever need to *call* `ProbeId(...)` inside `exec.py`, this trick fails and you must restructure.
 - **Why it matters:** Any future `exec.py` extension that wants strict-mypy on a kernel-tier newtype identifier (Phase 2 S5-02's `RuntimeTraceProbe`, Phase 5's microVM wrapper) needs the same `TYPE_CHECKING` pattern. The S1-05 newtype family lives in a module that itself transitively pulls `exec.py`; this is structural.
+
+## L21 — Adding a new runtime dep is a 4-file commit, not a 1-file commit
+- **Source:** S1-10 (`networkx` joined the runtime closure).
+- **Symptom:** Adding `networkx>=3.2` to `[project].dependencies` broke three tests at once: `test_runtime_dependencies_are_exactly_adr_0006_closure` (pins the closure as a frozenset), `tests/unit/depgraph/test_registry.py` strict-mypy run (`networkx` lacks `py.typed`), and `uv.lock`-parity (L1). 
+- **Fix:** Land all four edits in the same commit: (a) `pyproject.toml [project].dependencies` widening, (b) `tests/unit/test_packaging.py RUNTIME_DEPS` frozenset widening with a rationale comment, (c) `[[tool.mypy.overrides]]` entry with `ignore_missing_imports = true` for packages without `py.typed`, (d) `uv lock` regen.
+- **Why it matters:** Phase 2's remaining stories add several runtime deps (S4-03 grammars lockfile, S4-04 tree-sitter, S5-04 SBOM/CVE scanners). Each will trip the same quadruple. The frozenset-pin in `test_packaging.py` IS the ADR-0006 fence — widen it explicitly with a one-line rationale comment, not silently.
+
+## L22 — Marker docstrings can't contain decorator-application tokens guarded by a zero-registration AC
+- **Source:** S1-10 (`@register_dep_graph_strategy` in `DepGraphRegistryError` docstring tripped AC-6's source scan).
+- **Symptom:** `test_zero_strategies_registered_in_phase2` flagged `src/codegenie/errors.py` as an offender because its marker docstring described the registry by writing `@register_foo`. The scan is a literal substring search by design (mutation-resistant); the false-positive came from documentation, not code.
+- **Fix:** Phrase docstrings around the bare function name (e.g., `register_dep_graph_strategy`) without the `@`. Add an inline note explaining the omission so a future doc-edit pass doesn't "fix" it back.
+- **Why it matters:** Every Phase-2 marker whose registry has a zero-registration-in-current-phase AC (S2-01 `SkillsLoadError` + `@register_skill`, S6-04 external-docs loader, etc.) will hit the same trap if the docstring includes `@`. Use the bare name; the prose still makes sense.
+
+## L23 — `cast(<Literal alias>, "value")` is redundant under mypy --strict
+- **Source:** S1-10 (test fixtures for `PackageManager` Literal binding).
+- **Symptom:** `cast(PackageManager, "pnpm")` raised `redundant-cast` because string literals narrow directly to `Literal["pnpm", ...]` once the LHS has an annotation.
+- **Fix:** Use `NAME: PackageManager = "pnpm"` — direct annotation, no cast. The narrow-from-literal is unambiguous under `--strict`.
+- **Why it matters:** Any Phase-2 test that pins `Literal["..."]` values (S2-01 `SkillId`-as-Literal, S4-03 grammar-name Literals, etc.) will trip the same redundant-cast lint. The story TDD plans inherited the `cast()` pattern defensively; mypy `--strict` is stricter than the plan assumed.
+
+## L24 — `list[T]` is invariant; copy strategy signatures from the alias exactly
+- **Source:** S1-10 (`DepGraphStrategy = Callable[[ProbeContext, list[Mapping[str, Any]]], DiGraph]`; tests wrote strategies with `list[dict[str, object]]`).
+- **Symptom:** `Argument 1 has incompatible type "Callable[..., list[dict[str, object]], Any]"; expected "Callable[..., list[Mapping[str, Any]], Any]"`. `list` is invariant — `list[dict[str, object]]` is NOT a subtype of `list[Mapping[str, Any]]` even though `dict[str, object]` is a subtype of `Mapping[str, Any]`.
+- **Fix:** Match the alias' inner type exactly. The story TDD plan's `list[dict[str, object]]` is a structural superset but mypy strict rejects it. For test fixtures, prefer `list[Mapping[str, Any]] = [{"name": "@org/a"}]` — Python doesn't care, mypy does.
+- **Why it matters:** Every Phase-2 registry/strategy alias that uses `list[T]` (S4-05 dep graph strategy consumer; future S5-02 `RuntimeTraceProbe` runner args) will hit the same trap. Use `Sequence[T]` if you want covariance; use `list[T]` and copy the inner type exactly if you don't.

@@ -32,6 +32,13 @@ dependencies = [
   "pydantic>=2",
   "blake3",
   "structlog",
+  # S1-10: ``codegenie.depgraph`` ships the ``DepGraphStrategy`` alias whose
+  # return type is ``networkx.DiGraph``; the strategy registry imports
+  # ``networkx`` at runtime (TYPE_CHECKING + dispatch). The Phase-3 DepGraphProbe
+  # (S4-05) serialises via ``nx.node_link_data``. Stays in the runtime closure
+  # (not [project.optional-dependencies]) because the fence (ADR-0002) reads
+  # only ``[project].dependencies``; the gather pipeline imports it eagerly.
+  "networkx>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -160,6 +167,18 @@ disable_error_code = ["empty-body"]
 # one declaration so `_yarn._pyarn_parse` does not need a brittle
 # per-line ignore that flips on every install-state toggle.
 module = ["pyarn", "pyarn.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# S1-10: `networkx` 3.x does not yet ship a `py.typed` marker (the stubs
+# bundled with the library use `# type: ignore` patterns internally rather
+# than a public typed surface). `ignore_missing_imports` keeps the
+# `codegenie.depgraph` strategy alias importable under `mypy --strict`
+# without polluting the registry module with per-line ignores. The
+# `DepGraphStrategy` alias still carries the structural contract
+# (`Callable[[ProbeContext, list[Mapping[str, Any]]], DiGraph]`) at the
+# Python type level.
+module = ["networkx", "networkx.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -8,7 +8,21 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 
 LLM_SDKS = frozenset({"anthropic", "langgraph", "openai", "langchain", "transformers"})
-RUNTIME_DEPS = frozenset({"click", "pyyaml", "jsonschema", "pydantic", "blake3", "structlog"})
+RUNTIME_DEPS = frozenset(
+    {
+        "click",
+        "pyyaml",
+        "jsonschema",
+        "pydantic",
+        "blake3",
+        "structlog",
+        # S1-10 adds `networkx` to the runtime closure — ``DepGraphStrategy``
+        # (codegenie.depgraph.registry) returns ``networkx.DiGraph`` and the
+        # registry imports the module at runtime. ADR-0002 fence still
+        # excludes LLM SDKs; networkx is not an LLM SDK.
+        "networkx",
+    }
+)
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
 DEV_FLOOR = frozenset(
     {
