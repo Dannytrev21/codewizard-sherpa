@@ -104,7 +104,24 @@ def test_warm_path_memo_hits_once_across_two_probes(
     assert build_system["warnings"] == [], build_system
 
     # assert: no probe.failure events emitted by any of the Layer-A probes.
+    # Every probe that calls ``ctx.parsed_manifest(package.json)`` belongs
+    # here. Adding a new such probe must extend the tuple; the memo
+    # invariant ``miss == 1 and hit == len(consumers) - 1`` is the contract
+    # the S1-07 memo is meant to keep, so the test fails loud on omission.
     package_json_consumers = (
+        "language_detection",
+        "node_build_system",
+        "node_manifest",
+        "test_inventory",
+        "dep_graph",  # S4-05 — re-detects ``package_manager`` inline.
+    )
+    # The confidence-high assertion is scoped to probes that ARE expected to
+    # emit ``confidence=high`` on the warm-path fixture. ``dep_graph`` is
+    # deliberately not in this subset: with zero strategies registered (the
+    # Phase 2 reality), it emits ``confidence=low``,
+    # ``reason="no_strategy_for_ecosystem"`` — that's the architect's
+    # Phase-3 hand-off gate (see story S4-05 AC-13), not a regression.
+    high_confidence_consumers = (
         "language_detection",
         "node_build_system",
         "node_manifest",
@@ -122,7 +139,7 @@ def test_warm_path_memo_hits_once_across_two_probes(
     # the ``confidence`` field — see ``language_detection.py:480`` and
     # ``node_build_system.py:618``. ``cache_key`` is the coordinator's
     # marker; filter it out to isolate the probe-emitted event.
-    for probe_name in package_json_consumers:
+    for probe_name in high_confidence_consumers:
         probe_success = [
             e
             for e in events

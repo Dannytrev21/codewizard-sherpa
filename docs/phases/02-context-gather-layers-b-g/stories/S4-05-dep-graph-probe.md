@@ -1,7 +1,7 @@
 # Story S4-05 — `DepGraphProbe` consuming `@register_dep_graph_strategy` registry
 
 **Step:** Step 4 — Ship `IndexHealthProbe` (B2) + Layer B structural probes
-**Status:** Ready (HARDENED 2026-05-16 — see Validation notes)
+**Status:** Done (GREEN 2026-05-16 — see `_attempts/S4-05.md`)
 **Effort:** M
 **Depends on:** S1-10 (`@register_dep_graph_strategy(ecosystem: PackageManager)` decorator-registry on disk at `src/codegenie/depgraph/registry.py`; `PackageManager` is a `Literal[…]` re-exported from `codegenie.types.identifiers` — never redefined), S4-01 (`IndexHealthProbe` registered so this probe's slice can flow through B2 if a depgraph-freshness check is later added — not a hard runtime dep, but ordering rationale in the manifest)
 **ADRs honored:** [`02-ADR-0003`](../ADRs/0003-coordinator-heaviness-sort-annotation.md) (`heaviness` defaults to `"light"` — depgraph is fast O(N) graph construction; no `runs_last`), [phase-arch-design.md §"Design patterns applied"](../phase-arch-design.md) row 7 — Open/Closed via `@register_dep_graph_strategy(ecosystem: PackageManager)` (the Phase 3 seam — **zero strategies registered in Phase 2**), Phase 1 ADR-0013 (`PackageManager` Literal source of truth — `bun | pnpm | yarn-classic | yarn-berry | npm`; imported, not redefined), Phase 1 ADR-0004 (sub-schema lands in S4-07), Phase 1 ADR-0007 (warning ID pattern), [production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md) (typed discriminated-union output, no stringly-typed fallback)

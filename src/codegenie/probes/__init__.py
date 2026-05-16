@@ -24,6 +24,7 @@ from codegenie.probes import (
     test_inventory,
 )
 from codegenie.probes.layer_b import (
+    dep_graph,  # noqa: F401 — S4-05 registration
     index_health,  # noqa: F401 — S4-01 registration
     scip_index,  # noqa: F401 — S4-03 registration
 )
@@ -32,6 +33,7 @@ __all__ = [
     "base",
     "ci",
     "default_registry",
+    "dep_graph",
     "deployment",
     "index_health",
     "language_detection",
