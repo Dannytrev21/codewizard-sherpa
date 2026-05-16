@@ -219,3 +219,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** A `def _validate_fingerprints(cls, v: str) -> str` validator declared on a `list[str]` field fails mypy strict because Pydantic v2 `mode="after"` (the default) passes the post-coerced field value — the whole list — not per-element strings.
 - **Fix:** Type as `def _validate_fingerprints(cls, v: list[str]) -> list[str]` and iterate inside the validator. `isinstance(fp, str)` is defensive against non-str coercions.
 - **Why it matters:** Any future Phase-2 / Phase-3 field validator targeting a `list[T]` field (the fingerprint family expanding into RAG ingest, audit-anchor, etc.) inherits the discipline.
+
+## L33 — `import-linter` does not honor `if TYPE_CHECKING:` blocks
+- **Source:** S3-03 (`codegenie.cli` annotation referencing `RedactedSlice`).
+- **Symptom:** `lint-imports` fails the `codegenie.cli must not top-level import heavy modules` contract with `codegenie.cli -> codegenie.output.redacted_slice -> pydantic` even though the only import path in `cli.py` is inside an `if TYPE_CHECKING:` block. `grimp` (import-linter's analyzer) walks the AST and records every import statement regardless of runtime guard.
+- **Fix:** Add `ignore_imports = ["codegenie.cli -> codegenie.output.redacted_slice"]` to the contract (with a comment naming the `TYPE_CHECKING`-only justification). The runtime cold-start property (`import codegenie.cli` does not eagerly load pydantic) is preserved by the `TYPE_CHECKING` guard; the static whitelist is just bridging the spirit-vs-letter gap.
+- **Why it matters:** Every future Phase-2/3 story that annotates a kernel-tier module (cli, exec, errors) with a Pydantic / structlog / yaml class will hit this. The fix is structural; ripping out `TYPE_CHECKING` in favor of string-literal annotations only kicks the problem one tool downstream (ruff F821).
+
+## L34 — `typing.get_type_hints` on a `TYPE_CHECKING`-only annotation needs `localns`
+- **Source:** S3-03 (test pinning `_seam_*_envelope` annotation propagation).
+- **Symptom:** `typing.get_type_hints(cli_mod._seam_write_envelope)` raises `NameError: name 'RedactedSlice' is not defined` because the class is imported under `if TYPE_CHECKING:` (which evaluates to `False` at runtime — see L33). PEP 563 deferred evaluation just preserves the string; resolution still needs the class visible in some namespace.
+- **Fix:** Pass `localns={"RedactedSlice": RedactedSlice}` to `get_type_hints`. The test file imports the class normally (tests have no cold-start restriction); the localns dict bridges the deferred forward reference back to the live class.
+- **Why it matters:** Any future test that asserts on the type-annotations of a kernel-tier function whose annotation comes from a `TYPE_CHECKING` import needs the same localns trick. Without it, the test passes in module-loading order quirks (sometimes works on Python 3.11 if the import happened earlier) but fails reliably on 3.13. Pass the localns dict on first cycle.
+
+## L35 — `ContextVar` is the right primitive for per-call state in a pure functional module
+- **Source:** S3-03 (`envelope_redactor` three-pass composition).
+- **Symptom:** The three pass functions in `_PASSES` share an accumulating `list[SecretFinding]` but their `Protocol`-typed signature is `dict -> dict`. Module-level mutable state breaks DP4 (pure functional core). Passing state through the Protocol breaks DP1 (mockability — the spy test monkeypatches `_PASSES` with `Mock(wraps=...)` and the wrapped originals must still see the state).
+- **Fix:** Bind state via `contextvars.ContextVar` set at the top of `_redact_envelope` and reset in the `finally`. Pure functional core preserved (no I/O, no globals), per-call state thread-safe + reentrant via the token/reset pattern, mocks pass through unchanged because the state lives outside the pass signature.
+- **Why it matters:** Any future Phase-2/3 multi-pass pipeline that wants pure-functional passes + shared accumulation (the RAG-scrubber composition, audit-anchor multi-stage build, future per-task-class redactors) inherits the discipline. `ContextVar` beats `threading.local` because it works under asyncio without leaking across tasks; it beats a module-level `list` because tests can't run in parallel without bleed.

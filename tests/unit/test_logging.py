@@ -46,6 +46,15 @@ EXPECTED_GITIGNORE_EVENT_NAMES = {
     "GITIGNORE_APPEND_FAILED": "gitignore.append.failed",
 }
 
+# S3-03 (phase 02): writer-completion event + ``secrets_redacted_count``
+# field. One new event, one new field (02-ADR-0008 — single-event
+# discipline). Kept in its own dict so the probe/gitignore closures stay
+# untouched and a Phase-3 amendment can extend in isolation.
+EXPECTED_PHASE2_WRITER_NAMES = {
+    "EVENT_ENVELOPE_WRITTEN": "envelope.written",
+    "SECRETS_REDACTED_COUNT_FIELD": "secrets_redacted_count",
+}
+
 
 @pytest.fixture(autouse=True)
 def _reset_structlog() -> object:
@@ -102,7 +111,25 @@ def test_logging_module_all_closure() -> None:
         "configure_logging",
         *EXPECTED_EVENT_NAMES,
         *EXPECTED_GITIGNORE_EVENT_NAMES,
+        *EXPECTED_PHASE2_WRITER_NAMES,
     }
+
+
+def test_phase2_writer_constants_are_plain_strs_with_documented_values() -> None:
+    """S3-03 — ``EVENT_ENVELOPE_WRITTEN`` + ``SECRETS_REDACTED_COUNT_FIELD``.
+
+    Same plain-``str`` discipline the probe/gitignore families honor: a
+    StrEnum member would break Phase 13's ``type(x) is str`` cost-ledger
+    destructure.
+    """
+    for name, expected_value in EXPECTED_PHASE2_WRITER_NAMES.items():
+        value = getattr(cgl, name)
+        assert type(value) is str, (
+            f"{name} must be a plain str, not a {type(value).__name__} "
+            f"(StrEnum members compare equal to strings but break "
+            f"`isinstance(x, str) and type(x) is str` subscribers)"
+        )
+        assert value == expected_value
 
 
 def test_gitignore_event_name_constants_are_plain_strs_with_documented_values() -> None:

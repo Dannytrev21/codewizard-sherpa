@@ -57,7 +57,20 @@ EVENT_PROBE_MEMO_MISS: Final[str] = "probe.memo.miss"
 EVENT_PROBE_CATALOG_LOAD: Final[str] = "probe.catalog.load"
 EVENT_PROBE_RAW_ARTIFACT_TRUNCATED: Final[str] = "probe.raw_artifact.truncated"
 
+# S3-03: writer-completion event + structured-log field carrying the
+# envelope-level ``RedactedSlice.findings_count``. Phase 2 adds exactly ONE
+# new event with ONE new field at ONE call site — 02-ADR-0008's
+# "no event stream" discipline is honored (this is a structured-log
+# emission, not an event-bus subscription). The constant pair is the
+# single source of truth: ``Writer.write`` imports both by name so a
+# typo at the call site is caught at import time, and ``grep
+# secrets_redacted_count: <log>`` remains the auditor's clean-run check
+# (a 0-count run emits the field explicitly, never silently).
+EVENT_ENVELOPE_WRITTEN: Final[str] = "envelope.written"
+SECRETS_REDACTED_COUNT_FIELD: Final[str] = "secrets_redacted_count"
+
 __all__ = [
+    "EVENT_ENVELOPE_WRITTEN",
     "EVENT_PROBE_CACHE_HIT",
     "EVENT_PROBE_CATALOG_LOAD",
     "EVENT_PROBE_FAILURE",
@@ -74,6 +87,7 @@ __all__ = [
     "GITIGNORE_APPEND_FAILED",
     "GITIGNORE_APPEND_IDEMPOTENT",
     "GITIGNORE_APPEND_SKIPPED",
+    "SECRETS_REDACTED_COUNT_FIELD",
     "configure_logging",
 ]
 

@@ -84,6 +84,16 @@ def test_startup_order_matches_ac5_spec(
         return real_shallow(envelope, outputs)
 
     monkeypatch.setattr(cli_mod, "_seam_shallow_merge", _shallow)
+
+    # S3-03: ``_seam_redact_envelope`` runs between shallow_merge (Step 8)
+    # and validate (Step 9). The stub returns a real ``RedactedSlice`` so
+    # downstream seams see the typed wrapper (they're also stubbed below,
+    # but a real instance keeps the orchestration faithful).
+    from codegenie.output.sanitizer import redact_secrets
+    from codegenie.types.identifiers import ProbeId
+
+    stub_redacted, _ = redact_secrets({}, ProbeId("__envelope__"))
+    monkeypatch.setattr(cli_mod, "_seam_redact_envelope", _spy("redact_envelope", stub_redacted))
     monkeypatch.setattr(cli_mod, "_seam_validate_envelope", _spy("validate", None))
     monkeypatch.setattr(cli_mod, "_seam_write_envelope", _spy("writer_write", b"yaml: bytes\n"))
     monkeypatch.setattr(cli_mod, "_seam_audit_record", _spy("audit_record", tmp_path / "r.json"))
@@ -102,6 +112,7 @@ def test_startup_order_matches_ac5_spec(
         "registry_for_task",
         "coordinator_gather",
         "shallow_merge",
+        "redact_envelope",
         "validate",
         "writer_write",
         "audit_record",

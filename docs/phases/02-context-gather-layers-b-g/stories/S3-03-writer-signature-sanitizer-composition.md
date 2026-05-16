@@ -1,7 +1,7 @@
 # Story S3-03 — Writer signature tightening + envelope-level redactor composition + `secrets_redacted_count` log field
 
 **Step:** Step 3 — Plant `SecretRedactor` + `RedactedSlice` smart constructor at the writer chokepoint
-**Status:** Ready
+**Status:** Done — executed 2026-05-16 (see [_attempts/S3-03.md](_attempts/S3-03.md))
 **Effort:** S
 **Depends on:** S3-02 (`RedactedSlice` model; this story imports it at the writer + seam), S3-01 (`redact_secrets` body that produces the `RedactedSlice`; composition order pins this story's mock-spy test)
 **ADRs honored:** 02-ADR-0010 (`RedactedSlice` smart constructor at the writer boundary — type-level "redactor was called"), 02-ADR-0005 (no plaintext persistence — the chokepoint discipline this story finishes), 02-ADR-0008 (no event stream in Phase 2 — `secrets_redacted_count` is one new structured-log field, not an event-stream subscription)

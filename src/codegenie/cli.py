@@ -29,7 +29,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
@@ -41,6 +41,17 @@ from codegenie.errors import (
     SymlinkRefusedError,
 )
 from codegenie.version import __version__
+
+if TYPE_CHECKING:
+    # ``RedactedSlice`` lives in ``codegenie.output.redacted_slice``, a
+    # Pydantic-backed module. The cold-start contract (ADR phase-0006,
+    # ``codegenie.cli must not top-level import heavy modules``) is honored
+    # because this branch is unreachable at runtime — Python evaluates
+    # ``TYPE_CHECKING`` as ``False``. The import-linter ``ignore_imports``
+    # whitelist names this edge explicitly so the static contract stays
+    # green; the runtime ``isinstance`` checks below import the class
+    # lazily via ``importlib.import_module``.
+    from codegenie.output.redacted_slice import RedactedSlice
 
 __all__ = ["cli"]
 
@@ -335,26 +346,61 @@ def _seam_shallow_merge(envelope: dict[str, Any], outputs: dict[str, Any]) -> di
     return envelope
 
 
-def _seam_validate_envelope(envelope: dict[str, Any]) -> None:
-    """Step 9 — JSON Schema validation. Raises :class:`SchemaValidationError`."""
+def _seam_redact_envelope(envelope: dict[str, Any]) -> RedactedSlice:
+    """Step 8.5 — envelope-level secret redaction chokepoint (02-ADR-0010).
+
+    Sits between :func:`_seam_shallow_merge` (Step 8) and
+    :func:`_seam_validate_envelope` (Step 9). Drives the three-pass
+    composition in :mod:`codegenie.output.envelope_redactor` and returns
+    a :class:`~codegenie.output.redacted_slice.RedactedSlice` that the
+    downstream validate + write seams consume.
+    """
+    redactor_mod = importlib.import_module("codegenie.output.envelope_redactor")
+    result: RedactedSlice = redactor_mod._redact_envelope(envelope)
+    return result
+
+
+def _seam_validate_envelope(envelope: RedactedSlice) -> None:
+    """Step 9 — JSON Schema validation. Raises :class:`SchemaValidationError`.
+
+    Validates the inner :attr:`RedactedSlice.slice` payload (the only
+    surface that gets persisted). Tightens in lock-step with the writer
+    (02-ADR-0010 — type-uniformity at the seam layer).
+    """
     validator_mod = importlib.import_module("codegenie.schema.validator")
-    validator_mod.validate(envelope)
+    validator_mod.validate(envelope.slice)
 
 
 def _seam_write_envelope(
-    envelope: dict[str, Any],
+    envelope: RedactedSlice,
     raw_artifacts: list[tuple[str, bytes]],
     output_dir: Path,
 ) -> bytes:
     """Step 10 — atomic envelope + raw-artifact write. Returns the YAML
     bytes so the audit writer can hash them (the writer itself does not
-    expose its serialized payload)."""
+    expose its serialized payload).
+
+    Defense in depth: the writer's own ``isinstance(envelope,
+    RedactedSlice)`` guard also rejects a non-``RedactedSlice`` caller,
+    but the seam guards first so the failure-mode message points at the
+    seam (the public consumer surface) per 02-ADR-0010.
+    """
+    redacted_slice_mod = importlib.import_module("codegenie.output.redacted_slice")
+    if not isinstance(envelope, redacted_slice_mod.RedactedSlice):
+        raise TypeError(
+            f"_seam_write_envelope requires RedactedSlice (02-ADR-0010); "
+            f"got {type(envelope).__name__}"
+        )
     writer_mod = importlib.import_module("codegenie.output.writer")
     yaml_mod = importlib.import_module("yaml")
     writer = writer_mod.Writer()
     writer.write(envelope, raw_artifacts, output_dir)
     yaml_path = output_dir / "repo-context.yaml"
-    return yaml_path.read_bytes() if yaml_path.exists() else yaml_mod.dump(envelope).encode("utf-8")
+    return (
+        yaml_path.read_bytes()
+        if yaml_path.exists()
+        else yaml_mod.dump(envelope.slice).encode("utf-8")
+    )
 
 
 def _seam_audit_record(
@@ -559,17 +605,25 @@ def _run_gather_pipeline(
 
     output_dir = path / ".codegenie" / "context"
 
+    # Step 8.5 — envelope-level secret-redaction chokepoint (02-ADR-0010).
+    # The merged envelope flows through the three-pass composition in
+    # ``codegenie.output.envelope_redactor`` and is wrapped in a
+    # ``RedactedSlice``; from this line forward the validate + write
+    # seams consume only the typed wrapper. Per-probe ``OutputSanitizer
+    # .scrub`` (Phase 0, 02-ADR-0005) is upstream of this seam.
+    redacted_envelope = _seam_redact_envelope(envelope)
+
     # Step 9 — schema validation. On failure write the .yaml.invalid sibling
     # and re-raise (CLI exit 3 per ADR-0013).
     try:
-        _seam_validate_envelope(envelope)
+        _seam_validate_envelope(redacted_envelope)
     except SchemaValidationError:
-        _write_invalid_sibling(envelope, output_dir)
+        _write_invalid_sibling(redacted_envelope.slice, output_dir)
         raise
 
     # Step 10 — atomic envelope + raw write. Returns YAML bytes for the
     # audit anchor.
-    yaml_bytes = _seam_write_envelope(envelope, raw_artifacts, output_dir)
+    yaml_bytes = _seam_write_envelope(redacted_envelope, raw_artifacts, output_dir)
 
     # Step 11 — audit record. Reads the just-written YAML for the SHA-256.
     hashing_mod = importlib.import_module("codegenie.hashing")

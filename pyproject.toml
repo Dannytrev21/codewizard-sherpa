@@ -282,6 +282,17 @@ name = "codegenie.cli must not top-level import heavy modules"
 type = "forbidden"
 source_modules = ["codegenie.cli"]
 forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]
+# S3-03 (phase 02): the writer-signature tightening narrows
+# ``_seam_*_envelope`` parameters to ``RedactedSlice``. The class is
+# imported under ``if TYPE_CHECKING:`` so the runtime cold-start
+# contract is preserved (Python evaluates ``TYPE_CHECKING`` as
+# ``False``); the runtime ``isinstance`` checks lazy-import the class
+# via ``importlib.import_module``. The static import-linter graph
+# nevertheless sees the type-only edge and would flag it as a pydantic
+# violation — whitelist it here so the spirit of the contract (no eager
+# pydantic at import time) stays kept while the typed annotation
+# survives.
+ignore_imports = ["codegenie.cli -> codegenie.output.redacted_slice"]
 
 [[tool.importlinter.contracts]]
 name = "codegenie (__init__) must not top-level import heavy modules"

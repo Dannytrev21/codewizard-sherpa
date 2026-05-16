@@ -1,7 +1,16 @@
-"""Atomic ``repo-context.yaml`` writer (ADR-0008, ADR-0011).
+"""Atomic ``repo-context.yaml`` writer (ADR-0008, ADR-0011, 02-ADR-0010, 02-ADR-0005).
 
 Single chokepoint for YAML serialization in the entire package. The writer:
 
+- Accepts ONLY :class:`~codegenie.output.redacted_slice.RedactedSlice`
+  for the ``envelope`` parameter (02-ADR-0010 — type-level "redactor was
+  called"). A raw ``dict`` is rejected at ``mypy --strict`` time (no
+  structural-subtyping escape hatch) and at runtime via an
+  ``isinstance`` guard that raises :class:`TypeError` with a message
+  pointing back at 02-ADR-0010. The findings list lives only in memory
+  per 02-ADR-0005 — the writer never sees it (it's the sibling tuple
+  element of :func:`~codegenie.output.sanitizer.redact_secrets` and the
+  smart-constructor refuses it).
 - Refuses to follow symlinks at ``output_dir``, ``output_dir/raw/``, or
   ``output_dir/repo-context.yaml`` — pre-check **before** any write, raising
   :class:`~codegenie.errors.SymlinkRefusedError` and emitting
@@ -13,21 +22,20 @@ Single chokepoint for YAML serialization in the entire package. The writer:
   os.replace``, **then** the envelope ``repo-context.yaml`` last — so if a
   raw write fails the envelope never appears (callers detect partial state
   by envelope absence).
-- Serializes the envelope through ``yaml.CSafeDumper`` and falls back to
-  ``yaml.SafeDumper`` on ``ImportError`` (libyaml missing), logging
-  ``writer.csafe.unavailable`` **exactly once per process** via a module-
-  level flag so contributors aren't drowned in repeated warnings.
+- Serializes ``envelope.slice`` (the redacted payload) through
+  ``yaml.CSafeDumper`` and falls back to ``yaml.SafeDumper`` on
+  ``ImportError`` (libyaml missing), logging ``writer.csafe.unavailable``
+  **exactly once per process** via a module- level flag so contributors
+  aren't drowned in repeated warnings.
 - Walks ``output_dir`` recursively after every write and applies ``0700`` to
   directories and ``0600`` to regular files — including children that
   pre-exist from a prior ``actions/cache`` restore (ADR-0011 edge case #6).
-
-ADR-0008 §Consequences line 46 reads "``Writer.write`` takes a
-``SanitizedProbeOutput``" — that is undeliverable as written because the
-writer is downstream of an N-to-1 merge that loses per-probe typing. The
-typed-enforcement *intent* survives upstream at
-:meth:`~codegenie.output.sanitizer.OutputSanitizer.scrub`; the envelope
-arriving here is the merged ``dict`` the coordinator produces. Story S3-03
-surfaces this as a follow-up ADR amendment.
+- Emits exactly ONE structured-log event ``envelope.written`` carrying
+  ``secrets_redacted_count=<RedactedSlice.findings_count>`` on the
+  success path (after ``_atomic_write_bytes`` returns). A 0-count run
+  emits the field explicitly so ``grep secrets_redacted_count: <log>``
+  remains an auditor's clean-run signal. Failure paths are silent on
+  ``envelope.written`` per 02-ADR-0008's single-event discipline.
 """
 
 from __future__ import annotations
@@ -38,6 +46,9 @@ from typing import Any
 
 import structlog
 import yaml
+
+from codegenie.logging import EVENT_ENVELOPE_WRITTEN, SECRETS_REDACTED_COUNT_FIELD
+from codegenie.output.redacted_slice import RedactedSlice
 
 __all__ = ["Writer"]
 
@@ -144,7 +155,7 @@ class Writer:
 
     def write(
         self,
-        envelope: dict[str, Any],
+        envelope: RedactedSlice,
         raw_artifacts: list[tuple[str, bytes]],
         output_dir: Path,
     ) -> None:
@@ -155,6 +166,15 @@ class Writer:
         propagates the ``OSError`` and the envelope never appears, so the
         caller detects partial state by envelope absence.
         """
+        # 0. Runtime guard against raw-dict callers (defense in depth on top
+        #    of the mypy --strict signature narrowing; Python type hints are
+        #    stripped at runtime, so a non-type-checked caller could still
+        #    pass a dict — 02-ADR-0010 names this as the chokepoint).
+        if not isinstance(envelope, RedactedSlice):
+            raise TypeError(
+                f"Writer.write requires RedactedSlice (02-ADR-0010); got {type(envelope).__name__}"
+            )
+
         # 1. Pre-write symlink refusal at three planted shapes.
         _refuse_if_symlink(output_dir)
         if output_dir.exists():
@@ -177,8 +197,19 @@ class Writer:
 
         # 5. Serialize + publish the envelope last.
         dumper = _select_dumper()
-        body = yaml.dump(envelope, Dumper=dumper, sort_keys=False).encode("utf-8")
+        body = yaml.dump(envelope.slice, Dumper=dumper, sort_keys=False).encode("utf-8")
         _atomic_write_bytes(output_dir / "repo-context.yaml", body)
 
         # 6. Re-apply modes recursively (ADR-0011 edge case #6).
         _fix_modes_recursively(output_dir)
+
+        # 7. Success-path log event (02-ADR-0008 — single new field on a
+        #    single new event; emitted only after ``_atomic_write_bytes``
+        #    returns so a failed write is silent on ``envelope.written``).
+        #    The constant pair is imported by name from ``codegenie.logging``
+        #    so a typo at the call site is caught at import time and the
+        #    audit-time grep target stays drift-resistant.
+        _log.info(
+            EVENT_ENVELOPE_WRITTEN,
+            **{SECRETS_REDACTED_COUNT_FIELD: envelope.findings_count},
+        )

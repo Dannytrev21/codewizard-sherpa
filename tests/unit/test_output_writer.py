@@ -1,9 +1,18 @@
 """``Writer.write`` — atomic publish with symlink refusal and mode discipline.
 
-Pins ACs 14-22, 24-25 from story S3-03: CSafeDumper-first YAML serialization,
-fsync→replace ordering, raw-then-yaml publish order, partial-failure modes,
-symlink refusal at three paths, raw-name safety, ``_csafe_warned``
-once-per-process, recursive chmod tree-walk (edge case #6), empty inputs.
+Pins ACs 14-22, 24-25 from story S3-03 (Phase 0): CSafeDumper-first YAML
+serialization, fsync→replace ordering, raw-then-yaml publish order,
+partial-failure modes, symlink refusal at three paths, raw-name safety,
+``_csafe_warned`` once-per-process, recursive chmod tree-walk (edge case
+#6), empty inputs.
+
+Phase 2 (S3-03 of phase 02-context-gather-layers-b-g) tightened
+:meth:`Writer.write`'s ``envelope`` parameter to
+:class:`~codegenie.output.redacted_slice.RedactedSlice`. The fixture
+below constructs a real ``RedactedSlice`` via the only public path —
+``redact_secrets`` — so this file continues to exercise the writer
+against the same conceptual payload it always has, just wrapped in the
+type-level guarantee.
 """
 
 from __future__ import annotations
@@ -11,6 +20,7 @@ from __future__ import annotations
 import os
 import stat
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -19,16 +29,21 @@ import yaml
 
 import codegenie.output.writer as writer_mod
 from codegenie.errors import SymlinkRefusedError
+from codegenie.output.redacted_slice import RedactedSlice
+from codegenie.output.sanitizer import redact_secrets
 from codegenie.output.writer import Writer
+from codegenie.types.identifiers import ProbeId
 
-ENV: dict[str, object] = {"schema_version": "0.1.0", "probes": {}}
+ENV_DICT: dict[str, Any] = {"schema_version": "0.1.0", "probes": {}}
+ENV: RedactedSlice
+ENV, _ENV_FINDINGS = redact_secrets(ENV_DICT, ProbeId("__envelope__"))
 
 
 # AC-14 + AC-15 — happy-path write produces valid YAML via CSafe or Safe
 def test_writer_writes_yaml_via_csafe_or_safe(tmp_path: Path) -> None:
     Writer().write(envelope=ENV, raw_artifacts=[], output_dir=tmp_path)
     body = (tmp_path / "repo-context.yaml").read_text()
-    assert yaml.safe_load(body) == ENV
+    assert yaml.safe_load(body) == ENV.slice
 
 
 # AC-22 — modes applied recursively to a new tree
