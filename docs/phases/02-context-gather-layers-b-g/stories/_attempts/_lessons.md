@@ -159,3 +159,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** N/A — this is a discipline lesson the story §AC-1 prose already pins, not a runtime symptom.
 - **Fix:** Path-scope rules inside `scripts/check_forbidden_patterns.py` via the rule's `applies_when` predicate. NEVER scope via `.pre-commit-config.yaml`'s `files:`/`exclude:` regex.
 - **Why it matters:** The test surface (subprocess invocation in `tmp_path`) and the runtime surface (pre-commit invocation on staged files) MUST be the same. YAML scoping bypasses the test surface and produces silent rule-coverage gaps; structural Open/Closed (AC-15) breaks. Every future path-scoped rule (Phase-3 `httpx` ban under `plugins/`, future SBOM-scoped rules) inherits the discipline.
+
+## L27 — `zip(strict=True)` over a Literal-tagged tuple is the wrong default when the caller's list length varies
+- **Source:** S2-01 (`SkillsLoader.load_all` iterating `zip(TIERS, self._search_paths)` over `TIERS: tuple[Tier, ...]` of length 3).
+- **Symptom:** `ValueError: zip() argument 2 is shorter than argument 1` on every test passing fewer than 3 search paths. AC-5 (single-tier symlink fixture) and the original AC-4 draft both passed shorter lists.
+- **Fix:** Use non-strict `zip` and let the caller's list length define the iteration. Tier identity is still typed via `Tier: TypeAlias = Literal[...]` — the type system carries the tag even when the runtime tuple is shorter. Document the truncation in the call site (`# noqa: B905 — intentional truncation`).
+- **Why it matters:** Every future kernel-side loader that maps a positional argument list onto a fixed Literal-tagged tuple (ConventionsCatalogLoader, future tier-tagged catalogs) hits the same trap. Strict-zip is correct ONLY when both lengths are statically known equal; the test-surface default is variable-length input.
+
+## L28 — Two-stage "read into buffer, then scan the buffer" doubles the memory peak
+- **Source:** S2-01 (`_read_frontmatter_bytes` → `_split_frontmatter`).
+- **Symptom:** AC-7 budget (`< 256 KB peak on 100 MB body`) failed at 2.1 MB. Root cause: `b"".join(chunks)` allocated the scan window a second time after the chunk-list was assembled.
+- **Fix:** Collapse into a single streaming scanner (`_scan_frontmatter`) that appends to a single `bytearray` and early-exits at the closing fence. For a normal SKILL.md with ~70-byte frontmatter, the scanner buffers only ~4 KiB; for the 1 MiB unterminated cap, peak stays under 1.1 MiB.
+- **Why it matters:** Every Phase-2/3 loader that scans-then-parses (S2-02 `ConventionsCatalogLoader`, S4-04 tree-sitter import-graph reader, S6-04 external-docs opt-in reader) should default to the streaming shape unless the input is provably bounded by a hard byte cap that already fits in budget.
+
+## L29 — Every `os.read` site needs its own `OSError` handler, not just `os.open`
+- **Source:** S2-01 (AC-20 directory-as-SKILL.md fixture).
+- **Symptom:** `IsADirectoryError` bubbled out of `_read_frontmatter_bytes` because the loader only caught `OSError` on `os.open`. On macOS, opening a directory read-only succeeds; the failure surfaces at the first `os.read`.
+- **Fix:** Wrap the read+hash block in a second `try/except OSError`, translating to `IoFailure(errno_name=...)` — matches the open-time discipline. Two-layer handler shape is what AC-20 actually pins.
+- **Why it matters:** Catching only at the open call leaks every read-time errno (TOCTOU file disappearance, EISDIR, EACCES, partial-read EIO) as an unhandled exception, breaking the partial-success invariant. Phase-2 multi-file loaders MUST handle BOTH open- and read-time OS errors; one without the other is a false sense of robustness.

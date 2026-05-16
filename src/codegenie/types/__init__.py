@@ -10,6 +10,7 @@ point for the four Phase 2 newtypes (:data:`IndexId`, :data:`SkillId`,
 from codegenie.types.identifiers import (
     IndexId,
     IndexName,
+    Language,
     PackageManager,
     SkillId,
     TaskClassId,
@@ -18,6 +19,7 @@ from codegenie.types.identifiers import (
 __all__ = [
     "IndexId",
     "IndexName",
+    "Language",
     "PackageManager",
     "SkillId",
     "TaskClassId",

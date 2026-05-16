@@ -23,14 +23,17 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def test_module_all_closure_is_exactly_five_public_functions() -> None:
-    """AC-1 (S2-03) + AC-13 (S3-01): ``__all__`` pins the public surface —
-    three original helpers plus the two byte-hash extensions added in S3-01."""
+def test_module_all_closure_is_exactly_six_public_functions() -> None:
+    """AC-1 (S2-03) + AC-13 (S3-01) + AC-25 (S2-01): ``__all__`` pins the
+    public surface — three original helpers, two byte-hash extensions from
+    S3-01, plus :func:`content_hash_fd` (the fd-based streaming chokepoint
+    added in S2-01 for the SkillsLoader progressive-disclosure invariant)."""
     import codegenie.hashing as h
 
     assert set(h.__all__) == {
         "content_hash",
         "content_hash_bytes",
+        "content_hash_fd",
         "content_hash_of_inputs",
         "identity_hash",
         "identity_hash_bytes",
@@ -382,3 +385,66 @@ def test_identity_hash_bytes_prefix_and_lowercase() -> None:
     h = identity_hash_bytes(b"")
     assert re.fullmatch(r"sha256:[0-9a-f]{64}", h)
     assert h == h.lower()
+
+
+# ---------------------------------------------------------------------------
+# S2-01 AC-25 — content_hash_fd parity + chokepoint extension
+# ---------------------------------------------------------------------------
+
+
+def test_content_hash_fd_matches_content_hash_bytes_over_same_span(
+    tmp_path: Path,
+) -> None:
+    """S2-01 AC-25 parity: streaming fd hash equals one-shot bytes hash."""
+    import os
+
+    from codegenie.hashing import content_hash_bytes, content_hash_fd
+
+    payload = b"---\nid: foo\n---\nthe-body-bytes\n"
+    body_offset = payload.index(b"the")
+    body = payload[body_offset:]
+    p = tmp_path / "f"
+    p.write_bytes(payload)
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        streaming = content_hash_fd(fd, offset=body_offset, size=len(body))
+    finally:
+        os.close(fd)
+    assert streaming == content_hash_bytes(body)
+
+
+def test_content_hash_fd_handles_span_larger_than_chunk(tmp_path: Path) -> None:
+    """The 64 KiB chunk loop must keep parity across a multi-chunk span."""
+    import os
+
+    from codegenie.hashing import content_hash_bytes, content_hash_fd
+
+    # 200 KiB of deterministic bytes — three full 64-KiB reads plus a tail.
+    body = bytes((i * 31) & 0xFF for i in range(200 * 1024))
+    p = tmp_path / "f"
+    p.write_bytes(b"prefix" + body)
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        assert content_hash_fd(fd, offset=len(b"prefix"), size=len(body)) == (
+            content_hash_bytes(body)
+        )
+    finally:
+        os.close(fd)
+
+
+def test_content_hash_fd_short_read_raises_oserror(tmp_path: Path) -> None:
+    """Asking for more bytes than available raises ``OSError`` (fail-loud)."""
+    import os
+
+    import pytest
+
+    from codegenie.hashing import content_hash_fd
+
+    p = tmp_path / "f"
+    p.write_bytes(b"abc")
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        with pytest.raises(OSError):
+            content_hash_fd(fd, offset=0, size=100)
+    finally:
+        os.close(fd)

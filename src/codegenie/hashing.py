@@ -31,12 +31,14 @@ collision attack a printable separator like ``|`` would open.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
 __all__ = [
     "content_hash",
     "content_hash_bytes",
+    "content_hash_fd",
     "content_hash_of_inputs",
     "identity_hash",
     "identity_hash_bytes",
@@ -103,6 +105,50 @@ def identity_hash_bytes(b: bytes) -> str:
     an *additive* extension to the chokepoint, not a bypass.
     """
     return f"sha256:{hashlib.sha256(b).hexdigest()}"
+
+
+def content_hash_fd(fd: int, *, offset: int, size: int) -> str:
+    """Return ``blake3:<64-hex>`` of ``size`` bytes starting at ``offset`` in ``fd``.
+
+    Streams ``os.read(fd, 64 KiB)`` chunks through the running BLAKE3 hasher
+    without materializing the body as a single ``bytes`` value — the budget
+    that ``SkillsLoader`` (S2-01) protects with a ``tracemalloc`` peak of
+    < 20 KB on a 100 MB body. The digest is identical to
+    :func:`content_hash_bytes` of the same span.
+
+    The function ``os.lseek(fd, offset, os.SEEK_SET)`` first; the caller's
+    file-descriptor position is therefore mutated. Callers that share the
+    fd with other readers must restore the cursor or reopen.
+
+    Args:
+        fd: Open file descriptor (from ``os.open``). The function does not
+            close it — fd lifecycle remains the caller's responsibility.
+        offset: Byte offset from start-of-file to begin hashing.
+        size: Number of bytes to hash. Reading fewer bytes than ``size``
+            (e.g., file truncated mid-read) raises :class:`OSError`.
+
+    Returns:
+        ``f"blake3:{hexdigest}"`` — same format as :func:`content_hash`.
+
+    Raises:
+        OSError: ``os.lseek`` or ``os.read`` fails; fewer than ``size``
+            bytes available.
+    """
+    from blake3 import blake3 as _blake3
+
+    os.lseek(fd, offset, os.SEEK_SET)
+    hasher = _blake3()
+    remaining = size
+    while remaining > 0:
+        chunk = os.read(fd, min(_CHUNK_BYTES, remaining))
+        if not chunk:
+            raise OSError(
+                f"content_hash_fd: short read — expected {size} bytes from offset "
+                f"{offset}, got {size - remaining}"
+            )
+        hasher.update(chunk)
+        remaining -= len(chunk)
+    return f"blake3:{hasher.hexdigest()}"
 
 
 def content_hash_of_inputs(paths: Iterable[Path]) -> str:

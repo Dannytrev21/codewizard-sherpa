@@ -27,10 +27,16 @@ IndexName = NewType("IndexName", str)
 # ``required_probes: list[ProbeId]``). Phase 0/1 did not ship a ProbeId
 # newtype; S1-04 routes the kernel-tier addition through this module.
 ProbeId = NewType("ProbeId", str)
+# Programming-language identifier (S2-01). Phase 1 already detects languages
+# as raw ``str`` (``RepoSnapshot.detected_languages``); S2-01 introduces the
+# newtype so the kernel-side ``Skill.applies_to_languages`` is typed against
+# accidental ``TaskClassId`` substitution (ADR-0033 §1 primitive-obsession).
+Language = NewType("Language", str)
 
 __all__ = [
     "IndexId",
     "IndexName",
+    "Language",
     "PackageManager",
     "ProbeId",
     "SkillId",
