@@ -140,9 +140,7 @@ def _apply_dockerfile_pattern_inverted(
     return Pass(rule_id=rule.id)
 
 
-def _apply_file_pattern(
-    rule: ConventionRuleFilePattern, repo: RepoSnapshot
-) -> ConventionResult:
+def _apply_file_pattern(rule: ConventionRuleFilePattern, repo: RepoSnapshot) -> ConventionResult:
     matches = _sorted_glob(repo.root, rule.file_glob)
     if not matches:
         return NotApplicable(rule_id=rule.id, reason=_REASON_GLOB_EMPTY)
@@ -157,9 +155,7 @@ def _apply_file_pattern(
     return Pass(rule_id=rule.id)
 
 
-def _apply_missing_file(
-    rule: ConventionRuleMissingFile, repo: RepoSnapshot
-) -> ConventionResult:
+def _apply_missing_file(rule: ConventionRuleMissingFile, repo: RepoSnapshot) -> ConventionResult:
     # ``missing_file`` names the assertion: the rule PASSES when no file
     # matches the glob, and FAILS when a file is present.
     matches = _sorted_glob(repo.root, rule.file_glob)

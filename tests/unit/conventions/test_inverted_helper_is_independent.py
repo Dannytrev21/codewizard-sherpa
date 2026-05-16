@@ -21,10 +21,7 @@ def test_inverted_helper_does_not_call_main_helper() -> None:
     tree = ast.parse(_CATALOG_SRC.read_text())
     target: ast.FunctionDef | None = None
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.FunctionDef)
-            and node.name == "_apply_dockerfile_pattern_inverted"
-        ):
+        if isinstance(node, ast.FunctionDef) and node.name == "_apply_dockerfile_pattern_inverted":
             target = node
             break
     assert target is not None, (

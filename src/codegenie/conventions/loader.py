@@ -33,9 +33,13 @@ from codegenie.conventions.catalog import Catalog
 from codegenie.conventions.model import ConventionRule
 from codegenie.errors import (
     DepthCapExceeded as DepthCapExceededError,
+)
+from codegenie.errors import (
     MalformedYAMLError,
-    SizeCapExceeded as SizeCapExceededError,
     SymlinkRefusedError,
+)
+from codegenie.errors import (
+    SizeCapExceeded as SizeCapExceededError,
 )
 from codegenie.parsers import safe_yaml
 from codegenie.result import Err, Ok, Result
@@ -210,9 +214,12 @@ def _classify_validation_error(
     return SchemaError(path=path, details=details)
 
 
-def _classify_yaml_failure(
-    exc: Exception, path: Path
-) -> SymlinkRefused | UnsafeYaml | SizeCapExceeded | DepthCapExceeded | CatalogFileUnreadable | None:
+_YamlFailureClassified = (
+    SymlinkRefused | UnsafeYaml | SizeCapExceeded | DepthCapExceeded | CatalogFileUnreadable
+)
+
+
+def _classify_yaml_failure(exc: Exception, path: Path) -> _YamlFailureClassified | None:
     """Map a ``safe_yaml.load`` failure to the per-file error variant.
 
     Returns ``None`` for unknown exception types (caller re-raises).
@@ -280,9 +287,7 @@ class ConventionsCatalogLoader:
         for search_path in self._search_paths:
             if not search_path.is_dir():
                 continue
-            catalog_files = sorted(
-                set(search_path.glob("*.yaml")) | set(search_path.glob("*.yml"))
-            )
+            catalog_files = sorted(set(search_path.glob("*.yaml")) | set(search_path.glob("*.yml")))
             for catalog_path in catalog_files:
                 err = self._load_one_catalog(catalog_path, merged_rules)
                 if err is not None:
@@ -301,9 +306,7 @@ class ConventionsCatalogLoader:
     ) -> ConventionsError | None:
         """Parse + validate one catalog file. Returns an error or ``None``."""
         try:
-            data = safe_yaml.load(
-                catalog_path, max_bytes=_CATALOG_FILE_MAX_BYTES
-            )
+            data = safe_yaml.load(catalog_path, max_bytes=_CATALOG_FILE_MAX_BYTES)
         except Exception as exc:
             classified = _classify_yaml_failure(exc, catalog_path)
             if classified is not None:

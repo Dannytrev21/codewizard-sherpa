@@ -23,9 +23,8 @@ def test_no_local_convention_id_newtype() -> None:
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            is_newtype = (
-                (isinstance(func, ast.Name) and func.id == "NewType")
-                or (isinstance(func, ast.Attribute) and func.attr == "NewType")
+            is_newtype = (isinstance(func, ast.Name) and func.id == "NewType") or (
+                isinstance(func, ast.Attribute) and func.attr == "NewType"
             )
             if not is_newtype:
                 continue

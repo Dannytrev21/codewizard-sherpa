@@ -162,9 +162,7 @@ class NotApplicable(BaseModel):
     reason: str
 
 
-ConventionResult = Annotated[
-    Pass | Fail | NotApplicable, Field(discriminator="kind")
-]
+ConventionResult = Annotated[Pass | Fail | NotApplicable, Field(discriminator="kind")]
 
 
 # ---------------------------------------------------------------------------

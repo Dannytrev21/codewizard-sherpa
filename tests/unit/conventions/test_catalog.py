@@ -20,12 +20,10 @@ from pydantic import TypeAdapter, ValidationError
 import codegenie.parsers.safe_yaml as safe_yaml_mod
 from codegenie.conventions import (
     Catalog,
-    ConventionRule,
     ConventionRuleDockerfilePattern,
     ConventionRuleDockerfilePatternInverted,
     ConventionRuleFilePattern,
     ConventionRuleMissingFile,
-    ConventionResult,
     ConventionsCatalogLoader,
     ConventionsError,
     Fail,
@@ -60,9 +58,7 @@ def _repo_snapshot_with(tmp_path: Path, files: dict[str, str]) -> RepoSnapshot:
         f = tmp_path / relpath
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(contents)
-    return RepoSnapshot(
-        root=tmp_path, git_commit=None, detected_languages={}, config={}
-    )
+    return RepoSnapshot(root=tmp_path, git_commit=None, detected_languages={}, config={})
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +119,7 @@ def test_ac1_models_are_frozen_and_extra_forbid(model_cls: type) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ac2_constructor_does_no_io(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ac2_constructor_does_no_io(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def _fail(*a: object, **kw: object) -> None:
         pytest.fail(f"constructor performed I/O: args={a} kwargs={kw}")
 
@@ -137,9 +131,7 @@ def test_ac2_constructor_does_no_io(
     monkeypatch.setattr(Path, "is_dir", _fail, raising=False)
     monkeypatch.setattr(Path, "glob", _fail, raising=False)
     monkeypatch.setattr(Path, "iterdir", _fail, raising=False)
-    ConventionsCatalogLoader(
-        search_paths=[tmp_path / "does-not-exist", tmp_path / "also-missing"]
-    )
+    ConventionsCatalogLoader(search_paths=[tmp_path / "does-not-exist", tmp_path / "also-missing"])
 
 
 # ---------------------------------------------------------------------------
@@ -227,11 +219,7 @@ def test_ac3_happy_path_per_kind(
     extra_field_value: str,
 ) -> None:
     _write_catalog(tmp_path / "conventions" / "c.yaml", yaml_body)
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert outcome.per_file_errors == []
     assert len(outcome.catalog.rules) == 1
     rule = outcome.catalog.rules[0]
@@ -259,11 +247,7 @@ def test_ac3a_multi_rule_single_file_in_order(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert len(outcome.catalog.rules) == 2
     assert outcome.catalog.rules[0].kind == "dockerfile_pattern"
     assert outcome.catalog.rules[1].kind == "missing_file"
@@ -295,9 +279,7 @@ def test_ac3b_multi_file_merge_is_sorted_relpath(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
     assert [r.id for r in outcome.catalog.rules] == [
         ConventionId("from-a"),
         ConventionId("from-b"),
@@ -322,11 +304,7 @@ def test_ac4_dockerfile_pattern_three_outcomes(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     catalog = outcome.catalog
     expected_id = ConventionId("distroless-base")
 
@@ -337,9 +315,7 @@ def test_ac4_dockerfile_pattern_three_outcomes(tmp_path: Path) -> None:
     assert isinstance(result_pass, Pass)
     assert result_pass.rule_id == expected_id
 
-    repo_fail = _repo_snapshot_with(
-        tmp_path / "fail-repo", {"Dockerfile": "FROM node:20-alpine\n"}
-    )
+    repo_fail = _repo_snapshot_with(tmp_path / "fail-repo", {"Dockerfile": "FROM node:20-alpine\n"})
     result_fail = catalog.apply(repo_fail)[0]
     assert isinstance(result_fail, Fail)
     assert result_fail.rule_id == expected_id
@@ -365,11 +341,7 @@ def test_ac4d_dockerfile_pattern_uses_re_multiline(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     repo = _repo_snapshot_with(
         tmp_path / "r",
         {"Dockerfile": "# build args first\nFROM cgr.dev/chainguard/node:latest\n"},
@@ -396,18 +368,12 @@ def test_ac5_dockerfile_pattern_inverted_three_outcomes(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     catalog = outcome.catalog
     expected_id = ConventionId("no-root-user")
 
     # Match found → Fail
-    repo_bad = _repo_snapshot_with(
-        tmp_path / "bad", {"Dockerfile": "FROM scratch\nUSER root\n"}
-    )
+    repo_bad = _repo_snapshot_with(tmp_path / "bad", {"Dockerfile": "FROM scratch\nUSER root\n"})
     result = catalog.apply(repo_bad)[0]
     assert isinstance(result, Fail)
     assert result.rule_id == expected_id
@@ -447,11 +413,7 @@ def test_ac6_file_pattern_zero_matches_is_not_applicable(tmp_path: Path) -> None
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     repo = _repo_snapshot_with(tmp_path / "no-ts", {"package.json": "{}"})
     result = outcome.catalog.apply(repo)[0]
     assert isinstance(result, NotApplicable)
@@ -473,11 +435,7 @@ def test_ac6a_file_pattern_pass_when_all_match(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     repo = _repo_snapshot_with(
         tmp_path / "r",
         {
@@ -504,11 +462,7 @@ def test_ac6b_file_pattern_fail_names_lex_first_failing(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     repo = _repo_snapshot_with(
         tmp_path / "r",
         {
@@ -537,11 +491,7 @@ def test_ac6c_file_glob_pathlib_recursive_and_dot_exclusion(tmp_path: Path) -> N
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     repo = _repo_snapshot_with(
         tmp_path / "r",
         {
@@ -572,11 +522,7 @@ def test_ac7_missing_file_passes_when_absent_fails_when_present(tmp_path: Path) 
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     catalog = outcome.catalog
     expected_id = ConventionId("no-rogue-dockerfile")
 
@@ -625,9 +571,7 @@ def test_ac8_unknown_pattern_type_isolated_other_rules_unaffected(
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
     assert isinstance(err, UnknownPatternType)
@@ -643,11 +587,7 @@ def test_ac8a_unsafe_yaml_python_object_does_not_execute(tmp_path: Path) -> None
         tmp_path / "conventions" / "evil.yaml",
         f"!!python/object/apply:os.system ['touch {sentinel}']\n",
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert not sentinel.exists(), "yaml deserialization executed code"
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
@@ -656,11 +596,7 @@ def test_ac8a_unsafe_yaml_python_object_does_not_execute(tmp_path: Path) -> None
 
 def test_ac8a_unsafe_yaml_syntax_error_lands_in_umbrella(tmp_path: Path) -> None:
     _write_catalog(tmp_path / "conventions" / "bad.yaml", "rules: [\n")
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
     assert isinstance(err, UnsafeYaml)
@@ -671,26 +607,17 @@ def test_ac8b_size_cap_exceeded(tmp_path: Path) -> None:
     big.parent.mkdir(parents=True, exist_ok=True)
     # 1.1 MiB of yaml-ish padding
     big.write_text("rules: []\n" + "# pad\n" * ((1 << 20) // 6 + 100))
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
     assert isinstance(err, SizeCapExceeded)
 
 
 def test_ac8c_depth_cap_exceeded(tmp_path: Path) -> None:
-    deep = "rules:\n  - kind: dockerfile_pattern\n"
-    # construct a deeply nested mapping under `extra:` to trip depth walker
+    # construct a deeply nested mapping that trips the safe_yaml depth walker
     body = "x:\n" + "".join("  " * i + f"k{i}:\n" for i in range(1, 70)) + "  " * 70 + "leaf: 1\n"
     _write_catalog(tmp_path / "conventions" / "deep.yaml", body)
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
     assert isinstance(err, DepthCapExceeded)
@@ -769,11 +696,7 @@ def test_ac11_extra_field_yields_typed_schema_error(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert outcome.catalog.rules == []
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
@@ -795,11 +718,7 @@ def test_ac11a_uncompilable_regex_pattern_lands_at_load(tmp_path: Path) -> None:
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     assert outcome.catalog.rules == []
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
@@ -827,11 +746,7 @@ def test_ac12_catalog_apply_is_idempotent_without_repeated_io(
             """
         ),
     )
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"])
-        .load_all()
-        .unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[tmp_path / "conventions"]).load_all().unwrap()
     catalog = outcome.catalog
     repo = _repo_snapshot_with(tmp_path / "r", {"Dockerfile": "FROM node\n"})
 
@@ -868,9 +783,7 @@ def test_ac12_catalog_apply_is_idempotent_without_repeated_io(
         (CatalogFileUnreadable, {"path": Path("/x"), "errno_name": "ENOENT"}),
     ],
 )
-def test_ac13_conventions_error_discriminated_union_seven_reasons(
-    ctor: type, kwargs: dict
-) -> None:
+def test_ac13_conventions_error_discriminated_union_seven_reasons(ctor: type, kwargs: dict) -> None:
     adapter = TypeAdapter(ConventionsError)
     instance = ctor(**kwargs)
     # Round-trip through the adapter validates discriminator dispatch
@@ -919,9 +832,7 @@ def test_ac13a_toctou_disappearance_yields_catalog_file_unreadable(
         return real_load(path, max_bytes=max_bytes, max_depth=max_depth)
 
     monkeypatch.setattr(safe_yaml_mod, "load", _maybe_raise)
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
     assert len(outcome.per_file_errors) == 1
     err = outcome.per_file_errors[0]
     assert isinstance(err, CatalogFileUnreadable)
@@ -956,9 +867,7 @@ def test_ac13b_partial_success_under_mixed_quality(tmp_path: Path) -> None:
         ),
     )
     _write_catalog(convdir / "broken.yaml", "rules: [\n")
-    outcome = (
-        ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
-    )
+    outcome = ConventionsCatalogLoader(search_paths=[convdir]).load_all().unwrap()
     assert len(outcome.catalog.rules) == 1
     assert outcome.catalog.rules[0].id == ConventionId("ok")
     reasons = sorted(e.reason for e in outcome.per_file_errors)

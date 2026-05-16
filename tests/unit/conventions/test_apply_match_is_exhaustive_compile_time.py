@@ -32,8 +32,7 @@ def test_incomplete_conventions_match_fails_mypy_strict() -> None:
     )
     combined = result.stdout + result.stderr
     assert result.returncode != 0, (
-        "mypy --strict must reject the incomplete match; "
-        f"got exit 0; output:\n{combined}"
+        f"mypy --strict must reject the incomplete match; got exit 0; output:\n{combined}"
     )
     needles = (
         "unreachable",
