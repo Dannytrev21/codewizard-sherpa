@@ -1,0 +1,6 @@
+# Fixture-local gitignore (defense-in-depth; repo-wide `.gitignore` already
+# excludes `.codegenie/`). `.git/` is the regenerated work tree; Git refuses
+# to track a nested `.git/` directory anyway, but pinning intent explicitly
+# at the fixture boundary catches accidental `git add -f` mistakes.
+.git/
+.codegenie/

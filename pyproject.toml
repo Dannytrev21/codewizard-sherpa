@@ -208,6 +208,7 @@ addopts = "-ra --strict-markers -m \"not bench\" --cov=src/codegenie --cov-branc
 markers = [
   "bench: advisory performance canaries — not run under the default suite",
   "adv: adversarial-fixture corpus tests (Phase 1 §S5-01/02/03)",
+  "phase02_adv: Phase 2 adversarial tests (CI-gating; see tests/adv/phase02/)",
 ]
 
 [tool.coverage.run]

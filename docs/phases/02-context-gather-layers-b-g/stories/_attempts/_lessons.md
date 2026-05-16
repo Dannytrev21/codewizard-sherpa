@@ -237,3 +237,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** The three pass functions in `_PASSES` share an accumulating `list[SecretFinding]` but their `Protocol`-typed signature is `dict -> dict`. Module-level mutable state breaks DP4 (pure functional core). Passing state through the Protocol breaks DP1 (mockability — the spy test monkeypatches `_PASSES` with `Mock(wraps=...)` and the wrapped originals must still see the state).
 - **Fix:** Bind state via `contextvars.ContextVar` set at the top of `_redact_envelope` and reset in the `finally`. Pure functional core preserved (no I/O, no globals), per-call state thread-safe + reentrant via the token/reset pattern, mocks pass through unchanged because the state lives outside the pass signature.
 - **Why it matters:** Any future Phase-2/3 multi-pass pipeline that wants pure-functional passes + shared accumulation (the RAG-scrubber composition, audit-anchor multi-stage build, future per-task-class redactors) inherits the discipline. `ContextVar` beats `threading.local` because it works under asyncio without leaking across tasks; it beats a module-level `list` because tests can't run in parallel without bleed.
+
+## L14 — `mypy --strict tests/...` standalone errors on codegenie imports; pre-commit hook is the canonical AC-11 satisfaction
+- **Source:** S4-02 (AC-11 wanted `mypy --strict tests/adv/phase02/test_stale_scip_fixture.py`).
+- **Symptom:** Standalone `uv run mypy --strict tests/adv/phase02/test_stale_scip_fixture.py` errors with `Skipping analyzing "codegenie.*": module is installed, but missing library stubs or py.typed marker` for every `from codegenie...` import.
+- **Fix:** The project's mypy contract is `mypy --strict src/` via the pre-commit hook (`.pre-commit-config.yaml`). Run `uv run pre-commit run mypy --files <test-file>` (or `--all-files`) — the hook resolves the source tree correctly. Alternatively `cd src && uv run mypy --strict --explicit-package-bases ../tests/...` works.
+- **Why it matters:** Every Phase-2 story whose AC-N says "mypy --strict <test-file>" will hit the same surprise; cite pre-commit as the AC-satisfaction path, not standalone mypy.
+
+## L15 — `tests/fixtures/portfolio/<fixture>` seed-vs-runtime split is the load-bearing pattern, not vendoring `.git/`
+- **Source:** S4-02 (stale-scip fixture).
+- **Symptom:** Vendoring a nested `.git/` is mechanically impossible (Git refuses to track it as files); the repo-wide `.gitignore` already excludes `.codegenie/` everywhere, so any runtime artifact is gitignored.
+- **Fix:** Track only the *seed* material (`_seed/<template>.json` with substitution tokens, `regenerate.sh`, `README.md`, content files for the commits, fixture-local `.gitignore`). Make `.git/` + `.codegenie/` runtime-materialized by `regenerate.sh`. This is Functional-Core / Imperative-Shell at the fixture boundary (DP2).
+- **Why it matters:** S5-05 (image-digest-drift), S5-06 (adversarial-dockerfile), S6-07 (secret-in-source), S7-02 (fixtures batch two) will all need the same pattern. Apply it on first pass.
+
+## L16 — `pytest-timeout` is NOT on the dev-dep list (Phase 0/1); use a `time.perf_counter` budget instead
+- **Source:** S4-02 (AC-10 wanted `@pytest.mark.timeout(10)`).
+- **Symptom:** `@pytest.mark.timeout(10)` silently does nothing if `pytest-timeout` isn't installed (it's not a registered marker; the decorator becomes a no-op via the `unknown-marker` strict path).
+- **Fix:** Start `time.perf_counter()` at the test entry, assert `(time.perf_counter() - started) < BUDGET` at the end. The story permits the substitution explicitly; carry forward to S5-05/S6-07 etc. Don't add `pytest-timeout` as a dep without an ADR — the existing `--cov-fail-under` + adversarial budgets cover the same surface.
+- **Why it matters:** Every future adversarial in `tests/adv/phase02/` that pins a walltime AC will face this choice.
