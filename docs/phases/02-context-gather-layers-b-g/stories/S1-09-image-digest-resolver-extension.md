@@ -1,7 +1,7 @@
 # Story S1-09 — `ProbeContext.image_digest_resolver` extension + contract-freeze regen
 
 **Step:** Step 1 — Plant new domain primitives, kernel contracts, and the nine new ADRs
-**Status:** Ready (HARDENED 2026-05-15)
+**Status:** Done (GREEN 2026-05-15, all 17 ACs satisfied — see `_attempts/S1-09.md`)
 **Effort:** M
 **Depends on:** S1-08
 **ADRs honored:** 02-ADR-0004, 00-ADR-0007 (probe-contract-freeze), 01-ADR-0002 (precedent)
