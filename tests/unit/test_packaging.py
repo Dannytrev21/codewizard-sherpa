@@ -21,6 +21,13 @@ RUNTIME_DEPS = frozenset(
         # registry imports the module at runtime. ADR-0002 fence still
         # excludes LLM SDKs; networkx is not an LLM SDK.
         "networkx",
+        # 02-ADR-0011 adds the tree-sitter runtime + per-language grammar
+        # wheels to the runtime closure, superseding the vendored .so model
+        # of 02-ADR-0002. Phase 8+ extends additively (tree-sitter-python,
+        # tree-sitter-java …). Fence still excludes LLM SDKs.
+        "tree-sitter",
+        "tree-sitter-typescript",
+        "tree-sitter-javascript",
     }
 )
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
