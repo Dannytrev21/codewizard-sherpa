@@ -4,6 +4,8 @@
 **Designed by:** Performance-first design subagent
 **Date:** 2026-05-14
 
+> **Amendment note (2026-05-17 — [02-ADR-0011](ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md)):** the tree-sitter import-graph section's "in-process via `py-tree-sitter` bindings + ThreadPoolExecutor inside the probe" proposal records the performance-lens position. The synthesizer (`final-design.md`) already **rejected** the internal `ThreadPoolExecutor` (hidden parallelism lies to the coordinator's single semaphore — see 02-ADR-0003); that decision is unchanged. 02-ADR-0011 amends only how `py-tree-sitter` *grammars* are delivered: from vendored `.so` files to PyPI wheels (`tree-sitter-typescript`, `tree-sitter-javascript`), behind a `codegenie.grammars.lock.language_for` kernel. The per-file latency budget (~5 ms / file) and the named-trigger C-extension discipline (Phase 1 ADR-0009 admits `py-tree-sitter` as the one exception) carry forward unchanged.
+
 ## Lens summary
 
 Phase 2 is where the gather pipeline stops being cheap. Phase 1 was a 1-second walk of `package.json` plus a few YAML reads; Phase 2 adds `scip-typescript` (8 s cold on a 50k-LOC repo), `syft` against a built image (3 s after a 47 s `docker build`), `grype` (5 s), `semgrep` (12 s), and `strace`-driven runtime traces across five scenarios (84 s). Cold gather *is* the localv2.md §3.2 figure of 3–6 minutes; Phase 2 is what makes that number real. The continuous-gather model from ADR-0006 (50,000+ gathers/day at portfolio scale) does not survive a naïve Phase 2 implementation.

@@ -4,6 +4,8 @@
 **Designed by:** Security-first design subagent
 **Date:** 2026-05-14
 
+> **Amendment note (2026-05-17 — [02-ADR-0011](ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md)):** the §"`tree-sitter` grammar pinning" section (and the `_grammar_runner` subprocess proposal it sketches) describe the original security-lens design at synthesis time. The synthesizer (`final-design.md`) **rejected** the `_grammar_runner` subprocess wrap as over-engineering for the actual Phase-2 threat model — that decision is unchanged. What did change in 02-ADR-0011: the BLAKE3-of-binary verifier against `~/.codegenie/grammars.lock` (and its sibling `tools/grammars.lock` BLAKE3 pin) was replaced with **PyPI wheel + `pip --require-hashes`** as the supply-chain anchor. The wheel SHA256 pin is the new "reviewed-as-data" lock; the named-trigger C-extension discipline is preserved (Phase 1 ADR-0009 still admits `py-tree-sitter` as the one exception). Body preserved for design-time historical record; **current truth is 02-ADR-0011**.
+
 ---
 
 ## Lens summary

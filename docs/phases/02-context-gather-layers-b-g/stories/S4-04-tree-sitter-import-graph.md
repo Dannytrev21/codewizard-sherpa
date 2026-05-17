@@ -1,10 +1,28 @@
 # Story S4-04 — `TreeSitterImportGraphProbe` — `py-tree-sitter` no-internal-threads + grammar pin
 
 **Step:** Step 4 — Ship `IndexHealthProbe` (B2) + Layer B structural probes
-**Status:** **UNBLOCKED (2026-05-17)** — Option (b) shipped: [02-ADR-0011](../ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md) supersedes 02-ADR-0002 and routes grammar loading through PyPI wheels (`tree-sitter-typescript`, `tree-sitter-javascript`) via the new `codegenie.grammars.lock.language_for` kernel. Ready to be picked up by the next executor run. **Story body still references the legacy `load_and_verify(repo_root) → GrammarLockFile` surface from S4-03; the implementer should call `language_for("typescript" | "tsx" | "javascript")` instead, and any AC mentioning BLAKE3 / `tools/grammars.lock` is now satisfied by `pip --require-hashes` at the wheel boundary.**
+**Status:** **UNBLOCKED + amended (2026-05-17)** — [02-ADR-0011](../ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md) supersedes 02-ADR-0002. Grammar loading now flows through `codegenie.grammars.lock.language_for(name) -> tree_sitter.Language` (backed by PyPI wheels `tree-sitter-typescript` and `tree-sitter-javascript`). Ready to be picked up by the next executor run; the surface-name translations are documented below.
 **Effort:** M
-**Depends on:** S4-03 (lands `src/codegenie/grammars/lock.py` — the `load_and_verify(repo_root) -> GrammarLockFile` typed loader + `GrammarLoadRefused` exception; `tools/grammars.lock`; vendored TypeScript + JavaScript grammar binaries on disk). S4-04 **imports** that kernel; it does NOT re-implement BLAKE3 verification or re-declare `GrammarLoadRefused`.
-**ADRs honored:** [`02-ADR-0002`](../ADRs/0002-tree-sitter-grammars-phase-2-amendment.md) (`py-tree-sitter` is the **one** Phase-2 C-extension exception amending Phase 1 ADR-0009; grammar pin is the supply-chain defense; in-process load, NOT a `_grammar_runner` subprocess), [`02-ADR-0003`](../ADRs/0003-coordinator-heaviness-sort-annotation.md) (`heaviness="medium"` is a registry annotation; no internal `ThreadPoolExecutor` — hidden parallelism lies to the coordinator's single semaphore), Phase 0 [`ADR-0006`](../../00-bullet-tracer-foundations/ADRs/0006-pyproject-toml-extras-shape.md) (the runtime closure is `[project.dependencies]`; `gather` extras is intentionally empty), Phase 1 ADR-0008 (in-process parse caps, not per-probe sandbox; grammar code runs in the gather process), Phase 1 ADR-0007 (warning ID pattern)
+**Depends on:** S4-03 (originally landed `src/codegenie/grammars/lock.py` as the BLAKE3 verifier kernel; the file persists but its public surface is now `language_for(name) -> tree_sitter.Language` + `GrammarLoadRefused` per 02-ADR-0011). S4-04 **imports** the kernel; it does NOT redeclare `GrammarLoadRefused`, does NOT import per-grammar PyPI packages directly (no `from tree_sitter_typescript import ...`), and does NOT re-implement any grammar load step.
+**ADRs honored:** [`02-ADR-0011`](../ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md) (PyPI grammar wheels behind `language_for`; supersedes 02-ADR-0002 with the named-trigger C-extension discipline preserved), [`02-ADR-0003`](../ADRs/0003-coordinator-heaviness-sort-annotation.md) (`heaviness="medium"` is a registry annotation; no internal `ThreadPoolExecutor`), Phase 0 [`ADR-0006`](../../00-bullet-tracer-foundations/ADRs/0006-pyproject-toml-extras-shape.md) (the runtime closure is `[project.dependencies]`; `gather` extras is intentionally empty), Phase 1 ADR-0008 (in-process parse caps, not per-probe sandbox; grammar code runs in the gather process), Phase 1 ADR-0007 (warning ID pattern). The body below still cites 02-ADR-0002 verbatim — every such reference now points through 02-ADR-0011's supersession (the named-trigger discipline carries forward unchanged).
+
+## 02-ADR-0011 translation table (read this BEFORE the body)
+
+The story was written against 02-ADR-0002's vendored-`.so` model. The 2026-05-17 supersession changed the kernel surface but left every other AC valid. Apply these mechanical translations as you read:
+
+| Legacy surface (S4-03 first edition / 02-ADR-0002) | Current surface (02-ADR-0011) |
+|---|---|
+| `from codegenie.grammars.lock import load_and_verify, GrammarLockFile, GrammarPin, GrammarLoadRefused` | `from codegenie.grammars.lock import language_for, SupportedLanguage, GrammarLoadRefused` |
+| `lock = load_and_verify(_REPO_ROOT)` | `language = language_for("typescript")` (also `"tsx"`, `"javascript"`) |
+| `tree_sitter.Language(pin.file, pin.language)` for `pin in lock.grammars` | `language_for(name)` returns a constructed `tree_sitter.Language` directly |
+| `_get_language(lock_file_id, language)` `lru_cache` helper | not needed — the kernel memoizes via `functools.lru_cache` already |
+| AC asserting "no `Path('tools/grammars.lock')` literal" | becomes "no `from tree_sitter_typescript import ...` / `from tree_sitter_javascript import ...`" |
+| AC asserting "no `import blake3`" | preserved — still applies (the kernel handles supply-chain pinning at the wheel boundary, not the probe) |
+| AC asserting "no `class GrammarLoadRefused` redeclaration" | preserved verbatim |
+| AC referencing `tools/grammars.lock` as `declared_inputs` cache-key token | replaced by `pyproject.toml` + `uv.lock` (the wheel SHA256 pin) — a grammar bump invalidates because the wheel SHA256 changes. The legacy `tools/grammars.lock` token is no longer a valid declared input. |
+| Grammar pin mismatch → `GrammarLoadRefused` slice (`confidence="low"`) | preserved — the kernel still raises `GrammarLoadRefused` on every failure surface (missing wheel, unknown language, capsule factory drift, ABI mismatch). The probe-side honest-absence slice (Phase 2 `NodeReflectionProbe` ships the same shape — see `src/codegenie/probes/layer_b/node_reflection.py:_emit_grammar_unavailable`) is the reference implementation. |
+
+Mirror the `NodeReflectionProbe` GREEN implementation (2026-05-17, S4-06 attempt 2 — `src/codegenie/probes/layer_b/node_reflection.py` + `tests/unit/probes/layer_b/test_node_reflection.py`) for every mechanical detail: kernel import line, `Parser(language)` construction, per-`(language, query)` Query caching, AST-walk discipline that forbids per-grammar PyPI imports.
 
 ## Validation notes (2026-05-16 — phase-story-validator)
 

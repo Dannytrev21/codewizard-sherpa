@@ -1,6 +1,6 @@
 # Story S4-03 — `ScipIndexProbe` via `scip-typescript` + grammars-lock infrastructure
 
-**Status:** Done
+**Status:** Done (originally) — **grammars-lock infrastructure superseded 2026-05-17 by [02-ADR-0011](../ADRs/0011-tree-sitter-grammars-via-pypi-wheels.md)**. The `ScipIndexProbe` half ships unchanged; the grammar-infrastructure half (`tools/grammars.lock`, `tools/regenerate_grammars_lock.sh`, vendored `.so` files, `.gitattributes` entries, `tests/unit/tools/test_grammars_lock.py`) was deleted. `src/codegenie/grammars/lock.py` was rewritten in-place — its public surface is now `language_for(name) -> tree_sitter.Language` + `GrammarLoadRefused` instead of `load_and_verify(repo_root) -> GrammarLockFile`. AC-10/AC-11/AC-12/AC-18 (the grammars-lock ACs) no longer apply; equivalent acceptance lives in `tests/unit/grammars/test_lock.py` (the new kernel) and `pip --require-hashes` at the wheel boundary.
 **Completed:** 2026-05-16
 **Attempts:** 1
 **Evidence:**

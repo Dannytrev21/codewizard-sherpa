@@ -1025,7 +1025,8 @@ Phase 3 is "Vuln remediation: deterministic recipe path" (roadmap line 82). It i
 | # | ADR | Records |
 |---|---|---|
 | 02-ADR-0001 | Add docker + security-CLI tools to `ALLOWED_BINARIES` | Mirrors Phase 1 ADR-0001 `node` addition |
-| 02-ADR-0002 | `py-tree-sitter` grammars — Phase 2 amendment to Phase 1 ADR-0009 | Named-trigger fired: `localv2.md` §5.2 B3 requires tree-sitter |
+| 02-ADR-0002 | `py-tree-sitter` grammars — Phase 2 amendment to Phase 1 ADR-0009 (**Superseded 2026-05-17 by 02-ADR-0011**) | Named-trigger fired: `localv2.md` §5.2 B3 requires tree-sitter. Named-trigger discipline preserved by 02-ADR-0011; grammar *delivery* moved from vendored .so to PyPI wheels |
+| 02-ADR-0011 | Tree-sitter grammars via PyPI wheels (supersedes 02-ADR-0002) | Vendored `.so`/`.dylib` + `tools/grammars.lock` BLAKE3 model replaced with `tree-sitter-typescript`/`tree-sitter-javascript` PyPI wheels behind `codegenie.grammars.lock.language_for` |
 | 02-ADR-0003 | `@register_probe(heaviness=, runs_last=)` registry annotations | Coordinator sort-order edit; preserves single Semaphore + ABC contract |
 | 02-ADR-0004 | Image digest as declared-input token | Extends `localv2.md` §4 special-token mechanism; introduces optional `ProbeContext.image_digest_resolver` |
 | 02-ADR-0005 | Secret findings — no plaintext persistence | Phase 5 microVM is the named cleartext escalation door |
