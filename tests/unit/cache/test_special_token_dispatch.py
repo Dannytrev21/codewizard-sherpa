@@ -69,9 +69,7 @@ def snapshot(tmp_path: Path) -> RepoSnapshot:
 # ---------------------------------------------------------------------------
 
 
-def test_image_digest_resolver_changes_cache_key(
-    schema_dir: Path, snapshot: RepoSnapshot
-) -> None:
+def test_image_digest_resolver_changes_cache_key(schema_dir: Path, snapshot: RepoSnapshot) -> None:
     """Two resolvers returning distinct digests produce distinct cache keys."""
 
     class _Probe(_SyntheticProbe):
@@ -154,9 +152,7 @@ def test_unknown_special_token_raises_cache_key_error(
 # ---------------------------------------------------------------------------
 
 
-def test_non_token_entry_still_rglobs_unchanged(
-    schema_dir: Path, snapshot: RepoSnapshot
-) -> None:
+def test_non_token_entry_still_rglobs_unchanged(schema_dir: Path, snapshot: RepoSnapshot) -> None:
     """``Dockerfile`` is a glob, not a token — still resolved via rglob."""
     (snapshot.root / "Dockerfile").write_text("FROM scratch\n")
 
@@ -172,9 +168,7 @@ def test_non_token_entry_still_rglobs_unchanged(
     assert key_a != key_b
 
 
-def test_no_ctx_means_unresolved_sentinel(
-    schema_dir: Path, snapshot: RepoSnapshot
-) -> None:
+def test_no_ctx_means_unresolved_sentinel(schema_dir: Path, snapshot: RepoSnapshot) -> None:
     """``key_for(..., ctx=None)`` is well-defined and stable."""
 
     class _Probe(_SyntheticProbe):

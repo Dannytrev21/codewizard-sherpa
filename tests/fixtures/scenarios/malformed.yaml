@@ -1,3 +1,0 @@
-scenarios:
-  - not_a_dict
-  - this is bad: yaml: : :

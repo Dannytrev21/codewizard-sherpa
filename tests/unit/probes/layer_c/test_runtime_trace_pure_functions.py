@@ -14,15 +14,12 @@ from codegenie.probes.layer_c.runtime_trace import (
     _parse_strace_lines,
 )
 from codegenie.probes.layer_c.scenario_result import (
-    DockerBuildFailed,
     ImageBuildUnavailable,
-    ImageDigestUnresolved,
     StraceUnavailable,
     TraceScenarioCompleted,
     TraceScenarioFailed,
     TraceScenarioSkipped,
 )
-
 
 # ---------------------------------------------------------------------------
 # _parse_strace_lines
@@ -111,9 +108,7 @@ def _failed(name: str) -> TraceScenarioFailed:
         ([], "unavailable"),
     ],
 )
-def test_derive_trace_coverage_confidence_mapping(
-    results: list, expected: str
-) -> None:
+def test_derive_trace_coverage_confidence_mapping(results: list, expected: str) -> None:
     assert _derive_trace_coverage_confidence(results) == expected
 
 
@@ -131,9 +126,7 @@ def test_derive_trace_coverage_confidence_mapping(
         ("unavailable", "low"),
     ],
 )
-def test_envelope_confidence_clips_to_tri_state(
-    slice_confidence: str, expected: str
-) -> None:
+def test_envelope_confidence_clips_to_tri_state(slice_confidence: str, expected: str) -> None:
     assert _envelope_confidence(slice_confidence) == expected  # type: ignore[arg-type]
 
 

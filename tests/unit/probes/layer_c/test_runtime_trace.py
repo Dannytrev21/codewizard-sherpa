@@ -14,17 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import logging
 import sys
-from collections.abc import Iterator
-from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, get_args
 
 import pytest
 
-from codegenie.cache import keys as cache_keys
+from codegenie.exec import ProcessResult
 from codegenie.probes.base import ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.layer_c import runtime_trace as rt
 from codegenie.probes.layer_c.runtime_trace import (
@@ -37,20 +34,9 @@ from codegenie.probes.layer_c.runtime_trace import (
     _PER_SCENARIO_TIMEOUT_S,
     _SCENARIO_TASK_NAME_PREFIX,
     RuntimeTraceProbe,
-    ScenariosConfig,
     ScenarioSpec,
 )
-from codegenie.probes.layer_c.scenario_result import (
-    DockerBuildFailed,
-    ImageDigestUnresolved,
-    StraceUnavailable,
-    TraceScenarioCompleted,
-    TraceScenarioFailed,
-    TraceScenarioSkipped,
-)
 from codegenie.probes.registry import default_registry
-from codegenie.exec import ProcessResult
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -109,9 +95,7 @@ def ctx(tmp_path: Path) -> ProbeContext:
 
 def test_runtime_trace_registered_heavy_runs_last_false() -> None:
     """The probe is registered with heaviness="heavy" and runs_last=False."""
-    matches = [
-        e for e in default_registry.sorted_for_dispatch() if e.cls.name == "runtime_trace"
-    ]
+    matches = [e for e in default_registry.sorted_for_dispatch() if e.cls.name == "runtime_trace"]
     assert len(matches) == 1
     entry = matches[0]
     assert entry.heaviness == "heavy"
@@ -272,18 +256,14 @@ def test_image_digest_resolver_unbound_produces_envelope_low(
     _assert_failed_image_digest_unresolved(output)
 
 
-def test_image_digest_resolver_returns_none(
-    snapshot: RepoSnapshot, tmp_path: Path
-) -> None:
+def test_image_digest_resolver_returns_none(snapshot: RepoSnapshot, tmp_path: Path) -> None:
     ctx = _make_ctx(tmp_path / "ctx", image_digest_resolver=lambda _root: None)
     probe = RuntimeTraceProbe()
     output = asyncio.run(probe.run(snapshot, ctx))
     _assert_failed_image_digest_unresolved(output)
 
 
-def test_image_digest_resolver_raises_translated(
-    snapshot: RepoSnapshot, tmp_path: Path
-) -> None:
+def test_image_digest_resolver_raises_translated(snapshot: RepoSnapshot, tmp_path: Path) -> None:
     def boom(_root: Path) -> str:
         raise RuntimeError("boom")
 

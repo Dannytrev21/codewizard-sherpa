@@ -99,11 +99,9 @@ from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.layer_c.scenario_result import (
     DockerBuildFailed,
     ImageBuildUnavailable,
-    ImageDigestUnresolved,
     NoDockerfile,
     ScenarioResult,
     ScenarioTimeout,
-    StraceUnavailable,
     TraceScenarioCompleted,
     TraceScenarioFailed,
     TraceScenarioSkipped,
@@ -265,7 +263,7 @@ def _short(digest: str) -> str:
     """
     if not digest:
         raise ValueError("empty digest")
-    body = digest[len(_SHA256_PREFIX):] if digest.startswith(_SHA256_PREFIX) else digest
+    body = digest[len(_SHA256_PREFIX) :] if digest.startswith(_SHA256_PREFIX) else digest
     if not body or not _HEX_RE.fullmatch(body):
         raise ValueError(f"non-hex digest: {digest!r}")
     return body[:12]
@@ -344,7 +342,9 @@ _STRACE_LINE_RE = re.compile(
 )
 _STRING_ARG_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _SOCKADDR_RE = re.compile(r"sin_addr=inet_addr\(\"([^\"]+)\"\).*?sin_port=htons\((\d+)\)")
-_SOCKADDR_RE_V2 = re.compile(r"AF_INET[^,]*,\s*sin_port=htons\((\d+)\),\s*sin_addr=inet_addr\(\"([^\"]+)\"\)")
+_SOCKADDR_RE_V2 = re.compile(
+    r"AF_INET[^,]*,\s*sin_port=htons\((\d+)\),\s*sin_addr=inet_addr\(\"([^\"]+)\"\)"
+)
 
 
 def _parse_strace_lines(lines: Iterable[str]) -> ParsedTrace:
@@ -547,7 +547,11 @@ def _load_scenarios(
 def _resolve_image_digest(
     ctx: ProbeContext,
     root: Path,
-) -> tuple[str | None, Literal["resolver_unbound", "resolver_returned_none", "resolver_raised"] | None, str | None]:
+) -> tuple[
+    str | None,
+    Literal["resolver_unbound", "resolver_returned_none", "resolver_raised"] | None,
+    str | None,
+]:
     """Wrap ``ctx.image_digest_resolver(root)``. Never raises.
 
     Returns a 3-tuple ``(digest_or_None, unresolved_reason_or_None,
