@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "CommitsBehind": {
+      "additionalProperties": false,
+      "description": "Constructed by ``IndexHealthProbe`` (S4-01) when the last-indexed\ncommit lags ``git rev-parse HEAD``. ``n`` is the count of commits the\nindex is behind; ``last_indexed`` is the raw commit SHA string at the\nI/O boundary (not a newtype \u2014 commit SHAs are not kernel identifiers).",
+      "properties": {
+        "kind": {
+          "const": "commits_behind",
+          "default": "commits_behind",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_indexed": {
+          "title": "Last Indexed",
+          "type": "string"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "n",
+        "last_indexed"
+      ],
+      "title": "CommitsBehind",
+      "type": "object"
+    },
+    "CoverageGap": {
+      "additionalProperties": false,
+      "description": "Constructed when the index covers fewer files than the repository\ncontains (e.g., the indexer skipped a directory, or a recent file add\nisn't reflected). The pair lets the renderer report a coverage\npercentage without re-deriving it from cardinalities elsewhere.",
+      "properties": {
+        "files_in_repo": {
+          "title": "Files In Repo",
+          "type": "integer"
+        },
+        "files_indexed": {
+          "title": "Files Indexed",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "coverage_gap",
+          "default": "coverage_gap",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "files_indexed",
+        "files_in_repo"
+      ],
+      "title": "CoverageGap",
+      "type": "object"
+    },
+    "DigestMismatch": {
+      "additionalProperties": false,
+      "description": "Constructed when an index keyed by a content-addressable digest\n(e.g., a SCIP bundle whose `manifest.digest` no longer matches the\nrepository's expected digest) is observed stale.",
+      "properties": {
+        "actual": {
+          "title": "Actual",
+          "type": "string"
+        },
+        "expected": {
+          "title": "Expected",
+          "type": "string"
+        },
+        "kind": {
+          "const": "digest_mismatch",
+          "default": "digest_mismatch",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected",
+        "actual"
+      ],
+      "title": "DigestMismatch",
+      "type": "object"
+    },
+    "Fresh": {
+      "additionalProperties": false,
+      "description": "The index reflects the repository at the recorded ``indexed_at``\ntimestamp. Producers MUST construct timezone-aware UTC datetimes; the\ntype permits any ``datetime`` only because the smart-constructor\ndiscipline lives with the producer (``IndexHealthProbe``), not here.",
+      "properties": {
+        "indexed_at": {
+          "format": "date-time",
+          "title": "Indexed At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "fresh",
+          "default": "fresh",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "indexed_at"
+      ],
+      "title": "Fresh",
+      "type": "object"
+    },
+    "IndexerError": {
+      "additionalProperties": false,
+      "description": "Constructed when the upstream indexer is unavailable. ``message`` is\na stable identifier \u2014 e.g., ``\"strace_unavailable\"``, ``\"timeout\"``,\n``\"upstream_X_unavailable\"`` \u2014 not a free-form human string.",
+      "properties": {
+        "kind": {
+          "const": "indexer_error",
+          "default": "indexer_error",
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "IndexerError",
+      "type": "object"
+    },
+    "Stale": {
+      "additionalProperties": false,
+      "description": "The index does NOT reflect the repository. ``reason`` carries the\ntyped *why*; every consumer must exhaustively ``match`` on it with\n``assert_never`` in the default arm.",
+      "properties": {
+        "kind": {
+          "const": "stale",
+          "default": "stale",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "discriminator": {
+            "mapping": {
+              "commits_behind": "#/$defs/CommitsBehind",
+              "coverage_gap": "#/$defs/CoverageGap",
+              "digest_mismatch": "#/$defs/DigestMismatch",
+              "indexer_error": "#/$defs/IndexerError"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CommitsBehind"
+            },
+            {
+              "$ref": "#/$defs/DigestMismatch"
+            },
+            {
+              "$ref": "#/$defs/CoverageGap"
+            },
+            {
+              "$ref": "#/$defs/IndexerError"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "Stale",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/index_health/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the index_health probe (Phase 2 Layer B). The slice root carries a single key 'index_health' whose value is the probe's typed output.",
+  "properties": {
+    "index_health": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "type": "string"
+            },
+            "current_commit": {
+              "type": "string"
+            },
+            "freshness": {
+              "discriminator": {
+                "mapping": {
+                  "fresh": "#/$defs/Fresh",
+                  "stale": "#/$defs/Stale"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Fresh"
+                },
+                {
+                  "$ref": "#/$defs/Stale"
+                }
+              ]
+            },
+            "last_indexed_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "freshness",
+            "confidence",
+            "current_commit",
+            "last_indexed_at"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "index_health"
+  ],
+  "title": "IndexHealth probe output",
+  "type": "object"
+}

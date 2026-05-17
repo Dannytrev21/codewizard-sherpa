@@ -1,0 +1,78 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/tree_sitter_import_graph/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the tree_sitter_import_graph probe (Phase 2 Layer B). The slice root carries a single key 'import_graph' whose value is the probe's typed output.",
+  "properties": {
+    "import_graph": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failed_files": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files_with_imports": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "grammar_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-grammar version string (e.g., 'typescript' -> '0.23.2'). Keys are tree-sitter language names.",
+          "type": "object"
+        },
+        "import_graph_uri": {
+          "description": "Relative path to the raw artifact JSON (omitted when the probe produced zero edges).",
+          "type": "string"
+        },
+        "parsed_files": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_edges": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "files_with_imports",
+        "total_edges",
+        "parsed_files",
+        "failed_files",
+        "confidence",
+        "grammar_versions"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "import_graph"
+  ],
+  "title": "TreeSitterImportGraph probe output",
+  "type": "object"
+}

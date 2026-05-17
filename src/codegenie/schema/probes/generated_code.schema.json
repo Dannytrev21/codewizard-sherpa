@@ -1,0 +1,76 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/generated_code/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the generated_code probe (Phase 2 Layer B). The slice root carries a single key 'generated_code' whose value is the probe's typed output.",
+  "properties": {
+    "generated_code": {
+      "additionalProperties": false,
+      "properties": {
+        "build_outputs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "files": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "generator": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "regenerate_command": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "generator"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "files",
+        "build_outputs",
+        "confidence"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "generated_code"
+  ],
+  "title": "GeneratedCode probe output",
+  "type": "object"
+}

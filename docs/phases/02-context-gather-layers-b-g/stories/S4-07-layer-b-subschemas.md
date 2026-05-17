@@ -1,7 +1,7 @@
 # Story S4-07 — Layer B sub-schemas + explicit additive imports
 
 **Step:** Step 4 — Ship `IndexHealthProbe` (B2) + Layer B structural probes
-**Status:** Ready — HARDENED (validated 2026-05-16)
+**Status:** Done (GREEN 2026-05-17 — see `_attempts/S4-07.md`)
 **Effort:** S
 **Depends on:** S4-01 (`IndexHealthProbe` shipping the `index_health` slice shape + `_WARNING_IDS` frozenset), S4-03 (`SCIPIndexProbe` shipping the `scip_index` slice shape + `_WARNING_IDS` frozenset), S4-04 (`TreeSitterImportGraphProbe` shipping the `tree_sitter_import_graph` slice shape + `_WARNING_IDS` frozenset), S4-05 (`DepGraphProbe` shipping the `dep_graph` slice and `DepGraphProbeOutput` Pydantic model + `_WARNING_IDS` frozenset), S4-06 (the three marker probes shipping `generated_code`/`node_reflection`/`semantic_index_meta` slices + `_WARNING_IDS` frozensets — `node_reflection` is the slice key per S4-06 final shape, not `reflection`)
 **ADRs honored:** Phase 1 ADR-0004 (`additionalProperties: false` at sub-schema root + every nested block — the per-probe sub-schema convention), Phase 1 ADR-0007 (warning/error ID pattern `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$` enforced on `warnings[]` and `errors[]`), Phase 1 ADR-0010 (slice optional at envelope), Phase 0 ADR-0013 (envelope `probes.*: additionalProperties: true`, per-probe sub-schemas strict — the layering this story extends), [`02-ADR-0006`](../ADRs/0006-index-freshness-sum-type-location.md) (the `index_health` sub-schema embeds the `IndexFreshness` Pydantic JSON Schema generated from `codegenie.indices.freshness`)

@@ -1,0 +1,129 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/node_reflection/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the node_reflection probe (Phase 2 Layer B). The slice root carries a single key 'reflection' whose value is the probe's typed output.",
+  "properties": {
+    "reflection": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence_impact": {
+          "description": "INVERTED semantics: 'high' means observed reflection is substantial; 'low' means the slice is structurally clean.",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        "decorator_usage": {
+          "additionalProperties": false,
+          "properties": {
+            "class_validator": {
+              "type": "boolean"
+            },
+            "custom_decorators_detected": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nestjs": {
+              "type": "boolean"
+            },
+            "typeorm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "nestjs",
+            "typeorm",
+            "class_validator",
+            "custom_decorators_detected"
+          ],
+          "type": "object"
+        },
+        "dynamic_import_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dynamic_property_access_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dynamic_require_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "env_var_reads": {
+          "additionalProperties": false,
+          "properties": {
+            "code_path_affecting": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "count": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "count",
+            "code_path_affecting"
+          ],
+          "type": "object"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "eval_usage": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "function_constructor_usage": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prototype_manipulation_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "eval_usage",
+        "function_constructor_usage",
+        "dynamic_require_count",
+        "dynamic_import_count",
+        "dynamic_property_access_count",
+        "prototype_manipulation_count",
+        "decorator_usage",
+        "env_var_reads",
+        "confidence_impact",
+        "affected_files"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "reflection"
+  ],
+  "title": "NodeReflection probe output",
+  "type": "object"
+}

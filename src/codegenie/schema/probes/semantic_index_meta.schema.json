@@ -1,0 +1,93 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/semantic_index_meta/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the semantic_index_meta probe (Phase 2 Layer B). The slice root carries a single key 'semantic_index_meta' whose value is the probe's typed output.",
+  "properties": {
+    "semantic_index_meta": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exclude_globs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "files_count_estimate": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "has_extends": {
+          "type": "boolean"
+        },
+        "include_globs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "module": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "module_resolution": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strict": {
+          "type": "boolean"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tsconfig_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "tsconfig_path",
+        "confidence"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "semantic_index_meta"
+  ],
+  "title": "SemanticIndexMeta probe output",
+  "type": "object"
+}

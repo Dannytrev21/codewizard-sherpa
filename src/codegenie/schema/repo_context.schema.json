@@ -52,6 +52,27 @@
         },
         "test_inventory": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/test_inventory/v0.1.0.json"
+        },
+        "index_health": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/index_health/v0.1.0.json"
+        },
+        "scip_index": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/scip_index/v0.1.0.json"
+        },
+        "tree_sitter_import_graph": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/tree_sitter_import_graph/v0.1.0.json"
+        },
+        "dep_graph": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/dep_graph/v0.1.0.json"
+        },
+        "generated_code": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/generated_code/v0.1.0.json"
+        },
+        "node_reflection": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/node_reflection/v0.1.0.json"
+        },
+        "semantic_index_meta": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/semantic_index_meta/v0.1.0.json"
         }
       }
     }

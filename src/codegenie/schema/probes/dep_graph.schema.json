@@ -1,0 +1,87 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/dep_graph/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the dep_graph probe (Phase 2 Layer B). The slice root carries a single key 'dep_graph' whose value is the probe's typed output.",
+  "properties": {
+    "dep_graph": {
+      "additionalProperties": false,
+      "description": "Typed slice shape for the future ``DepGraphProbe`` (S4-05).\n\nThree fields: ``graph_path`` (on-disk path to the serialised\n``networkx.node_link_data`` JSON, or ``None`` when no graph was built),\n``confidence`` (the ADR-0007 ``\"high\" | \"medium\" | \"low\"`` ladder), and\n``reason`` (free-form string when ``confidence`` is not ``\"high\"``).\nFrozen + ``extra=forbid`` per Phase 2 model discipline (mirrors\n:class:`codegenie.indices.freshness.IndexFreshness`).",
+      "properties": {
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "ecosystem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edges_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "graph_path": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Graph Path"
+        },
+        "nodes_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "graph_path",
+        "confidence"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "dep_graph"
+  ],
+  "title": "DepGraph probe output",
+  "type": "object"
+}

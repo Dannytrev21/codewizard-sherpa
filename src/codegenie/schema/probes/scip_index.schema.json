@@ -1,0 +1,155 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/scip_index/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Slice produced by the scip_index probe (Phase 2 Layer B). The slice root carries a single key 'semantic_index' whose value is the probe's typed output.",
+  "properties": {
+    "semantic_index": {
+      "additionalProperties": false,
+      "description": "The ``semantic_index`` slice the SCIP probe emits.\n\nField ordering is load-bearing: the B2-required keys\n(``last_indexed_commit``, ``files_indexed``, ``files_in_repo``,\n``indexer_errors``, ``last_indexed_at``) appear in the dict regardless\nof population order, but Pydantic preserves declaration order in\n``model_dump`` and ``model_dump_json`` \u2014 the YAML/JSON renders are\ndeterministic for golden-file tests.",
+      "properties": {
+        "any_type_density": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Any Type Density"
+        },
+        "coverage_pct": {
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Coverage Pct",
+          "type": "number"
+        },
+        "errors": {
+          "description": "Forward-compatible per-slice error IDs. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exported_symbols": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exported Symbols"
+        },
+        "files_in_repo": {
+          "minimum": 0,
+          "title": "Files In Repo",
+          "type": "integer"
+        },
+        "files_indexed": {
+          "minimum": 0,
+          "title": "Files Indexed",
+          "type": "integer"
+        },
+        "indexer": {
+          "const": "scip-typescript",
+          "title": "Indexer",
+          "type": "string"
+        },
+        "indexer_errors": {
+          "minimum": 0,
+          "title": "Indexer Errors",
+          "type": "integer"
+        },
+        "indexer_version": {
+          "title": "Indexer Version",
+          "type": "string"
+        },
+        "indexer_warnings": {
+          "minimum": 0,
+          "title": "Indexer Warnings",
+          "type": "integer"
+        },
+        "last_indexed_at": {
+          "title": "Last Indexed At",
+          "type": "string"
+        },
+        "last_indexed_commit": {
+          "title": "Last Indexed Commit",
+          "type": "string"
+        },
+        "scip_index_uri": {
+          "title": "Scip Index Uri",
+          "type": "string"
+        },
+        "symbol_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Symbol Count"
+        },
+        "unresolved_computed_access": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unresolved Computed Access"
+        },
+        "unresolved_dynamic_imports": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unresolved Dynamic Imports"
+        },
+        "warnings": {
+          "description": "Soft-degrade signals. Each item matches the ADR-0007 ID pattern.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "scip_index_uri",
+        "indexer",
+        "indexer_version",
+        "files_indexed",
+        "files_in_repo",
+        "coverage_pct",
+        "last_indexed_commit",
+        "last_indexed_at",
+        "indexer_errors",
+        "indexer_warnings"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "semantic_index"
+  ],
+  "title": "ScipIndex probe output",
+  "type": "object"
+}
