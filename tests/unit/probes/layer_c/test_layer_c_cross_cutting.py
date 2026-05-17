@@ -96,7 +96,11 @@ def _count_source_lines(path: Path) -> int:
                 and isinstance(body[0].value.value, str)
             ):
                 doc_node = body[0]
-            if doc_node is not None and hasattr(doc_node, "lineno") and hasattr(doc_node, "end_lineno"):
+            if (
+                doc_node is not None
+                and hasattr(doc_node, "lineno")
+                and hasattr(doc_node, "end_lineno")
+            ):
                 end = doc_node.end_lineno or doc_node.lineno
                 for n in range(doc_node.lineno, end + 1):
                     docstring_lines.add(n)

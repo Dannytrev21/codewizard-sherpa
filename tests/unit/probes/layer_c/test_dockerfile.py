@@ -17,7 +17,6 @@ import pytest
 
 from codegenie.probes.base import ProbeContext, RepoSnapshot
 from codegenie.probes.layer_c._dockerfile_parse import (
-    parse_dockerfile_text,
     tokenize_dockerfile_line,
 )
 from codegenie.probes.layer_c.dockerfile import DockerfileProbe, find_dockerfiles
@@ -118,8 +117,13 @@ def test_dockerfile_parser_no_subprocess_in_source() -> None:
     """AC: zero subprocess / os.system / eval / exec in parser source."""
     sources: list[str] = []
     for name in ("dockerfile.py", "_dockerfile_parse.py", "_dockerfile_models.py"):
-        sources.append(Path(__file__).resolve().parents[4]
-                       .joinpath("src/codegenie/probes/layer_c", name).read_text())
+        sources.append(
+            Path(__file__)
+            .resolve()
+            .parents[4]
+            .joinpath("src/codegenie/probes/layer_c", name)
+            .read_text()
+        )
     blob = "\n".join(sources)
     for banned in ("subprocess.", "os.system(", "os.popen(", "eval(", "exec("):
         assert banned not in blob, f"banned token {banned!r} appears in parser source"
@@ -172,32 +176,37 @@ def test_dockerfile_multiple_files(tmp_path: Path) -> None:
 _DIRECTIVE_CASES = [
     ("FROM alpine\n", lambda df: df["stages"][0]["base_image"] == "alpine"),
     ("FROM alpine\nRUN echo hi\n", lambda df: df["run_commands"][0]["command"] == "echo hi"),
-    ("FROM alpine\nCOPY x y\n",
-     lambda df: df["copy_directives"][0]["raw"] == "x y"),
-    ("FROM alpine\nADD x y\n",
-     lambda df: df["copy_directives"][0]["raw"] == "x y"),
+    ("FROM alpine\nCOPY x y\n", lambda df: df["copy_directives"][0]["raw"] == "x y"),
+    ("FROM alpine\nADD x y\n", lambda df: df["copy_directives"][0]["raw"] == "x y"),
     ("FROM alpine\nUSER bob\n", lambda df: df["stages"][0]["user"] == "bob"),
     ("FROM alpine\nEXPOSE 80 443\n", lambda df: df["stages"][0]["expose"] == ["80", "443"]),
-    ("FROM alpine\nHEALTHCHECK NONE\n",
-     lambda df: df["stages"][0]["healthcheck"] == {"kind": "none", "options": {}, "cmd": None}),
-    ('FROM alpine\nCMD ["sh", "-c", "echo hi"]\n',
-     lambda df: df["stages"][0]["cmd_form"] == "exec"
-                and df["stages"][0]["cmd_argv"] == ["sh", "-c", "echo hi"]),
-    ('FROM alpine\nENTRYPOINT ["a","b"]\n',
-     lambda df: df["stages"][0]["entrypoint_form"] == "exec"
-                and df["stages"][0]["entrypoint_argv"] == ["a", "b"]),
+    (
+        "FROM alpine\nHEALTHCHECK NONE\n",
+        lambda df: df["stages"][0]["healthcheck"] == {"kind": "none", "options": {}, "cmd": None},
+    ),
+    (
+        'FROM alpine\nCMD ["sh", "-c", "echo hi"]\n',
+        lambda df: (
+            df["stages"][0]["cmd_form"] == "exec"
+            and df["stages"][0]["cmd_argv"] == ["sh", "-c", "echo hi"]
+        ),
+    ),
+    (
+        'FROM alpine\nENTRYPOINT ["a","b"]\n',
+        lambda df: (
+            df["stages"][0]["entrypoint_form"] == "exec"
+            and df["stages"][0]["entrypoint_argv"] == ["a", "b"]
+        ),
+    ),
     ("FROM alpine\nWORKDIR /app\n", lambda df: df["stages"][0]["workdir"] == "/app"),
     ("FROM alpine\nENV A=1 B=2\n", lambda df: df["stages"][0]["env"] == {"A": "1", "B": "2"}),
-    ('FROM alpine\nLABEL maint=team\n',
-     lambda df: df["stages"][0]["labels"] == {"maint": "team"}),
+    ("FROM alpine\nLABEL maint=team\n", lambda df: df["stages"][0]["labels"] == {"maint": "team"}),
     ("FROM alpine\nARG VER=1\n", lambda df: df["stages"][0]["args"][0]["name"] == "VER"),
 ]
 
 
 @pytest.mark.parametrize("text, predicate", _DIRECTIVE_CASES)
-def test_dockerfile_directive_coverage(
-    tmp_path: Path, text: str, predicate: Any
-) -> None:
+def test_dockerfile_directive_coverage(tmp_path: Path, text: str, predicate: Any) -> None:
     (tmp_path / "Dockerfile").write_text(text)
     out = asyncio.run(_run(tmp_path))
     assert predicate(out["dockerfiles"][0]), text
@@ -402,6 +411,7 @@ def test_find_dockerfiles_picks_up_all_variants(tmp_path: Path) -> None:
 def test_parse_dockerfile_text_re_exported_from_module() -> None:
     """find_dockerfiles + parse_dockerfile_text accessible from the probe module."""
     from codegenie.probes.layer_c import dockerfile as dmod  # noqa: PLC0415
+
     assert callable(dmod.parse_dockerfile_text)
     assert callable(dmod.find_dockerfiles)
 

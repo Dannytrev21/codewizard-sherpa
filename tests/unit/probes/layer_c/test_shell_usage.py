@@ -24,8 +24,11 @@ def _make_repo(p: Path) -> RepoSnapshot:
 
 def _make_ctx(p: Path) -> ProbeContext:
     return ProbeContext(
-        cache_dir=p / "_c", output_dir=p / "_o", workspace=p / "_w",
-        logger=logging.getLogger("t"), config={},
+        cache_dir=p / "_c",
+        output_dir=p / "_o",
+        workspace=p / "_w",
+        logger=logging.getLogger("t"),
+        config={},
     )
 
 
@@ -58,21 +61,40 @@ def test_static_evidence_models_frozen() -> None:
 
 def test_shell_usage_static_only_with_classification(tmp_path: Path) -> None:
     """AC: build_time vs runtime classification based on stage."""
-    _write_raw(tmp_path, "dockerfile", {"dockerfile": {"dockerfiles": [{
-        "path": "Dockerfile",
-        "stages": [
-            {"index": 0, "base_image": "alpine",
-             "entrypoint_form": "absent", "cmd_form": "absent"},
-            {"index": 1, "base_image": "alpine",
-             "entrypoint_form": "exec", "cmd_form": "absent"},
-        ],
-        "run_commands": [
-            {"command": "apt-get update", "stage_index": 0},
-            {"command": "/bin/start.sh", "stage_index": 1},
-        ],
-    }]}})
-    _write_raw(tmp_path, "runtime_trace", {"shell_invocations": 0,
-                                            "trace_coverage_confidence": "low"})
+    _write_raw(
+        tmp_path,
+        "dockerfile",
+        {
+            "dockerfile": {
+                "dockerfiles": [
+                    {
+                        "path": "Dockerfile",
+                        "stages": [
+                            {
+                                "index": 0,
+                                "base_image": "alpine",
+                                "entrypoint_form": "absent",
+                                "cmd_form": "absent",
+                            },
+                            {
+                                "index": 1,
+                                "base_image": "alpine",
+                                "entrypoint_form": "exec",
+                                "cmd_form": "absent",
+                            },
+                        ],
+                        "run_commands": [
+                            {"command": "apt-get update", "stage_index": 0},
+                            {"command": "/bin/start.sh", "stage_index": 1},
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    _write_raw(
+        tmp_path, "runtime_trace", {"shell_invocations": 0, "trace_coverage_confidence": "low"}
+    )
     out = asyncio.run(_run(tmp_path))
     static = out["shell_usage"]["static"]
     entries = static["final_stage_run_commands"]
@@ -86,16 +108,20 @@ def test_shell_usage_static_only_with_classification(tmp_path: Path) -> None:
 def test_shell_usage_dynamic_count_when_runtime_trace_unavailable(tmp_path: Path) -> None:
     """AC: runtime_trace.confidence='unavailable' → dynamic count is None."""
     _write_raw(tmp_path, "dockerfile", {"dockerfile": {"dockerfiles": []}})
-    _write_raw(tmp_path, "runtime_trace", {"shell_invocations": 5,
-                                            "trace_coverage_confidence": "unavailable"})
+    _write_raw(
+        tmp_path,
+        "runtime_trace",
+        {"shell_invocations": 5, "trace_coverage_confidence": "unavailable"},
+    )
     out = asyncio.run(_run(tmp_path))
     assert out["shell_usage"]["dynamic_shell_invocation_count"] is None
 
 
 def test_shell_usage_dynamic_count_present(tmp_path: Path) -> None:
     _write_raw(tmp_path, "dockerfile", {"dockerfile": {"dockerfiles": []}})
-    _write_raw(tmp_path, "runtime_trace", {"shell_invocations": 3,
-                                            "trace_coverage_confidence": "high"})
+    _write_raw(
+        tmp_path, "runtime_trace", {"shell_invocations": 3, "trace_coverage_confidence": "high"}
+    )
     out = asyncio.run(_run(tmp_path))
     assert out["shell_usage"]["dynamic_shell_invocation_count"] == 3
 

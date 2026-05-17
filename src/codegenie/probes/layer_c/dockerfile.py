@@ -23,7 +23,12 @@ from codegenie.probes.registry import register_probe
 
 __all__ = ["DockerfileProbe", "find_dockerfiles"]
 
-_FILE_GLOBS: Final[tuple[str, ...]] = ("Dockerfile", "Dockerfile.*", "Containerfile", "*.dockerfile")
+_FILE_GLOBS: Final[tuple[str, ...]] = (
+    "Dockerfile",
+    "Dockerfile.*",
+    "Containerfile",
+    "*.dockerfile",
+)
 _NESTED_NAMES: Final[tuple[str, ...]] = ("Dockerfile", "Containerfile")
 _NESTED_RE: Final[re.Pattern[str]] = re.compile(r"^Dockerfile(?:\.[\w-]+)?$")
 

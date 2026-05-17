@@ -53,12 +53,14 @@ def _summarize(
         form = final.get("entrypoint_form", "absent")
         if form == "absent" and final.get("cmd_form", "absent") == "absent":
             confidence = "low"
-        summaries.append({
-            "path": df.get("path"),
-            "form": form,
-            "argv": list(final.get("entrypoint_argv", [])),
-            "command": final.get("entrypoint_command"),
-        })
+        summaries.append(
+            {
+                "path": df.get("path"),
+                "form": form,
+                "argv": list(final.get("entrypoint_argv", [])),
+                "command": final.get("entrypoint_command"),
+            }
+        )
     return summaries, confidence
 
 

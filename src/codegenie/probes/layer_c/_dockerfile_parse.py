@@ -37,9 +37,24 @@ __all__ = ["parse_dockerfile_text", "tokenize_dockerfile_line"]
 
 _KNOWN_DIRECTIVES: Final[frozenset[str]] = frozenset(
     {
-        "FROM", "RUN", "COPY", "ADD", "USER", "EXPOSE", "HEALTHCHECK",
-        "CMD", "ENTRYPOINT", "WORKDIR", "ENV", "LABEL", "ARG", "ONBUILD",
-        "STOPSIGNAL", "SHELL", "VOLUME", "MAINTAINER",
+        "FROM",
+        "RUN",
+        "COPY",
+        "ADD",
+        "USER",
+        "EXPOSE",
+        "HEALTHCHECK",
+        "CMD",
+        "ENTRYPOINT",
+        "WORKDIR",
+        "ENV",
+        "LABEL",
+        "ARG",
+        "ONBUILD",
+        "STOPSIGNAL",
+        "SHELL",
+        "VOLUME",
+        "MAINTAINER",
     }
 )
 _PARSER_DIRECTIVE_RE: Final[re.Pattern[str]] = re.compile(
@@ -48,9 +63,7 @@ _PARSER_DIRECTIVE_RE: Final[re.Pattern[str]] = re.compile(
 _HEALTHCHECK_OPT_RE: Final[re.Pattern[str]] = re.compile(r"--([A-Za-z][\w-]*)=(\S+)")
 _FROM_RE: Final[re.Pattern[str]] = re.compile(r"^(?P<img>\S+)(?:\s+AS\s+(?P<name>\S+))?\s*$", re.I)
 _COPY_FROM_RE: Final[re.Pattern[str]] = re.compile(r"--from=(\S+)")
-_KV_RE: Final[re.Pattern[str]] = re.compile(
-    r'([A-Za-z_][\w\.]*)=(?:"((?:[^"\\]|\\.)*)"|(\S+))'
-)
+_KV_RE: Final[re.Pattern[str]] = re.compile(r'([A-Za-z_][\w\.]*)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
 
 
 def tokenize_dockerfile_line(line: str) -> DirectiveLine | None:
@@ -148,9 +161,11 @@ def parse_dockerfile_text(text: str, *, path: str) -> ParsedDockerfile:  # noqa:
             continue
         if kind == "ARG" and not seen_from:
             name, _, default = payload.partition("=")
-            global_args.append(ArgDirective(name=name.strip(),
-                                            default=default.strip() or None,
-                                            before_first_from=True))
+            global_args.append(
+                ArgDirective(
+                    name=name.strip(), default=default.strip() or None, before_first_from=True
+                )
+            )
             continue
         if not stages:
             continue
@@ -161,11 +176,16 @@ def parse_dockerfile_text(text: str, *, path: str) -> ParsedDockerfile:  # noqa:
         elif kind == "COPY" or kind == "ADD":
             from_match = _COPY_FROM_RE.search(payload)
             from_stage = from_match.group(1) if from_match else None
-            resolved = from_stage is None or any(
-                prior.name == from_stage for prior in stages[:si]
-            ) or (from_stage is not None and from_stage.isdigit() and int(from_stage) < si)
-            copies.append(CopyDirective(raw=payload, from_stage=from_stage,
-                                        from_stage_resolved=resolved, stage_index=si))
+            resolved = (
+                from_stage is None
+                or any(prior.name == from_stage for prior in stages[:si])
+                or (from_stage is not None and from_stage.isdigit() and int(from_stage) < si)
+            )
+            copies.append(
+                CopyDirective(
+                    raw=payload, from_stage=from_stage, from_stage_resolved=resolved, stage_index=si
+                )
+            )
         elif kind == "USER":
             s = _replace(s, user=payload.strip())
         elif kind == "WORKDIR":
@@ -186,12 +206,15 @@ def parse_dockerfile_text(text: str, *, path: str) -> ParsedDockerfile:  # noqa:
             s = _replace(s, cmd_form=form, cmd_argv=argv, cmd_command=cmd)
         elif kind == "ARG":
             name, _, default = payload.partition("=")
-            s = _replace(s, args=[*s.args,
-                                  ArgDirective(name=name.strip(),
-                                               default=default.strip() or None)])
+            s = _replace(
+                s, args=[*s.args, ArgDirective(name=name.strip(), default=default.strip() or None)]
+            )
         stages[si] = s
-    return ParsedDockerfile(path=path, stages=stages, run_commands=run_cmds,
-                            copy_directives=copies, parser_directive=parser_directive,
-                            global_args=global_args)
-
-
+    return ParsedDockerfile(
+        path=path,
+        stages=stages,
+        run_commands=run_cmds,
+        copy_directives=copies,
+        parser_directive=parser_directive,
+        global_args=global_args,
+    )

@@ -66,11 +66,13 @@ class CertificateProbe(Probe):
         payload = _read_runtime_trace_slice(repo.root)
         if payload is None:
             return ProbeOutput(
-                schema_slice={"certificate": {
-                    "cert_paths_read": [],
-                    "certificate_source": "absent",
-                    "confidence": "unavailable",
-                }},
+                schema_slice={
+                    "certificate": {
+                        "cert_paths_read": [],
+                        "certificate_source": "absent",
+                        "confidence": "unavailable",
+                    }
+                },
                 raw_artifacts=[],
                 confidence="low",
                 duration_ms=int((time.perf_counter() - t0) * 1000),
@@ -81,11 +83,13 @@ class CertificateProbe(Probe):
         paths = [p for p in raw_paths if isinstance(p, str)] if isinstance(raw_paths, list) else []
         source = classify_certificate_source(paths)
         return ProbeOutput(
-            schema_slice={"certificate": {
-                "cert_paths_read": sorted(paths),
-                "certificate_source": source,
-                "confidence": "high",
-            }},
+            schema_slice={
+                "certificate": {
+                    "cert_paths_read": sorted(paths),
+                    "certificate_source": source,
+                    "confidence": "high",
+                }
+            },
             raw_artifacts=[],
             confidence="high",
             duration_ms=int((time.perf_counter() - t0) * 1000),

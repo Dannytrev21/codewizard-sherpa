@@ -25,8 +25,11 @@ def _make_repo(p: Path) -> RepoSnapshot:
 
 def _make_ctx(p: Path) -> ProbeContext:
     return ProbeContext(
-        cache_dir=p / "_c", output_dir=p / "_o", workspace=p / "_w",
-        logger=logging.getLogger("t"), config={},
+        cache_dir=p / "_c",
+        output_dir=p / "_o",
+        workspace=p / "_w",
+        logger=logging.getLogger("t"),
+        config={},
     )
 
 
@@ -48,14 +51,17 @@ def test_certificate_probe_register_light_with_class_attr_requires() -> None:
     assert CertificateProbe.requires == ["runtime_trace"]
 
 
-@pytest.mark.parametrize("paths, expected", [
-    (["/etc/ssl/certs/ca-certificates.crt"], "ca-certificates"),
-    (["/etc/ssl/certs/foo.pem"], "ca-certificates"),
-    (["/app/vendor/certs/my.pem"], "vendored"),
-    (["/vendor/certs/my.pem"], "vendored"),
-    ([], "absent"),
-    (["/opt/random/cert.pem"], "unknown"),
-])
+@pytest.mark.parametrize(
+    "paths, expected",
+    [
+        (["/etc/ssl/certs/ca-certificates.crt"], "ca-certificates"),
+        (["/etc/ssl/certs/foo.pem"], "ca-certificates"),
+        (["/app/vendor/certs/my.pem"], "vendored"),
+        (["/vendor/certs/my.pem"], "vendored"),
+        ([], "absent"),
+        (["/opt/random/cert.pem"], "unknown"),
+    ],
+)
 def test_certificate_classification(paths: list[str], expected: str) -> None:
     assert classify_certificate_source(paths) == expected
 

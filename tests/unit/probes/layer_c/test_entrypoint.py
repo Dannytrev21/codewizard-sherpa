@@ -8,8 +8,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from codegenie.output.paths import raw_dir
 from codegenie.probes.base import ProbeContext, RepoSnapshot
 from codegenie.probes.layer_c.entrypoint import EntrypointProbe
@@ -53,15 +51,25 @@ def test_entrypoint_probe_requires_class_attr_not_decorator() -> None:
 
 
 def test_entrypoint_exec_form(tmp_path: Path) -> None:
-    _write_dockerfile_slice(tmp_path, {
-        "dockerfiles": [{
-            "path": "Dockerfile",
-            "stages": [{"index": 0, "base_image": "alpine",
-                        "entrypoint_form": "exec",
-                        "entrypoint_argv": ["sh", "-c", "echo hi"],
-                        "entrypoint_command": None}],
-        }]
-    })
+    _write_dockerfile_slice(
+        tmp_path,
+        {
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "stages": [
+                        {
+                            "index": 0,
+                            "base_image": "alpine",
+                            "entrypoint_form": "exec",
+                            "entrypoint_argv": ["sh", "-c", "echo hi"],
+                            "entrypoint_command": None,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
     out = asyncio.run(_run(tmp_path))
     ep = out["entrypoint"]["entrypoints"][0]
     assert ep["form"] == "exec"
@@ -69,15 +77,25 @@ def test_entrypoint_exec_form(tmp_path: Path) -> None:
 
 
 def test_entrypoint_shell_form(tmp_path: Path) -> None:
-    _write_dockerfile_slice(tmp_path, {
-        "dockerfiles": [{
-            "path": "Dockerfile",
-            "stages": [{"index": 0, "base_image": "alpine",
-                        "entrypoint_form": "shell",
-                        "entrypoint_argv": [],
-                        "entrypoint_command": "echo hi"}],
-        }]
-    })
+    _write_dockerfile_slice(
+        tmp_path,
+        {
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "stages": [
+                        {
+                            "index": 0,
+                            "base_image": "alpine",
+                            "entrypoint_form": "shell",
+                            "entrypoint_argv": [],
+                            "entrypoint_command": "echo hi",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
     out = asyncio.run(_run(tmp_path))
     ep = out["entrypoint"]["entrypoints"][0]
     assert ep["form"] == "shell"
@@ -86,14 +104,26 @@ def test_entrypoint_shell_form(tmp_path: Path) -> None:
 
 def test_entrypoint_absent_dockerfile_with_no_entry_or_cmd(tmp_path: Path) -> None:
     """Dockerfile present but no ENTRYPOINT and no CMD → form=absent, confidence=low."""
-    _write_dockerfile_slice(tmp_path, {
-        "dockerfiles": [{
-            "path": "Dockerfile",
-            "stages": [{"index": 0, "base_image": "alpine",
-                        "entrypoint_form": "absent", "cmd_form": "absent",
-                        "entrypoint_argv": [], "entrypoint_command": None}],
-        }]
-    })
+    _write_dockerfile_slice(
+        tmp_path,
+        {
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "stages": [
+                        {
+                            "index": 0,
+                            "base_image": "alpine",
+                            "entrypoint_form": "absent",
+                            "cmd_form": "absent",
+                            "entrypoint_argv": [],
+                            "entrypoint_command": None,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
     out = asyncio.run(_run(tmp_path))
     assert out["entrypoint"]["entrypoints"][0]["form"] == "absent"
     assert out["entrypoint"]["confidence"] == "low"
