@@ -117,8 +117,21 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
     # The three Node-only probes are filter-absent; the universal probes
     # (``applies_to_languages = ["*"]``) ran and produced (possibly empty)
     # slices: ``language_detection`` / ``ci`` / ``deployment`` and (Phase 2
-    # S4-01) ``index_health`` — the load-bearing freshness probe.
-    expected = {"language_detection", "ci", "deployment", "index_health"}
+    # S4-01) ``index_health`` — the load-bearing freshness probe. Phase 2
+    # S5-03 added four Layer C marker probes (dockerfile + entrypoint +
+    # shell_usage + certificate) which are also universal and emit a typed
+    # ``confidence=unavailable`` slice when the marker / sibling slice is
+    # absent.
+    expected = {
+        "language_detection",
+        "ci",
+        "deployment",
+        "index_health",
+        "dockerfile",
+        "entrypoint",
+        "shell_usage",
+        "certificate",
+    }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "
         f"actual={sorted(actual)}, expected={sorted(expected)}"

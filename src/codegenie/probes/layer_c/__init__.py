@@ -9,6 +9,9 @@ for the probe's architectural rationale; S5-01 holds the sum-type
 discipline.
 """
 
+from codegenie.probes.layer_c.certificate import CertificateProbe
+from codegenie.probes.layer_c.dockerfile import DockerfileProbe
+from codegenie.probes.layer_c.entrypoint import EntrypointProbe
 from codegenie.probes.layer_c.runtime_trace import RuntimeTraceProbe
 from codegenie.probes.layer_c.scenario_result import (
     DockerBuildFailed,
@@ -24,15 +27,20 @@ from codegenie.probes.layer_c.scenario_result import (
     TraceScenarioSkipped,
     TraceSkipReason,
 )
+from codegenie.probes.layer_c.shell_usage import ShellUsageProbe
 
 __all__ = [
+    "CertificateProbe",
     "DockerBuildFailed",
+    "DockerfileProbe",
+    "EntrypointProbe",
     "ImageBuildUnavailable",
     "ImageDigestUnresolved",
     "NoDockerfile",
     "RuntimeTraceProbe",
     "ScenarioResult",
     "ScenarioTimeout",
+    "ShellUsageProbe",
     "StraceUnavailable",
     "TraceFailureReason",
     "TraceScenarioCompleted",

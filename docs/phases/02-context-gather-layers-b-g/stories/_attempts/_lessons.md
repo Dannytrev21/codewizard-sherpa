@@ -310,6 +310,18 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Fix:** When extending a path-scoped predicate, audit the existing negative-coverage list and remove the entries the new scope absorbs. Add a comment recording the scope expansion (so a future re-narrowing trips the absorbed paths back to the negative list).
 - **Why it matters:** S6-06 / S6-07 (semgrep / gitleaks) ship the next batch of Layer G probes under `probes/layer_g/`, and any analogous predicate-expansion story will face the same shape — pre-empted neighbours need to evolve with the predicate they guard.
 
+## L27 — Schema validator's `glob('*.schema.json')` is fragile under layer-scoped sub-schemas
+- **Source:** S5-03 (Layer C sub-schemas live at `src/codegenie/schema/probes/layer_c/`).
+- **Symptom:** The CLI smoke tests crashed with `Unresolvable(ref='https://codewizard-sherpa.dev/schemas/probes/dockerfile/v0.1.0.json')` because `codegenie.schema.validator._validator` only globbed the flat `probes/` directory — the new layer_c sub-schemas were invisible to the registry.
+- **Fix:** Widen the glob from `glob('*.schema.json')` to `rglob('*.schema.json')`. One-line change; future layer-scoped sub-schemas (Layer D/E/F/G stories) register automatically with zero validator edits.
+- **Why it matters:** Every subsequent Phase 2 layer story (S6-03 Layer D markers, S6-05 Layer E probes, S6-06 Layer G curated scanners) will land its sub-schemas under a `probes/layer_<x>/` subdirectory; the rglob keeps the Open/Closed seam honest. Without this, every new layer story trips the same CLI crash on the first integration run.
+
+## L28 — Existing integration tests that pin "the set of universal probes" need additive updates
+- **Source:** S5-03 (`tests/integration/probes/test_non_node_repo.py::test_non_node_go_registry_filter_couples_to_detected_languages`).
+- **Symptom:** The test pinned the exact expected envelope probe-key set for a non-Node fixture. Adding any new `applies_to_languages = ["*"]` probe whose `applies()` returns `True` for any repo (including markerless ones, by emitting a typed `confidence=unavailable` slice) makes the test fail with the new probes in the actual set.
+- **Fix:** Extend the `expected` set in the test to include the new universal probes. NOT to skip the new probes from running — the marker-absent → confidence-unavailable contract is load-bearing per AC-V2 (the slice records "we tried and found nothing", which is what downstream Phase 3 readers need).
+- **Why it matters:** Every Phase 2/3 universal probe story (Layer C completion, future Layer G curated scanners, future polyglot probes) will inherit this pattern. The integration test is correct in *kind* — it pins the envelope shape — but its `expected` literal needs to grow with each new universal probe. Plan the integration-test edit alongside the source edit; otherwise the suite goes red on first run.
+
 ## L26 — `key_for(probe, snapshot, task)` callers pass through ctx for special-token resolution
 - **Source:** S5-02 (`image-digest:<resolved>` special-token dispatch landed in `cache/keys.py`).
 - **Symptom:** Phase 0/1 `key_for` had no `ctx` parameter; the only way for the cache layer to call `ctx.image_digest_resolver(snapshot.root)` is to thread `ctx` through `key_for`. Adding a positional arg would break every existing caller (coordinator, `CacheStore.key_for`, tests).

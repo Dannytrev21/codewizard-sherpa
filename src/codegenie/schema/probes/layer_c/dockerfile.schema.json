@@ -1,0 +1,136 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/dockerfile/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DockerfileProbe slice",
+  "description": "Slice produced by the dockerfile probe (Layer C, S5-03). Strict at every object node per Phase 1 ADR-0004.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "dockerfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dockerfiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "stages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": { "type": "integer", "minimum": 0 },
+                    "base_image": { "type": "string" },
+                    "name": { "type": ["string", "null"] },
+                    "inherits_from": { "type": ["string", "null"] },
+                    "user": { "type": ["string", "null"] },
+                    "workdir": { "type": ["string", "null"] },
+                    "env": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "expose": { "type": "array", "items": { "type": "string" } },
+                    "healthcheck": {
+                      "anyOf": [
+                        { "type": "null" },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": { "enum": ["none", "cmd"] },
+                            "options": { "type": "object", "additionalProperties": { "type": "string" } },
+                            "cmd": { "type": ["string", "null"] }
+                          },
+                          "required": ["kind"]
+                        }
+                      ]
+                    },
+                    "entrypoint_form": { "enum": ["exec", "shell", "absent", "malformed"] },
+                    "entrypoint_argv": { "type": "array", "items": { "type": "string" } },
+                    "entrypoint_command": { "type": ["string", "null"] },
+                    "cmd_form": { "enum": ["exec", "shell", "absent", "malformed"] },
+                    "cmd_argv": { "type": "array", "items": { "type": "string" } },
+                    "cmd_command": { "type": ["string", "null"] },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "name": { "type": "string" },
+                          "default": { "type": ["string", "null"] },
+                          "before_first_from": { "type": "boolean" }
+                        },
+                        "required": ["name"]
+                      }
+                    }
+                  },
+                  "required": ["index", "base_image"]
+                }
+              },
+              "run_commands": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": { "type": "string" },
+                    "stage_index": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["command", "stage_index"]
+                }
+              },
+              "copy_directives": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "raw": { "type": "string" },
+                    "from_stage": { "type": ["string", "null"] },
+                    "from_stage_resolved": { "type": "boolean" },
+                    "stage_index": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["raw", "stage_index"]
+                }
+              },
+              "parser_directive": {
+                "anyOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": { "type": "string" },
+                      "value": { "type": "string" }
+                    },
+                    "required": ["name", "value"]
+                  }
+                ]
+              },
+              "global_args": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string" },
+                    "default": { "type": ["string", "null"] },
+                    "before_first_from": { "type": "boolean" }
+                  },
+                  "required": ["name"]
+                }
+              }
+            },
+            "required": ["path", "stages"]
+          }
+        },
+        "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      },
+      "required": ["dockerfiles", "confidence"]
+    }
+  },
+  "required": ["dockerfile"]
+}

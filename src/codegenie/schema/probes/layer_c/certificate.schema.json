@@ -1,0 +1,20 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/certificate/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CertificateProbe slice",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cert_paths_read": { "type": "array", "items": { "type": "string" } },
+        "certificate_source": { "enum": ["ca-certificates", "vendored", "absent", "unknown"] },
+        "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      },
+      "required": ["cert_paths_read", "certificate_source", "confidence"]
+    }
+  },
+  "required": ["certificate"]
+}

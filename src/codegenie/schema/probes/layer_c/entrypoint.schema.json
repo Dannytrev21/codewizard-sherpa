@@ -1,0 +1,32 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/entrypoint/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EntrypointProbe slice",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entrypoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": ["string", "null"] },
+              "form": { "enum": ["exec", "shell", "absent", "malformed"] },
+              "argv": { "type": "array", "items": { "type": "string" } },
+              "command": { "type": ["string", "null"] }
+            },
+            "required": ["form"]
+          }
+        },
+        "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      },
+      "required": ["entrypoints", "confidence"]
+    }
+  },
+  "required": ["entrypoint"]
+}

@@ -1,7 +1,7 @@
 # Story S5-03 — `Dockerfile` + `Entrypoint` + `ShellUsage` + `Certificate` marker probes
 
 **Step:** Step 5 — Ship Layer C (runtime + container) probes
-**Status:** Ready — HARDENED 2026-05-16
+**Status:** Done — GREEN 2026-05-17 (commit pending)
 **Effort:** M
 **Depends on:** S5-02 (the slice schema for `runtime_trace` is the upstream `ShellUsageProbe` reads; also wires the disk-anchored raw artifact `<repo>/.codegenie/context/raw/runtime_trace.json` that `ShellUsageProbe`/`CertificateProbe` read via `read_raw_slices` per S4-01), S4-01 (`read_raw_slices(raw_dir)` helper at `src/codegenie/output/paths.py` — the **only** Phase-2-blessed sibling-slice access path; `ctx.sibling_slices` does **not** exist on the frozen `ProbeContext`), S3-03 (writer chokepoint), S1-08 (`@register_probe(heaviness=, runs_last=)` — does **NOT** accept `requires=`; `requires` is a Probe **class attribute** per Phase 0 `localv2.md §4` + 02-ADR-0003)
 **ADRs honored:** 02-ADR-0001 (no new binary needed beyond `docker`/`strace`; these probes are file-marker driven), 02-ADR-0003 (registry-side scheduling annotations only; `requires` stays on the contract — `@register_probe(...)` accepts **only** `heaviness` + `runs_last`), 02-ADR-0007 (no Plugin Loader — probes are in-tree)

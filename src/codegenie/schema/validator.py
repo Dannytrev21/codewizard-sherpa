@@ -49,7 +49,7 @@ def _validator() -> jsonschema.Draft202012Validator:
     """Build the compiled validator once; subsequent calls are O(1) cache hits."""
     envelope = json.loads((_SCHEMA_DIR / "repo_context.schema.json").read_text())
     sub_schemas = [
-        json.loads(p.read_text()) for p in (_SCHEMA_DIR / "probes").glob("*.schema.json")
+        json.loads(p.read_text()) for p in (_SCHEMA_DIR / "probes").rglob("*.schema.json")
     ]
     registry: Registry = Registry().with_resources(
         [

@@ -73,6 +73,18 @@
         },
         "semantic_index_meta": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/semantic_index_meta/v0.1.0.json"
+        },
+        "dockerfile": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/dockerfile/v0.1.0.json"
+        },
+        "entrypoint": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/entrypoint/v0.1.0.json"
+        },
+        "shell_usage": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/shell_usage/v0.1.0.json"
+        },
+        "certificate": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/certificate/v0.1.0.json"
         }
       }
     }

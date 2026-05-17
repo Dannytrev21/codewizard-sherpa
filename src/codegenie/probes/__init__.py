@@ -33,15 +33,22 @@ from codegenie.probes.layer_b import (
     tree_sitter_import_graph,  # noqa: F401 — S4-04 registration
 )
 from codegenie.probes.layer_c import (
+    certificate,  # noqa: F401 — S5-03 registration
+    dockerfile,  # noqa: F401 — S5-03 registration
+    entrypoint,  # noqa: F401 — S5-03 registration
     runtime_trace,  # noqa: F401 — S5-02 registration
+    shell_usage,  # noqa: F401 — S5-03 registration
 )
 
 __all__ = [
     "base",
+    "certificate",
     "ci",
     "default_registry",
     "dep_graph",
     "deployment",
+    "dockerfile",
+    "entrypoint",
     "generated_code",
     "index_health",
     "language_detection",
@@ -52,6 +59,7 @@ __all__ = [
     "runtime_trace",
     "scip_index",
     "semantic_index_meta",
+    "shell_usage",
     "test_inventory",
     "tree_sitter_import_graph",
 ]

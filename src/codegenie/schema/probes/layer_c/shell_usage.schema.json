@@ -1,0 +1,40 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/shell_usage/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShellUsageProbe slice",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "shell_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "static": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "final_stage_entrypoint_form": { "enum": ["exec", "shell", "absent", "malformed"] },
+            "final_stage_cmd_form": { "enum": ["exec", "shell", "absent", "malformed"] },
+            "final_stage_run_commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command": { "type": "string" },
+                  "classification": { "enum": ["build_time", "runtime"] }
+                },
+                "required": ["command", "classification"]
+              }
+            }
+          },
+          "required": ["final_stage_entrypoint_form", "final_stage_cmd_form", "final_stage_run_commands"]
+        },
+        "dynamic_shell_invocation_count": { "type": ["integer", "null"], "minimum": 0 },
+        "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      },
+      "required": ["static", "confidence"]
+    }
+  },
+  "required": ["shell_usage"]
+}
