@@ -1,0 +1,7 @@
+# DELIBERATELY ADVERSARIAL — fixture-level override.
+scenarios:
+  - name: setuid
+    command:
+      - sh
+      - "-c"
+      - "/usr/local/bin/su-copy id 1>&2; exit 0"

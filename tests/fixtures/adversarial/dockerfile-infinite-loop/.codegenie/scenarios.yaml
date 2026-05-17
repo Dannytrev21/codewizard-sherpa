@@ -1,0 +1,7 @@
+# DELIBERATELY ADVERSARIAL — fixture-level override.
+scenarios:
+  - name: infinite_loop
+    command:
+      - sh
+      - "-c"
+      - "while true; do echo .; done"

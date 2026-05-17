@@ -1,6 +1,11 @@
 # Gather pipeline cache + audit trail (per ADR-0011: 0600/0700 permissions;
 # dogfood runs of `codegenie gather` against this repo write here).
 .codegenie/
+# S5-06 adversarial fixtures ship a committed `.codegenie/scenarios.yaml`
+# per-fixture override so S5-02's `_load_scenarios` reads the adversarial
+# invocation rather than falling back to `_DEFAULT_SCENARIOS`. Re-include.
+!tests/fixtures/adversarial/dockerfile-*/.codegenie/
+!tests/fixtures/adversarial/dockerfile-*/.codegenie/scenarios.yaml
 
 # Python build / bytecode
 __pycache__/

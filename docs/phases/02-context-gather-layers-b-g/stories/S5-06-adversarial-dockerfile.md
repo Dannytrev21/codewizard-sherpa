@@ -1,7 +1,7 @@
 # Story S5-06 — `adversarial_dockerfile` container-hardening test
 
 **Step:** Step 5 — Ship Layer C (runtime + container) probes
-**Status:** Ready (HARDENED)
+**Status:** Done — GREEN 2026-05-17 (phase-story-executor; see [`_attempts/S5-06.md`](_attempts/S5-06.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S5-02 (`RuntimeTraceProbe` ships with the `--network=none --cap-drop=ALL --security-opt=no-new-privileges` flags + `ProbeContext.image_digest_resolver` + per-scenario `scenarios.yaml` override mechanism)
 **ADRs honored:** 02-ADR-0001 (the hardening flags are the audit trail for the `docker` allowlist entry — final-design.md §"Tradeoffs accepted" row 3), 02-ADR-0007 (no Plugin Loader — the adversarial Dockerfile is a fixture, not a plugin)

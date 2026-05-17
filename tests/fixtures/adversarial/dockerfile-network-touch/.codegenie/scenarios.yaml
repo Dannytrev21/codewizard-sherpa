@@ -1,0 +1,7 @@
+# DELIBERATELY ADVERSARIAL — fixture-level override.
+scenarios:
+  - name: network_touch
+    command:
+      - sh
+      - "-c"
+      - "wget -q http://example.com -O /dev/null"

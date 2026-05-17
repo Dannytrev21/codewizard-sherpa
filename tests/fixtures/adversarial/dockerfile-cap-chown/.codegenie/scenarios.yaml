@@ -1,0 +1,7 @@
+# DELIBERATELY ADVERSARIAL — fixture-level override.
+scenarios:
+  - name: cap_chown
+    command:
+      - sh
+      - "-c"
+      - "chown 0:0 /etc/passwd; exit 0"

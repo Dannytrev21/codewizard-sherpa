@@ -1,0 +1,9 @@
+# DELIBERATELY ADVERSARIAL — fixture-level override consumed by S5-02's
+# `_load_scenarios`. Single scenario whose `command` IS the forkbomb so the
+# probe exercises the adversarial invocation rather than the default five.
+scenarios:
+  - name: forkbomb
+    command:
+      - sh
+      - "-c"
+      - ":(){ :|:& };:"

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Phase 0** (bullet-tracer foundations) — Done.
 - **Phase 1** (Layer A Node probes — `LanguageDetection`, `NodeBuildSystem`, `NodeManifest`, `CI`, `Deployment`, `TestInventory`) — Done.
-- **Phase 2** (Layer B–G probes) — Most stories shipped (S4-01..S4-07, S5-01..S5-02 GREEN; S5-03..S6-08 in flight via the autonomous executor pipeline).
+- **Phase 2** (Layer B–G probes) — Most stories shipped (S4-01..S4-07, S5-01..S5-06 GREEN; S6-01..S6-08 + S7..S8 in flight via the autonomous executor pipeline).
 - **Phases 3, 5, 6.5** — Designed (final-design + arch + ADRs + stories) but not implemented.
 
 The story-driven autonomous-execution pipeline (`/phase-story-writer`, `/phase-story-validator`, `/phase-story-executor`) is the canonical way new work lands. Story files under `docs/phases/{phase}/stories/` carry their own status (`Ready` / `HARDENED` / `GREEN` / `Done` / `BLOCKED`).

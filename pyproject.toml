@@ -86,6 +86,13 @@ dev = [
   # types so mypy --strict needs the stub distribution. Already mirrored in
   # the pre-commit mypy hook's `additional_dependencies` list.
   "types-PyYAML",
+  # S5-06 (Phase 2 adversarial Dockerfile test): `psutil` reads the runner's
+  # subprocess tree to assert the forkbomb fixture stayed contained inside
+  # its cgroup. Test-only — NOT in `[project.dependencies]`. Phase 0 fence
+  # (ADR-0002) is unaffected: `psutil` is not in the LLM-import blocklist
+  # and the `[gather]` runtime closure does not import it.
+  "psutil",
+  "types-psutil",
 ]
 
 # Phase 9+ slot — Temporal, Postgres clients land here.
