@@ -1,0 +1,16 @@
+scenarios:
+  - name: startup
+    command: [sh, -c, "exit 0"]
+  - name: smoke_test
+    command: [sh, -c, "exit 0"]
+  - name: healthcheck
+    command: [sh, -c, "exit 0"]
+  - name: shutdown
+    command: [sh, -c, "exit 0"]
+  - name: error_path
+    command: [sh, -c, "exit 1"]
+    expected_exit_code: 1
+  - name: db_migrate
+    command: [sh, -c, "exit 0"]
+  - name: worker_drain
+    command: [sh, -c, "exit 0"]

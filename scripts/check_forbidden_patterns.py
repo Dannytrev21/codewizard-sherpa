@@ -87,17 +87,19 @@ def _is_under_phase2_banned_package(path: Path) -> bool:
 
 def _is_under_phase2_s5_01_sum_type_modules(path: Path) -> bool:
     """Return True iff *path* sits under
-    ``src/codegenie/probes/_shared/**`` or is the load-bearing
-    ``src/codegenie/probes/layer_c/scenario_result.py`` — the two pure-
-    typing sum-type kernels planted by S5-01.
+    ``src/codegenie/probes/_shared/**``, is the load-bearing
+    ``src/codegenie/probes/layer_c/scenario_result.py`` (S5-01), or sits
+    anywhere under ``src/codegenie/probes/layer_c/**`` (S5-02 and
+    beyond — every Layer C probe consumes the S5-01 sum types and the
+    same smart-constructor invariants apply).
 
     These modules are explicitly out-of-scope for
     ``_is_under_phase2_banned_package`` (which keys on the top-level
     package name under ``codegenie/``); the S5-01 sum types live under
     ``probes/`` so they need their own scoping predicate. The
     smart-constructor invariants (``frozen=True``, ``extra="forbid"``,
-    ``Literal[...]`` discriminator) are exactly what ``model_construct``
-    would bypass.
+    ``Literal[...]`` discriminator) are exactly what the validation-
+    bypass Pydantic ctor would silently sidestep.
     """
     parts = path.parts
     try:
@@ -107,7 +109,7 @@ def _is_under_phase2_s5_01_sum_type_modules(path: Path) -> bool:
     tail = parts[idx + 1 :]
     if len(tail) >= 2 and tail[0] == "probes" and tail[1] == "_shared":
         return True
-    if tail[-3:] == ("probes", "layer_c", "scenario_result.py"):
+    if len(tail) >= 2 and tail[0] == "probes" and tail[1] == "layer_c":
         return True
     return False
 
@@ -268,8 +270,35 @@ _RULES: list[Rule] = [
         advice=(
             "02-ADR-0010 §Decision + production ADR-0033 §3 — smart "
             "constructors must be the only public path for the S5-01 sum "
-            "types (probes/_shared/** + probes/layer_c/scenario_result.py); "
+            "types (probes/_shared/** + probes/layer_c/**); "
             "use `Model(...)` or `Model.model_validate(...)`."
+        ),
+        applies_when=_is_under_phase2_s5_01_sum_type_modules,
+    ),
+    # Phase 2 S5-02 — Layer C probes must route subprocess traffic through
+    # ``codegenie.exec.run_allowlisted`` (02-ADR-0001). Direct
+    # ``subprocess.run`` / ``asyncio.create_subprocess_exec`` would bypass
+    # the chokepoint (no env-strip, no allowlist check, no timeout
+    # escalation).
+    Rule(
+        label="subprocess.run (Phase 2 Layer C modules)",
+        pattern=re.compile(r"\bsubprocess\.run\s*\("),
+        advice=(
+            "02-ADR-0010 §Decision + production ADR-0033 §3 — Layer C "
+            "subprocess traffic must route through codegenie.exec."
+            "run_allowlisted (02-ADR-0001); bypassing the chokepoint "
+            "defeats env-strip and the allowlist check."
+        ),
+        applies_when=_is_under_phase2_s5_01_sum_type_modules,
+    ),
+    Rule(
+        label="asyncio.create_subprocess_exec (Phase 2 Layer C modules)",
+        pattern=re.compile(r"\basyncio\.create_subprocess_exec\s*\("),
+        advice=(
+            "02-ADR-0010 §Decision + production ADR-0033 §3 — Layer C "
+            "subprocess traffic must route through codegenie.exec."
+            "run_allowlisted (02-ADR-0001); bypassing the chokepoint "
+            "defeats env-strip and the allowlist check."
         ),
         applies_when=_is_under_phase2_s5_01_sum_type_modules,
     ),

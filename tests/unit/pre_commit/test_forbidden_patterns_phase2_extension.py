@@ -107,10 +107,10 @@ S5_01_BANNED_PATHS = (
 S5_01_ALLOWED_NEIGHBOUR_PATHS = (
     "probes/layer_a/synth.py",
     "probes/layer_b/synth.py",
-    # layer_c/ sibling modules (other than scenario_result.py itself) are NOT
-    # part of S5-01's scope — only the sum-type kernel is banned. This catches
-    # accidental over-scoping that would block S5-02's RuntimeTraceProbe later.
-    "probes/layer_c/runtime_trace_probe.py",
+    # S5-02 extended the predicate to the whole ``probes/layer_c/**``
+    # subtree, so no Layer C path remains a "neighbour"; the layer_a /
+    # layer_b entries above still validate that the predicate is
+    # surgically scoped to ``_shared/`` + ``layer_c/``.
 )
 
 

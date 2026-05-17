@@ -291,3 +291,27 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** The story prescribes a `test_<module>_has_no_model_construct` source-scan that asserts the literal substring `model_construct` does not appear in the module. The first GREEN attempt failed: module docstrings explained the ban using the literal token, so the test caught its own pedagogy. Docstring quoting (`` ``model_construct`` `` markdown) is still the literal substring at the bytes-on-disk layer.
 - **Fix:** When a story pairs a source-scan with educational docstring text, rephrase the docstring to *describe* the banned API without spelling it ("validation-bypass pydantic ctor", "the unvalidated Pydantic construction shortcut"). The forbidden-patterns hook + the source-scan test are the structural defenses; the docstring's job is the *why*, not the *literal-token mention*.
 - **Why it matters:** S5-02 (RuntimeTraceProbe), S5-04 (SBOM/CVE probes), S6-06 / S6-07 (semgrep / gitleaks) will each ship modules that consume the S5-01 sum types and may want to repeat the ban explanation. Same trap each time.
+
+## L23 — Story-prose field name vs. live S5-01 model field name (`elapsed_ms` vs `seconds`)
+- **Source:** S5-02 (RuntimeTraceProbe).
+- **Symptom:** The story repeatedly references `ScenarioTimeout(seconds=120)`, but the S5-01 variant set fixes `ScenarioTimeout.elapsed_ms: int` (no `seconds` field). Constructing with `seconds=...` would fail Pydantic validation at runtime.
+- **Fix:** Always grep the live S5-01 sum-type module (`src/codegenie/probes/layer_c/scenario_result.py` / `_shared/scanner_outcome.py`) for the actual field names before constructing typed failures. Rule 11 (match codebase conventions): contract amendments belong in the S5-01-amend PR, not in a downstream consumer story.
+- **Why it matters:** S5-03 (Layer C marker probes), S5-04 (SBOM/CVE probes), S5-05 (freshness + drift), S6-06 / S6-07 (semgrep / gitleaks) will all consume the S5-01 sum types and may inherit story-side typos. The story's prose is guidance; the contract is the source of truth.
+
+## L24 — `sys.platform` Literal-narrowing under `mypy --strict` requires a function indirection
+- **Source:** S5-02 (RuntimeTraceProbe).
+- **Symptom:** A bare `if sys.platform != "linux":` makes `mypy --warn-unreachable` flag the Linux branch as unreachable on macOS (and vice versa) because mypy narrows `sys.platform` to a `Literal["darwin"|"linux"|"win32"]` per the platform it's running on. Repo-wide `warn_unreachable=true` (Phase 0 S1-02 / S1-11) turns this into a hard error.
+- **Fix:** Use a single function indirection — `def _platform_is_linux() -> bool: return sys.platform.startswith("linux")` — so mypy cannot narrow through the function-return boundary. Mirrors the existing seam at `src/codegenie/exec/__init__.py::_platform_is_linux`. Tests can monkeypatch `sys.platform` and the runtime `startswith` check still resolves correctly.
+- **Why it matters:** Any future Phase 2+ probe with platform-conditional behavior (Phase 5 microVM ptrace, Phase 7 distroless dtrace, Phase 8 Python ptrace) will trip the same mypy narrowing. Use the seam pattern from day one.
+
+## L25 — Negative-coverage entries in pre-commit predicate tests must adapt as scope expands
+- **Source:** S5-02 (RuntimeTraceProbe).
+- **Symptom:** S5-01 wrote a negative-coverage test naming `probes/layer_c/runtime_trace_probe.py` as a "still allowed" neighbour, pre-emptively guarding against S5-02 being blocked by an over-scoped predicate. But S5-02's story explicitly extends the predicate to the whole `probes/layer_c/**` subtree — making that pre-emptive guard a self-inflicted wound when the extension actually lands.
+- **Fix:** When extending a path-scoped predicate, audit the existing negative-coverage list and remove the entries the new scope absorbs. Add a comment recording the scope expansion (so a future re-narrowing trips the absorbed paths back to the negative list).
+- **Why it matters:** S6-06 / S6-07 (semgrep / gitleaks) ship the next batch of Layer G probes under `probes/layer_g/`, and any analogous predicate-expansion story will face the same shape — pre-empted neighbours need to evolve with the predicate they guard.
+
+## L26 — `key_for(probe, snapshot, task)` callers pass through ctx for special-token resolution
+- **Source:** S5-02 (`image-digest:<resolved>` special-token dispatch landed in `cache/keys.py`).
+- **Symptom:** Phase 0/1 `key_for` had no `ctx` parameter; the only way for the cache layer to call `ctx.image_digest_resolver(snapshot.root)` is to thread `ctx` through `key_for`. Adding a positional arg would break every existing caller (coordinator, `CacheStore.key_for`, tests).
+- **Fix:** Make `ctx` an optional keyword-only argument with default `None`; pre-existing callers continue to work and produce the unresolved-sentinel for any special token. The coordinator can pass `ctx=ctx` at the dispatch site when image-digest precision matters (deferred — Phase 0 `Cache` lookups today use `cache.key_for(...)` without ctx; this works because resolver-None paths fold to the same key as resolver-bound paths when the cached probe doesn't declare image-digest tokens).
+- **Why it matters:** Any future special token (`scip-index-output:<resolved>`, `tree-sitter-grammar-set:<resolved>`, etc.) will land via the same dispatch arm. Maintain `ctx` as kwarg-only and the unresolved sentinel as the shared fallback — never a per-token bespoke "missing" placeholder.

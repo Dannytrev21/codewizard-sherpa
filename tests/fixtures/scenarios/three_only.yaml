@@ -1,0 +1,7 @@
+scenarios:
+  - name: startup
+    command: [sh, -c, "exit 0"]
+  - name: smoke_test
+    command: [sh, -c, "exit 0"]
+  - name: healthcheck
+    command: [sh, -c, "exit 0"]

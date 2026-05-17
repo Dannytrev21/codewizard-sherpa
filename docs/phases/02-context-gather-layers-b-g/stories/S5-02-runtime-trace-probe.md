@@ -1,7 +1,7 @@
 # Story S5-02 — `RuntimeTraceProbe` — sequential 5-scenario harness + image-digest token
 
 **Step:** Step 5 — Ship Layer C (runtime + container) probes
-**Status:** Ready (hardened by phase-story-validator 2026-05-16)
+**Status:** Done (GREEN 2026-05-17 — see [`_attempts/S5-02.md`](_attempts/S5-02.md))
 **Effort:** L
 **Depends on:** S5-01 (`ScenarioResult` discriminated union), S1-09 (`ProbeContext.image_digest_resolver`), S1-08 (`@register_probe(heaviness="heavy")`), S1-06 (`docker`, `strace` in `ALLOWED_BINARIES`), S1-07 (`run_external_cli` exists — but Layer C calls `run_allowlisted` *directly*, not via this wrapper), S3-03 (writer chokepoint with `RedactedSlice`), S4-01 (`IndexHealthProbe` consumes `last_traced_image_digest` / `built_image_digest` from this probe's slice — S5-05 wires the freshness check)
 **ADRs honored:** 02-ADR-0001 (`docker`/`strace` allowlist), 02-ADR-0003 (`heaviness="heavy"` sort), 02-ADR-0004 (image-digest as `declared_inputs` special token via `ProbeContext.image_digest_resolver`), 02-ADR-0007 (no Plugin Loader, no `plugin.yaml` — the probe is in-tree), 02-ADR-0010 (writer chokepoint `RedactedSlice`)

@@ -32,6 +32,9 @@ from codegenie.probes.layer_b import (
     semantic_index_meta,  # noqa: F401 — S4-06 registration
     tree_sitter_import_graph,  # noqa: F401 — S4-04 registration
 )
+from codegenie.probes.layer_c import (
+    runtime_trace,  # noqa: F401 — S5-02 registration
+)
 
 __all__ = [
     "base",
@@ -46,6 +49,7 @@ __all__ = [
     "node_manifest",
     "node_reflection",
     "registry",
+    "runtime_trace",
     "scip_index",
     "semantic_index_meta",
     "test_inventory",
