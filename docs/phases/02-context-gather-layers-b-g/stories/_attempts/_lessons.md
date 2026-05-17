@@ -334,6 +334,24 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Fix:** Always declare `version: str = "0.1.0"` on any new `Probe` subclass. Catch in story drafting; surface as an explicit acceptance criterion (a positive test that exercises `key_for` against the new probe, not only attribute pinning).
 - **Why it matters:** The cache key tuple is `(name, version, per_probe_schema_version, content_hash, *special_token_values)`. A probe that declares `image-digest:<resolved>` in `declared_inputs` *needs* a `version` attribute or `key_for` raises before the special-token dispatch even runs. The story attribute-pinning tests do not exercise `key_for`; only integration tests over `cache_key`/`key_for` surface this.
 
+## S5-05 — Pydantic `model_dump(mode="json")` renders UTC datetimes with `Z` suffix
+
+- **Symptom:** B2 integration test asserted `freshness["indexed_at"] == "2026-05-17T00:00:00+00:00"`; failed with `assert "2026-05-17T00:00:00Z" == "2026-05-17T00:00:00+00:00"`. The freshness function constructs `Fresh.indexed_at` via `datetime.fromisoformat("...+00:00")`, but B2's `model_dump(mode="json")` re-serializes the value through Pydantic's JSON encoder which renders UTC as `Z`.
+- **Fix:** When asserting against the wire shape (post-`model_dump`), pin against `"...Z"`. When asserting in-process (the typed `Fresh.indexed_at` value), compare to `datetime(..., tzinfo=UTC)` — both representations are equivalent but the strings differ. Always assert the appropriate boundary.
+- **Why it matters:** Every future freshness check (S6-08's three more) will face the same gotcha. The `last_indexed_at` helper at `index_health.py:269` uses `ts.isoformat()` (source shape) but `freshness.model_dump(mode="json")` (wire shape) renders Pydantic-style. Two different fields under `index_health.{name}` carry the two representations — confusing without a hint.
+
+## S5-05 — Outer-key invariants on the freshness registry widen every story
+
+- **Symptom:** `tests/adv/phase02/test_stale_scip_fixture.py::test_index_health_catches_stale_scip` asserted `set(index_health.keys()) == {"scip"}`. S5-05 registers `runtime_trace`, immediately breaking the test.
+- **Fix:** Update the pinned set in the same commit. Add a comment naming the next widening story (S6-08 will add 3 more — `semgrep`, `gitleaks`, `conventions`).
+- **Why it matters:** Every `@register_index_freshness_check` story widens this assertion. Plan the edit alongside the source edit; otherwise the suite goes red on first run. Same pattern as L28 (universal-probe registry test).
+
+## S5-05 — `scip_freshness` is the canonical freshness-function template
+
+- **Symptom:** Without a template, freshness functions risk drifting (different argument names, different error-handling, different timestamp parsing).
+- **Fix:** Every `@register_index_freshness_check` candidate should clone `scip_freshness`'s shape verbatim: positional `(slice_, head)`, isinstance-discipline for required fields, `try / except ValueError → Stale(IndexerError(_MSG_SLICE_MALFORMED))` for timestamp parsing, never-raises contract. Deviation is a smell.
+- **Why it matters:** The five freshness checks at phase end (scip, runtime_trace, semgrep, gitleaks, conventions) need to be uniform enough that the rule-of-three trigger fires legibly in S6-08. If each diverges, the kernel extraction at that story becomes harder, not easier.
+
 ## S5-04 — LOC budgets force a sibling-models split for tool-JSON-shaped probes
 
 - **Symptom:** Initial single-file draft of SbomProbe + CveProbe was ~285 LOC each; story budget is ≤200 (docstrings excluded). Pydantic models for tool-JSON shape (`SyftJsonSchema`, `GrypeJsonSchema`, classifier tagged-union variants) are ~40-50 LOC together.

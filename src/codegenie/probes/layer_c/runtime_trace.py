@@ -81,6 +81,7 @@ Sources:
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import json
 import re
 import sys
@@ -94,6 +95,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from codegenie.errors import MalformedYAMLError
 from codegenie.exec import ProcessResult, run_allowlisted
+from codegenie.indices.freshness import (
+    DigestMismatch,
+    Fresh,
+    IndexerError,
+    IndexFreshness,
+    Stale,
+)
+from codegenie.indices.registry import register_index_freshness_check
 from codegenie.parsers import safe_yaml
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.layer_c.scenario_result import (
@@ -107,8 +116,9 @@ from codegenie.probes.layer_c.scenario_result import (
     TraceScenarioSkipped,
 )
 from codegenie.probes.registry import register_probe
+from codegenie.types.identifiers import IndexName
 
-__all__ = ["RuntimeTraceProbe"]
+__all__ = ["RuntimeTraceProbe", "_check_runtime_trace_freshness"]
 
 _log = structlog.get_logger(__name__)
 
@@ -183,9 +193,22 @@ _EXPECTED_SLICE_KEYS: Final[frozenset[str]] = frozenset(
         "network_endpoints_touched",
         "built_image_digest",
         "last_traced_image_digest",
+        "last_traced_at",
         "trace_coverage_confidence",
     }
 )
+
+
+# ---------------------------------------------------------------------------
+# Freshness-check message constants (S5-05). Pinned as ``Final[str]`` so the
+# constant-audit test catches typos at import time and the test file can
+# import the symbols rather than duplicating the string literals.
+# ---------------------------------------------------------------------------
+
+_MSG_UPSTREAM_UNAVAILABLE: Final[str] = "upstream_runtime_trace_unavailable"
+_MSG_NO_BUILT_IMAGE: Final[str] = "no_built_image"
+_MSG_NO_TRACE_RECORDED: Final[str] = "no_trace_recorded"
+_MSG_SLICE_MALFORMED: Final[str] = "runtime_trace_slice_malformed"
 
 
 # ---------------------------------------------------------------------------
@@ -578,12 +601,23 @@ def _summarize_files(files: Sequence[str], max_inline: int = 50) -> dict[str, An
     }
 
 
+def _now_utc_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string.
+
+    Single seam so :func:`_empty_slice` and :func:`_slice_from_aggregate`
+    stamp ``last_traced_at`` identically. The freshness check at S5-05
+    parses this back via :func:`datetime.fromisoformat`.
+    """
+    return _dt.datetime.now(_dt.UTC).isoformat()
+
+
 def _empty_slice(
     built_image_digest: str | None,
     last_traced_image_digest: str | None,
     trace_coverage_confidence: Literal["high", "medium", "low", "unavailable"],
     scenarios_failed_names: Sequence[str] = (),
     per_scenario_skipped: bool = False,
+    last_traced_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the all-empty slice dict — used by every failure / skip path."""
     if per_scenario_skipped:
@@ -603,6 +637,7 @@ def _empty_slice(
         "network_endpoints_touched": {"outbound": [], "inbound": []},
         "built_image_digest": built_image_digest,
         "last_traced_image_digest": last_traced_image_digest,
+        "last_traced_at": last_traced_at if last_traced_at is not None else _now_utc_iso(),
         "trace_coverage_confidence": trace_coverage_confidence,
     }
 
@@ -612,6 +647,7 @@ def _slice_from_aggregate(
     artifact_uri: str | None,
     built_image_digest: str | None,
     last_traced_image_digest: str | None,
+    last_traced_at: str | None = None,
 ) -> dict[str, Any]:
     """Render :class:`_AggregatedSlice` into the slice dict shape."""
     return {
@@ -627,6 +663,7 @@ def _slice_from_aggregate(
         "network_endpoints_touched": dict(aggregate.network_endpoints_touched),
         "built_image_digest": built_image_digest,
         "last_traced_image_digest": last_traced_image_digest,
+        "last_traced_at": last_traced_at if last_traced_at is not None else _now_utc_iso(),
         "trace_coverage_confidence": aggregate.trace_coverage_confidence,
     }
 
@@ -963,6 +1000,7 @@ class RuntimeTraceProbe(Probe):
             "network_endpoints_touched": {"outbound": [], "inbound": []},
             "built_image_digest": None,
             "last_traced_image_digest": None,
+            "last_traced_at": _now_utc_iso(),
             "trace_coverage_confidence": "unavailable",
         }
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -1013,8 +1051,79 @@ def _all_build_failures_to_skipped(
 
 
 # Re-export for tests that read the symbol from the probe module.
-__all__ = ["RuntimeTraceProbe"]
+__all__ = ["RuntimeTraceProbe", "_check_runtime_trace_freshness"]
 
 # Sentinel: NoDockerfile is referenced by external test fixtures; importing
 # the symbol here keeps it in scope.
 _ = NoDockerfile
+
+
+# ---------------------------------------------------------------------------
+# S5-05 — ``runtime_trace`` freshness check (registered at module import).
+# ---------------------------------------------------------------------------
+
+
+@register_index_freshness_check(IndexName("runtime_trace"))
+def _check_runtime_trace_freshness(slice_: dict[str, object], head: str) -> IndexFreshness:
+    """Pure ``(slice, head) -> IndexFreshness`` for the runtime_trace source.
+
+    The ``head`` parameter is unused — the freshness signal is digest-based,
+    not commit-based — but the registry contract is uniform ``(slice, head)``
+    across all freshness checks (see :data:`FreshnessCheck` in
+    ``codegenie.indices.registry``). Accept-and-ignore.
+
+    Seven branches per S5-05 AC-2. Total over the input domain: every input
+    produces exactly one ``IndexFreshness`` value; the function never raises
+    (mirrors :func:`scip_freshness`'s "never raises" property). Branch order
+    is load-bearing — (b) catches S5-02's failure paths *before* (c) type-
+    validates the optional ``last_traced_at`` string. The resolution path for
+    a ``DigestMismatch`` is operator-side: re-run ``codegenie gather``; B2's
+    job is detection, not remediation.
+    """
+    # (a) Empty-dict sentinel — registry passed ``slices.get(name, {})``
+    # because runtime_trace.json was absent on disk.
+    if not slice_:
+        return Stale(reason=IndexerError(message=_MSG_UPSTREAM_UNAVAILABLE))
+
+    # (b) Probe ran but produced no usable trace (build failed / resolver
+    # returned None / macOS / YAML malformed). Collapsed onto the same
+    # message so a downstream renderer treats both upstream-degraded paths
+    # identically.
+    if slice_.get("trace_coverage_confidence") == "unavailable":
+        return Stale(reason=IndexerError(message=_MSG_UPSTREAM_UNAVAILABLE))
+
+    built = slice_.get("built_image_digest")
+    last_traced = slice_.get("last_traced_image_digest")
+    last_traced_at = slice_.get("last_traced_at")
+
+    # (c) Required-field type validation. ``isinstance(x, bool)`` is True
+    # for ``bool``-typed truthy/falsy values; the runtime_trace slice has no
+    # bool-shaped fields today, but we mirror scip_freshness's defensive
+    # shape for forward compat.
+    if (
+        not (built is None or isinstance(built, str))
+        or not (last_traced is None or isinstance(last_traced, str))
+        or not isinstance(last_traced_at, str)
+    ):
+        return Stale(reason=IndexerError(message=_MSG_SLICE_MALFORMED))
+
+    # (d) Resolver was unbound / returned None / raised — recorded on disk.
+    if built is None:
+        return Stale(reason=IndexerError(message=_MSG_NO_BUILT_IMAGE))
+
+    # (e) Trace did not complete (e.g., docker build failed mid-run).
+    if last_traced is None:
+        return Stale(reason=IndexerError(message=_MSG_NO_TRACE_RECORDED))
+
+    # (f) Drift case. Argument order is load-bearing: ``expected`` =
+    # currently-built; ``actual`` = what-was-traced.
+    if last_traced != built:
+        return Stale(reason=DigestMismatch(expected=built, actual=last_traced))
+
+    # (g) Clean — parse the timestamp; malformed ISO → slice_malformed
+    # (mirrors scip_freshness ValueError handling).
+    try:
+        parsed = _dt.datetime.fromisoformat(last_traced_at)
+    except ValueError:
+        return Stale(reason=IndexerError(message=_MSG_SLICE_MALFORMED))
+    return Fresh(indexed_at=parsed)

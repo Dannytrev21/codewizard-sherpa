@@ -91,9 +91,12 @@ def test_index_health_catches_stale_scip(fixture_path: Path) -> None:
     index_health = out.schema_slice["index_health"]
 
     # AC-1 step 1 — outer-key invariant (catches singleton pollution).
-    assert set(index_health.keys()) == {"scip"}, (
-        f"Expected slice['index_health'].keys() == {{'scip'}}, got "
-        f"{set(index_health.keys())!r}. Either the freshness registry has "
+    # S5-05 adds ``runtime_trace`` to the registry; the expected set widens
+    # from ``{"scip"}`` to ``{"scip", "runtime_trace"}``. Future freshness
+    # registrations widen this set further (S6-08).
+    assert set(index_health.keys()) == {"scip", "runtime_trace"}, (
+        f"Expected slice['index_health'].keys() == {{'scip', 'runtime_trace'}}, "
+        f"got {set(index_health.keys())!r}. Either the freshness registry has "
         "been polluted by a prior test (use the `clean_freshness_registry` "
         "snapshot fixture), or B2's outer-key invariant (S4-01 AC-10) "
         "regressed. See docs/phases/02-context-gather-layers-b-g/stories/"

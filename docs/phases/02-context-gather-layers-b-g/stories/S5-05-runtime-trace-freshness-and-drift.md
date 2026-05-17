@@ -1,7 +1,7 @@
 # Story S5-05 — `runtime_trace` freshness-check registration + `image_digest_drift` adversarial
 
 **Step:** Step 5 — Ship Layer C (runtime + container) probes
-**Status:** Ready (hardened 2026-05-17)
+**Status:** Done — GREEN 2026-05-17 (phase-story-executor; see [`_attempts/S5-05.md`](_attempts/S5-05.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S5-02 (`RuntimeTraceProbe` writes `<raw_dir>/runtime_trace.json` containing `built_image_digest`, `last_traced_image_digest`, `last_traced_at`), S1-02 (`@register_index_freshness_check` decorator-registry — landed at `codegenie.indices.registry`), S1-01 (`IndexFreshness`, `Fresh`, `Stale`, `DigestMismatch`, `IndexerError`), S4-01 (`IndexHealthProbe` loops the freshness registry via `default_freshness_registry.dispatch_all`; `read_raw_slices(raw_dir(repo.root))` is the kernel that hydrates the per-name slice dict), S1-05 (`IndexName` newtype)
 **ADRs honored:** 02-ADR-0004 (image-digest as `declared_inputs` special token — the adversarial proves cache invalidation), 02-ADR-0006 (sum-type freshness location), 02-ADR-0003 (`IndexHealthProbe` `runs_last=True` — depends on this freshness function executing at the right moment)
