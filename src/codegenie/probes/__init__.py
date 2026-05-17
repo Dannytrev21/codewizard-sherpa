@@ -30,6 +30,7 @@ from codegenie.probes.layer_b import (
     node_reflection,  # noqa: F401 — S4-06 registration
     scip_index,  # noqa: F401 — S4-03 registration
     semantic_index_meta,  # noqa: F401 — S4-06 registration
+    tree_sitter_import_graph,  # noqa: F401 — S4-04 registration
 )
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "scip_index",
     "semantic_index_meta",
     "test_inventory",
+    "tree_sitter_import_graph",
 ]
 
 # Imported here so the public-import expression in the loader stays additive.

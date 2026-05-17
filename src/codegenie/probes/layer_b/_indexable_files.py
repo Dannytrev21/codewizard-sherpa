@@ -28,7 +28,7 @@ Sources:
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Final
 
@@ -37,14 +37,23 @@ from codegenie.hashing import content_hash, identity_hash
 __all__ = [
     "_EXCLUDE_DIRS",
     "_INDEXABLE_SUFFIXES",
+    "_NODE_SOURCE_SUFFIXES",
     "_compute_indexable_merkle",
     "_count_indexable_files",
     "_read_exclude_file",
     "_walk_indexable_files",
+    "_walk_source_files",
 ]
 
 
 _INDEXABLE_SUFFIXES: Final[frozenset[str]] = frozenset({".ts", ".tsx"})
+_NODE_SOURCE_SUFFIXES: Final[frozenset[str]] = frozenset({".ts", ".tsx", ".js", ".jsx"})
+"""Superset of :data:`_INDEXABLE_SUFFIXES` covering the JavaScript half too.
+
+Used by tree-sitter consumers (``NodeReflectionProbe``,
+``TreeSitterImportGraphProbe``) whose program scope is wider than
+SCIP's TypeScript-only indexing.
+"""
 _EXCLUDE_DIRS: Final[frozenset[str]] = frozenset({"node_modules", "dist", "build", ".git"})
 
 
@@ -84,6 +93,35 @@ def _walk_indexable_files(root: Path) -> Iterator[Path]:
             continue
         rel_str = rel.as_posix()
         if any(rel_str == ex or rel_str.startswith(f"{ex}/") for ex in user_excludes):
+            continue
+        matches.append(path)
+    matches.sort(key=lambda p: p.as_posix())
+    yield from matches
+
+
+def _walk_source_files(root: Path, suffixes: Iterable[str]) -> Iterator[Path]:
+    """Yield every regular file under *root* whose suffix is in *suffixes*,
+    excluding :data:`_EXCLUDE_DIRS`. Sorted by POSIX path for determinism.
+
+    Generalisation of :func:`_walk_indexable_files`: same exclude policy,
+    but the suffix set is supplied by the caller. Used by tree-sitter
+    consumers that admit ``.js``/``.jsx`` (``NodeReflectionProbe``,
+    ``TreeSitterImportGraphProbe``) — SCIP's TypeScript-only scope stays
+    behind :func:`_walk_indexable_files`. ``.codegenie/exclude.txt`` is
+    NOT consulted here — the legacy walker honours it only for the SCIP
+    indexable set (story S4-06 attempt log notes promoting it is a
+    deferred refactor).
+    """
+    allowed = frozenset(suffixes)
+    matches: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in allowed:
+            continue
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            continue
+        if any(part in _EXCLUDE_DIRS for part in rel.parts):
             continue
         matches.append(path)
     matches.sort(key=lambda p: p.as_posix())

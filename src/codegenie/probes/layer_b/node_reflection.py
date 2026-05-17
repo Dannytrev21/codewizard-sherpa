@@ -60,7 +60,10 @@ from codegenie.logging import EVENT_PROBE_START, EVENT_PROBE_SUCCESS
 from codegenie.parsers import safe_json
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot, Task
 from codegenie.probes.language_filter import _admits_node_project
-from codegenie.probes.layer_b._indexable_files import _EXCLUDE_DIRS
+from codegenie.probes.layer_b._indexable_files import (
+    _NODE_SOURCE_SUFFIXES,
+    _walk_source_files,
+)
 from codegenie.probes.registry import register_probe
 
 __all__ = ["NodeReflectionProbe"]
@@ -192,20 +195,12 @@ def _is_dynamic_property_access(node: Any) -> bool:
 
 def _walk_node_source_files(root: Path) -> Iterator[Path]:
     """Yield ``.ts``/``.tsx``/``.js``/``.jsx`` files under *root*,
-    excluding the canonical exclude dirs. Sorted for determinism."""
-    matches: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix not in _SOURCE_SUFFIX_TO_LANGUAGE:
-            continue
-        try:
-            rel = path.relative_to(root)
-        except ValueError:
-            continue
-        if any(part in _EXCLUDE_DIRS for part in rel.parts):
-            continue
-        matches.append(path)
-    matches.sort(key=lambda p: p.as_posix())
-    yield from matches
+    excluding the canonical exclude dirs. Sorted for determinism.
+
+    Thin wrapper over the shared :func:`_walk_source_files` helper so
+    ``NodeReflectionProbe`` and ``TreeSitterImportGraphProbe`` share one
+    walker (S4-04 AC-INDEXABLE — Phase 1 shared enumerator)."""
+    yield from _walk_source_files(root, _NODE_SOURCE_SUFFIXES)
 
 
 def _empty_counts() -> dict[str, int]:
