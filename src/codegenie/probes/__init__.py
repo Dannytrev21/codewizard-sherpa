@@ -25,8 +25,10 @@ from codegenie.probes import (
 )
 from codegenie.probes.layer_b import (
     dep_graph,  # noqa: F401 — S4-05 registration
+    generated_code,  # noqa: F401 — S4-06 registration
     index_health,  # noqa: F401 — S4-01 registration
     scip_index,  # noqa: F401 — S4-03 registration
+    semantic_index_meta,  # noqa: F401 — S4-06 registration
 )
 
 __all__ = [
@@ -35,12 +37,14 @@ __all__ = [
     "default_registry",
     "dep_graph",
     "deployment",
+    "generated_code",
     "index_health",
     "language_detection",
     "node_build_system",
     "node_manifest",
     "registry",
     "scip_index",
+    "semantic_index_meta",
     "test_inventory",
 ]
 

@@ -114,6 +114,7 @@ def test_warm_path_memo_hits_once_across_two_probes(
         "node_manifest",
         "test_inventory",
         "dep_graph",  # S4-05 — re-detects ``package_manager`` inline.
+        "generated_code",  # S4-06 — reads ``package.json#files``/``#scripts``.
     )
     # The confidence-high assertion is scoped to probes that ARE expected to
     # emit ``confidence=high`` on the warm-path fixture. ``dep_graph`` is

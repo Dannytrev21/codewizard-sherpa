@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -65,19 +64,32 @@ from codegenie.errors import (
     ToolMissingError,
 )
 from codegenie.exec.tool_versions import resolve_tool_version_sync
-from codegenie.hashing import content_hash, identity_hash
 from codegenie.logging import (
     EVENT_PROBE_FAILURE,
     EVENT_PROBE_START,
     EVENT_PROBE_SUCCESS,
 )
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
+from codegenie.probes.layer_b._indexable_files import (
+    _EXCLUDE_DIRS,
+    _INDEXABLE_SUFFIXES,
+    _compute_indexable_merkle,
+    _count_indexable_files,
+    _read_exclude_file,
+    _walk_indexable_files,
+)
 from codegenie.probes.layer_b.scip_slice import SemanticIndexSlice
 from codegenie.probes.registry import register_probe
 from codegenie.types.identifiers import ProbeId
 
 __all__ = [
     "ScipIndexProbe",
+    "_EXCLUDE_DIRS",
+    "_INDEXABLE_SUFFIXES",
+    "_compute_indexable_merkle",
+    "_count_indexable_files",
+    "_read_exclude_file",
+    "_walk_indexable_files",
 ]
 
 
@@ -99,8 +111,6 @@ _WARNING_IDS: Final[frozenset[str]] = frozenset(
 )
 
 
-_INDEXABLE_SUFFIXES: Final[frozenset[str]] = frozenset({".ts", ".tsx"})
-_EXCLUDE_DIRS: Final[frozenset[str]] = frozenset({"node_modules", "dist", "build", ".git"})
 _PROBE_ID: Final[ProbeId] = ProbeId("scip_index")
 _SCIP_BINARY: Final[str] = "scip-typescript"
 _GIT_HEAD_TIMEOUT_S: Final[float] = 5.0
@@ -112,75 +122,6 @@ _BASE_VERSION: Final[str] = "0.1.0"
 # ---------------------------------------------------------------------------
 # Pure helpers (functional core)
 # ---------------------------------------------------------------------------
-
-
-def _read_exclude_file(root: Path) -> frozenset[str]:
-    """Read ``.codegenie/exclude.txt`` if present; return relative-path
-    prefixes to exclude. Tolerant: returns an empty frozenset if the file
-    is missing or unreadable."""
-    exclude_path = root / ".codegenie" / "exclude.txt"
-    if not exclude_path.is_file():
-        return frozenset()
-    try:
-        lines = exclude_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return frozenset()
-    return frozenset(line.strip() for line in lines if line.strip() and not line.startswith("#"))
-
-
-def _walk_indexable_files(root: Path) -> Iterator[Path]:
-    """Yield every ``.ts``/``.tsx`` file under *root*, excluding the canonical
-    exclude dirs and any path listed in ``.codegenie/exclude.txt``.
-
-    The single shared walker for ``_count_indexable_files`` AND
-    ``_compute_indexable_merkle`` — divergence is mechanically impossible
-    (AC-9 consistency invariant). Yields paths in sorted order so the
-    Merkle and golden-file consumers see a deterministic walk.
-    """
-    user_excludes = _read_exclude_file(root)
-    matches: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix not in _INDEXABLE_SUFFIXES:
-            continue
-        try:
-            rel = path.relative_to(root)
-        except ValueError:
-            continue
-        if any(part in _EXCLUDE_DIRS for part in rel.parts):
-            continue
-        rel_str = rel.as_posix()
-        if any(rel_str == ex or rel_str.startswith(f"{ex}/") for ex in user_excludes):
-            continue
-        matches.append(path)
-    matches.sort(key=lambda p: p.as_posix())
-    yield from matches
-
-
-def _count_indexable_files(root: Path) -> int:
-    """Count ``.ts``/``.tsx`` files under *root* via the shared walker.
-
-    Restricted to TypeScript-only because that is ``scip-typescript``'s
-    program scope (per ``localv2.md §5.2 B1``). ``.js``/``.jsx`` are
-    S4-04's ``TreeSitterImportGraphProbe`` concern; counting them here
-    would make B2's ``Stale(CoverageGap)`` fire on every healthy mixed
-    JS+TS repo.
-    """
-    return sum(1 for _ in _walk_indexable_files(root))
-
-
-def _compute_indexable_merkle(root: Path) -> str:
-    """BLAKE3 over the sorted ``(rel-path, content-hash)`` pairs of every
-    indexable file under *root*. Not directly in the cache key (the
-    ``content_hash_of_inputs`` channel over ``declared_inputs_for`` already
-    covers this) but used as a structural invariant and future-proofing.
-    """
-    payload: list[str] = []
-    for path in _walk_indexable_files(root):
-        rel = path.relative_to(root).as_posix()
-        payload.append(f"{rel}\x1f{content_hash(path)}")
-    return identity_hash(*payload)
 
 
 def _build_scip_argv(repo_root: Path, blob_path: Path) -> list[str]:
