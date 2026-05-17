@@ -1,11 +1,17 @@
-"""``codegenie.grammars`` — typed boundary for vendored tree-sitter grammars.
+"""``codegenie.grammars`` — typed boundary for tree-sitter grammar loading.
 
-Phase 2 vendors tree-sitter grammar binaries (``.so`` / ``.dylib``) under
-``tools/grammars/`` and pins their content hashes in ``tools/grammars.lock``.
-This package exposes the typed loader/verifier (:mod:`codegenie.grammars.lock`)
-both this story's tests and S4-04's ``TreeSitterImportGraphProbe`` import to
-refuse a tampered binary at load time (supply-chain defense per phase-arch
-row 10; 02-ADR-0002).
+Per 02-ADR-0011, grammars are sourced from PyPI wheels
+(``tree-sitter-typescript``, ``tree-sitter-javascript``, future
+``tree-sitter-python`` / ``tree-sitter-java``). The kernel
+(:mod:`codegenie.grammars.lock`) exposes
+:func:`~codegenie.grammars.lock.language_for` so probes never import
+the per-grammar PyPI package directly; the indirection is the
+Ports-&-Adapters seam that keeps the consumer surface stable when
+Phase 8+ adds new languages.
+
+The legacy ``tools/grammars.lock`` BLAKE3-of-binary model from
+02-ADR-0002 has been removed; supply-chain pinning is now
+``pip --require-hashes`` against the wheel SHA256 (Phase 0 ADR-0006).
 """
 
 __all__: list[str] = []

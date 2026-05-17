@@ -1,131 +1,93 @@
-"""Tests for ``codegenie.grammars.lock`` (S4-03 AC-20).
+"""Tests for ``codegenie.grammars.lock`` (02-ADR-0011 PyPI-wheel kernel).
 
-T-21 — happy path AND mismatch path, plus the negative cases the loader is
-load-bearing for.
+The kernel is the single chokepoint every probe that needs a
+tree-sitter ``Language`` calls through. These tests pin:
+
+1. The kernel returns a usable ``Language`` for every supported name.
+2. Memoization holds — repeat calls return the same ``Language``.
+3. Unknown language names raise :class:`GrammarLoadRefused`.
+4. A missing grammar package surfaces as :class:`GrammarLoadRefused`
+   (the typed exception is the single-branch surface callers handle).
+
+The legacy BLAKE3-of-binary tests were removed in 02-ADR-0011 §Consequences.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import sys
+from typing import get_args
 
 import pytest
-from pydantic import ValidationError
 
 from codegenie.grammars.lock import (
     GrammarLoadRefused,
-    GrammarLockFile,
-    GrammarPin,
-    load_and_verify,
+    SupportedLanguage,
+    _build_language,
+    language_for,
+    supported_languages,
 )
 
 
-def _write_pair(tmp_path: Path, content: bytes) -> tuple[Path, str]:
-    """Write a placeholder binary; return (file_path, blake3_hex)."""
-    from blake3 import blake3
-
-    grammars_dir = tmp_path / "tools" / "grammars"
-    grammars_dir.mkdir(parents=True, exist_ok=True)
-    fp = grammars_dir / "typescript.so"
-    fp.write_bytes(content)
-    return fp, blake3(content).hexdigest()
+@pytest.fixture(autouse=True)
+def _reset_kernel_memo() -> None:
+    """Each test starts with an empty per-language cache."""
+    _build_language.cache_clear()
+    yield
+    _build_language.cache_clear()
 
 
-def _write_lock(
-    repo_root: Path, *, blake3_hex: str, file_rel: str = "tools/grammars/typescript.so"
-) -> Path:
-    lock_path = repo_root / "tools" / "grammars.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text(
-        "schema_version: 1\n"
-        "grammars:\n"
-        "  - language: typescript\n"
-        '    version: "0.20.6"\n'
-        f"    file: {file_rel}\n"
-        f'    blake3: "{blake3_hex}"\n',
-        encoding="utf-8",
-    )
-    return lock_path
+def test_supported_languages_matches_literal_type() -> None:
+    """``SupportedLanguage`` literal arms and the dispatch table must agree —
+    drift between the two breaks mypy's static admission check."""
+    literal_arms = set(get_args(SupportedLanguage))
+    assert set(supported_languages()) == literal_arms
 
 
-def test_load_and_verify_happy_path(tmp_path: Path) -> None:
-    """T-21 happy: BLAKE3 matches → returns parsed GrammarLockFile."""
-    _, digest = _write_pair(tmp_path, b"hello grammar")
-    _write_lock(tmp_path, blake3_hex=digest)
+@pytest.mark.parametrize("name", sorted(get_args(SupportedLanguage)))
+def test_language_for_returns_usable_language(name: str) -> None:
+    from tree_sitter import Language
 
-    lock = load_and_verify(tmp_path)
-    assert isinstance(lock, GrammarLockFile)
-    assert lock.schema_version == 1
-    assert [p.language for p in lock.grammars] == ["typescript"]
-    assert lock.grammars[0].blake3 == digest
+    lang = language_for(name)  # type: ignore[arg-type]
+    assert isinstance(lang, Language)
 
 
-def test_load_and_verify_tampered_binary_refused(tmp_path: Path) -> None:
-    """T-21 mismatch: tamper one byte → GrammarLoadRefused names language."""
-    fp, digest = _write_pair(tmp_path, b"hello grammar")
-    _write_lock(tmp_path, blake3_hex=digest)
-
-    # Tamper the binary AFTER writing the lock — the lock's pin no longer matches.
-    fp.write_bytes(b"hello grammar tampered")
-
-    with pytest.raises(
-        GrammarLoadRefused,
-        match=r"language='typescript'.*BLAKE3 mismatch|BLAKE3 mismatch.*typescript",
-    ):
-        load_and_verify(tmp_path)
+def test_language_for_is_memoized() -> None:
+    a = language_for("typescript")
+    b = language_for("typescript")
+    assert a is b
 
 
-def test_load_and_verify_missing_lock_file(tmp_path: Path) -> None:
-    with pytest.raises(GrammarLoadRefused, match=r"grammars\.lock missing"):
-        load_and_verify(tmp_path)
+def test_language_for_rejects_unknown_language() -> None:
+    with pytest.raises(GrammarLoadRefused, match=r"unsupported language='elixir'"):
+        language_for("elixir")  # type: ignore[arg-type]
 
 
-def test_load_and_verify_missing_referenced_binary(tmp_path: Path) -> None:
-    """Lock references a binary that does not exist."""
-    _write_lock(tmp_path, blake3_hex="0" * 64, file_rel="tools/grammars/typescript.so")
-
-    with pytest.raises(GrammarLoadRefused, match=r"missing binary"):
-        load_and_verify(tmp_path)
-
-
-def test_load_and_verify_malformed_yaml(tmp_path: Path) -> None:
-    lock = tmp_path / "tools" / "grammars.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text("schema_version: 1\n  bad: indentation: here", encoding="utf-8")
-
-    with pytest.raises(GrammarLoadRefused, match=r"YAML parse"):
-        load_and_verify(tmp_path)
+def test_language_for_surfaces_missing_grammar_package_as_grammar_load_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate a closure-regression where ``tree_sitter_typescript`` is
+    unavailable — the kernel surfaces the missing dep as
+    :class:`GrammarLoadRefused`, not :class:`ImportError`. Single-branch
+    handling is the contract callers depend on."""
+    monkeypatch.setitem(sys.modules, "tree_sitter_typescript", None)
+    with pytest.raises(GrammarLoadRefused, match=r"tree_sitter_typescript.*missing"):
+        language_for("typescript")
 
 
-def test_load_and_verify_schema_violation_extra_field(tmp_path: Path) -> None:
-    """``extra='forbid'`` rejects unknown fields → schema invalid refusal."""
-    _, digest = _write_pair(tmp_path, b"x")
-    lock_path = tmp_path / "tools" / "grammars.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text(
-        "schema_version: 1\n"
-        "grammars:\n"
-        "  - language: typescript\n"
-        '    version: "0.20.6"\n'
-        "    file: tools/grammars/typescript.so\n"
-        f"    blake3: {digest}\n"
-        "    rogue_field: bad\n",
-        encoding="utf-8",
-    )
+def test_language_for_surfaces_factory_drift_as_grammar_load_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate the grammar package losing the capsule factory (upstream
+    rename or layout change). Surfaces as :class:`GrammarLoadRefused` —
+    same single-branch contract."""
+    import tree_sitter_javascript as tsjs
 
-    with pytest.raises(GrammarLoadRefused, match=r"schema invalid"):
-        load_and_verify(tmp_path)
+    monkeypatch.delattr(tsjs, "language", raising=False)
+    with pytest.raises(GrammarLoadRefused, match=r"did not expose"):
+        language_for("javascript")
 
 
-def test_grammar_pin_rejects_bad_blake3_shape() -> None:
-    with pytest.raises(ValidationError):
-        GrammarPin(language="typescript", version="0.20.6", file="x.so", blake3="not-hex")
-
-
-def test_grammar_pin_rejects_bad_language() -> None:
-    with pytest.raises(ValidationError):
-        GrammarPin(language="TYPESCRIPT", version="0.20.6", file="x.so", blake3="0" * 64)
-
-
-def test_grammar_lock_file_rejects_schema_v2() -> None:
-    with pytest.raises(ValidationError):
-        GrammarLockFile(schema_version=2, grammars=[])  # type: ignore[arg-type]
+def test_grammar_load_refused_subclasses_runtime_error() -> None:
+    """RuntimeError lineage: existing callers that catch ``RuntimeError``
+    (e.g., probe-side defensive code) still trap the kernel's failure."""
+    assert issubclass(GrammarLoadRefused, RuntimeError)

@@ -13,7 +13,7 @@ Architecture Decision Records for Phase 2, in Nygard format. Each ADR captures o
 | # | Title | Tags |
 |---|---|---|
 | [0001](0001-add-docker-and-security-cli-tools-to-allowed-binaries.md) | Add `docker`, `strace`, and security/SBOM CLIs to `exec.ALLOWED_BINARIES` | registry · tool-use · security · allowlist · localv2-conformance |
-| [0002](0002-tree-sitter-grammars-phase-2-amendment.md) | `py-tree-sitter` Phase 2 amendment — the one named-trigger C-extension exception | dependency-policy · supply-chain · cve-surface · named-trigger · amendment |
+| [0002](0002-tree-sitter-grammars-phase-2-amendment.md) | `py-tree-sitter` Phase 2 amendment — the one named-trigger C-extension exception (**Superseded by [0011](0011-tree-sitter-grammars-via-pypi-wheels.md)**) | dependency-policy · supply-chain · cve-surface · named-trigger · amendment · superseded |
 | [0003](0003-coordinator-heaviness-sort-annotation.md) | `@register_probe(heaviness=, runs_last=)` — registry annotations, not Probe ABC fields | registry · coordinator · scheduling · contract-preservation · open-closed |
 | [0004](0004-image-digest-as-declared-input-token.md) | Image digest as a `declared_inputs` special token, not a `cache_key()` override | cache · declared-inputs · chokepoint-preservation · additive-extension |
 | [0005](0005-secret-findings-no-plaintext-persistence.md) | Secret findings — no plaintext persistence anywhere in Phase 2 | security · secrets · redaction · chokepoint · threat-model · structural-defense |
@@ -22,6 +22,7 @@ Architecture Decision Records for Phase 2, in Nygard format. Each ADR captures o
 | [0008](0008-no-event-stream-in-phase-2.md) | No event stream in Phase 2 — Phase 0 audit anchor unchanged | observability · audit · scope · phase-boundary · defer · event-sourcing |
 | [0009](0009-pytest-xdist-veto-preserved.md) | `pytest-xdist` veto preserved — portfolio CI lane stays serial | ci · testing · phase-fidelity · veto-preservation · flake-budget |
 | [0010](0010-redacted-slice-smart-constructor-at-writer-boundary.md) | `RedactedSlice` smart constructor — making "redactor was called" type-checkable | typing · smart-constructor · structural-defense · secrets · chokepoint |
+| [0011](0011-tree-sitter-grammars-via-pypi-wheels.md) | Tree-sitter grammars via PyPI wheels (supersedes vendored `.so` model) | dependency-policy · supply-chain · parser · cross-platform · amendment |
 
 ## Conventions
 

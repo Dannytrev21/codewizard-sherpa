@@ -1,9 +1,9 @@
 # ADR-0002: `py-tree-sitter` Phase 2 amendment — the one named-trigger C-extension exception
 
-**Status:** Accepted
+**Status:** **Superseded by [02-ADR-0011](0011-tree-sitter-grammars-via-pypi-wheels.md) (2026-05-17)** — grammar delivery moved from vendored `.so` files + `tools/grammars.lock` BLAKE3 pins to PyPI wheels (`tree-sitter-typescript`, `tree-sitter-javascript`) with `pip --require-hashes` as the supply-chain pin. The named-trigger C-extension policy (`py-tree-sitter` itself remains the single exception to Phase 1 ADR-0009) carries forward unchanged. See 02-ADR-0011 §Context for the empirical findings driving the supersession.
 **Date:** 2026-05-14
-**Tags:** dependency-policy · supply-chain · cve-surface · parser · named-trigger · amendment
-**Related:** [Phase 1 ADR-0009](../../01-context-gather-layer-a-node/ADRs/0009-no-new-c-extension-parser-dependencies.md), 02-ADR-0001, [Phase 1 ADR-0008](../../01-context-gather-layer-a-node/ADRs/0008-in-process-parse-caps-not-per-probe-sandbox.md)
+**Tags:** dependency-policy · supply-chain · cve-surface · parser · named-trigger · amendment · superseded
+**Related:** [Phase 1 ADR-0009](../../01-context-gather-layer-a-node/ADRs/0009-no-new-c-extension-parser-dependencies.md), 02-ADR-0001, [Phase 1 ADR-0008](../../01-context-gather-layer-a-node/ADRs/0008-in-process-parse-caps-not-per-probe-sandbox.md), [02-ADR-0011](0011-tree-sitter-grammars-via-pypi-wheels.md)
 
 ## Context
 

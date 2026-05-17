@@ -39,6 +39,19 @@ dependencies = [
   # (not [project.optional-dependencies]) because the fence (ADR-0002) reads
   # only ``[project].dependencies``; the gather pipeline imports it eagerly.
   "networkx>=3.2",
+  # Phase 2 ADR-0011: tree-sitter grammars via PyPI wheels (supersedes
+  # 02-ADR-0002's vendored .so model). The ``tree-sitter`` runtime supplies
+  # the modern ``Language(<PyCapsule>)`` API; the per-language wheels supply
+  # the grammar capsules. Cross-platform out-of-the-box: linux x86_64/
+  # aarch64, macOS Intel/Apple Silicon, Windows. ``pip --require-hashes``
+  # carries the supply-chain pin formerly held by ``tools/grammars.lock``.
+  # Named-trigger consumer is ``localv2.md §5.2 B3`` (tree-sitter import
+  # graph) + S4-06 ``NodeReflectionProbe``; Phase 8+ adds
+  # ``tree-sitter-python``/``tree-sitter-java`` additively (one dep line per
+  # language).
+  "tree-sitter>=0.23,<0.26",
+  "tree-sitter-typescript>=0.23,<1",
+  "tree-sitter-javascript>=0.23,<1",
 ]
 
 [project.optional-dependencies]

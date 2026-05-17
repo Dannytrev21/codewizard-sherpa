@@ -52,14 +52,18 @@ NYGARD_SECTIONS = (
 
 @pytest.mark.parametrize("name", REQUIRED_ADRS)
 def test_adr_file_exists_and_nygard_shape(name: str) -> None:
-    """AC-6 — every Step-1 ADR has all 8 Nygard sections + ``Status: Accepted``."""
+    """AC-6 — every Step-1 ADR has all 8 Nygard sections + a non-Draft
+    ``Status:`` line (``Accepted`` or ``Superseded`` are both valid;
+    Draft is rejected at the Step-1 gate)."""
     path = ADR_DIR / name
     assert path.exists(), f"missing ADR: {name}"
     text = path.read_text(encoding="utf-8")
     for section in NYGARD_SECTIONS:
         assert section in text, f"{name} missing Nygard section: {section}"
-    assert "**Status:** Accepted" in text, (
-        f"{name} is not marked Accepted (Draft ADRs are rejected at Step-1 gate)"
+    has_accepted = "**Status:** Accepted" in text
+    has_superseded = "**Status:** **Superseded" in text or "Superseded by" in text
+    assert has_accepted or has_superseded, (
+        f"{name} is not marked Accepted or Superseded (Draft ADRs are rejected at Step-1 gate)"
     )
 
 
