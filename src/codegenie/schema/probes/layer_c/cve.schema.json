@@ -1,0 +1,68 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/cve/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CveProbe slice",
+  "description": "Slice produced by CveProbe (Layer C, S5-04). Wraps `grype` JSON over the upstream syft SBOM. Strict at every object node per Phase 1 ADR-0004 / 02-ADR-0010.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "cve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_uri": { "type": ["string", "null"] },
+        "scanner": { "const": "grype" },
+        "scanned_image_digest": { "type": ["string", "null"] },
+        "total": { "type": "integer", "minimum": 0 },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "high": { "type": "integer", "minimum": 0 },
+            "medium": { "type": "integer", "minimum": 0 },
+            "low": { "type": "integer", "minimum": 0 },
+            "negligible": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["critical", "high", "medium", "low", "negligible"]
+        },
+        "by_source": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "top_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cve_id": { "type": "string" },
+              "package_name": { "type": "string" },
+              "severity": { "enum": ["critical", "high", "medium", "low", "negligible"] },
+              "fix_state": { "type": ["string", "null"] }
+            },
+            "required": ["cve_id", "package_name", "severity"]
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "properties": { "kind": { "enum": ["ran", "skipped", "failed"] } },
+          "required": ["kind"]
+        },
+        "confidence": { "enum": ["high", "medium", "low", "unavailable"] }
+      },
+      "required": [
+        "artifact_uri",
+        "scanner",
+        "scanned_image_digest",
+        "total",
+        "by_severity",
+        "by_source",
+        "top_findings",
+        "outcome",
+        "confidence"
+      ]
+    }
+  },
+  "required": ["cve"]
+}

@@ -102,12 +102,22 @@ class ScannerFailed(BaseModel):
     """The scanner executed but produced an error (non-zero exit or invalid
     JSON stdout). ``stderr_tail`` is capped at construction by a
     ``field_validator`` so the per-outcome envelope contribution is bounded
-    regardless of upstream behavior."""
+    regardless of upstream behavior.
+
+    The optional ``reason`` field distinguishes structurally-different
+    failure shapes inside the ``failed`` discriminator (e.g.
+    ``"invalid_json"`` for malformed stdout, ``"sbom_artifact_missing"``
+    for a CveProbe upstream-file gap). It defaults to ``None`` so the
+    Phase-2 S5-01 baseline (``exit_code``/``stderr_tail`` only) remains
+    valid; new variants are an additive extension, not a breaking
+    rename.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["failed"] = "failed"
     exit_code: int
     stderr_tail: str
+    reason: Literal["invalid_json", "sbom_artifact_missing"] | None = None
 
     @field_validator("stderr_tail")
     @classmethod

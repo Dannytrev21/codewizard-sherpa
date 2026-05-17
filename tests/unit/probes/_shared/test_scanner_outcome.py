@@ -82,8 +82,21 @@ def test_scanner_skipped_json_shape_pinned() -> None:
 
 
 def test_scanner_failed_json_shape_pinned() -> None:
+    """S5-04 extends ScannerFailed with an optional ``reason`` field
+    (default ``None``) so the ``failed`` discriminator can distinguish
+    invalid-JSON from non-zero-exit failures without changing the
+    discriminator key. The baseline (no ``reason``) dump still pins."""
     dump = ScannerFailed(exit_code=2, stderr_tail="err").model_dump(mode="json")
-    assert dump == {"kind": "failed", "exit_code": 2, "stderr_tail": "err"}
+    assert dump == {"kind": "failed", "exit_code": 2, "stderr_tail": "err", "reason": None}
+    typed = ScannerFailed(exit_code=2, stderr_tail="err", reason="invalid_json").model_dump(
+        mode="json"
+    )
+    assert typed == {
+        "kind": "failed",
+        "exit_code": 2,
+        "stderr_tail": "err",
+        "reason": "invalid_json",
+    }
 
 
 # ---------------------------------------------------------------------------

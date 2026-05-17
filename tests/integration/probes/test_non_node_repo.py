@@ -121,7 +121,9 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
     # S5-03 added four Layer C marker probes (dockerfile + entrypoint +
     # shell_usage + certificate) which are also universal and emit a typed
     # ``confidence=unavailable`` slice when the marker / sibling slice is
-    # absent.
+    # absent. Phase 2 S5-04 added ``sbom`` + ``cve`` which are likewise
+    # universal — on a non-Node repo with no upstream runtime-trace slice
+    # they emit ``ScannerSkipped(reason="upstream_unavailable")``.
     expected = {
         "language_detection",
         "ci",
@@ -131,6 +133,8 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         "entrypoint",
         "shell_usage",
         "certificate",
+        "sbom",
+        "cve",
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "
