@@ -1,7 +1,16 @@
 # Story S4-07 — Layer B sub-schemas + explicit additive imports
 
+**Status:** Done
+**Completed:** 2026-05-17
+**Attempts:** 2 (1 implementation, 1 validation run — see `_attempts/S4-07.md`)
+**Evidence:**
+- Files: `tools/regenerate_probe_schemas.py`, `src/codegenie/schema/probes/{index_health,scip_index,tree_sitter_import_graph,dep_graph,generated_code,node_reflection,semantic_index_meta}.schema.json`, `src/codegenie/schema/repo_context.schema.json` (seven additive `$ref` entries), `src/codegenie/probes/__init__.py` (Layer B grouped-import block), `tests/unit/probes/layer_b/test_subschemas.py`, `tests/unit/probes/layer_b/_schema_walkers.py`
+- Tests: 48 test functions / 58 parametrized rows in `tests/unit/probes/layer_b/test_subschemas.py` — all green (10 expected skip-with-warn rows for AC-7/AC-7b on dict-shaped slices, preserving Rule 12 fail-loud discipline)
+- Gates: `pytest` 2347 passed / 15 skipped / 2 xfailed (pre-existing); `ruff check` clean; `ruff format --check` clean (295 files); `mypy --strict src/` clean (94 source files); `lint-imports` 2 contracts kept / 0 broken; coverage 93.22% (above 85% floor)
+- Commit: (pending human merge)
+
 **Step:** Step 4 — Ship `IndexHealthProbe` (B2) + Layer B structural probes
-**Status:** Done (GREEN 2026-05-17 — see `_attempts/S4-07.md`)
+**Original status (pre-execution):** Ready — HARDENED (validated 2026-05-16)
 **Effort:** S
 **Depends on:** S4-01 (`IndexHealthProbe` shipping the `index_health` slice shape + `_WARNING_IDS` frozenset), S4-03 (`SCIPIndexProbe` shipping the `scip_index` slice shape + `_WARNING_IDS` frozenset), S4-04 (`TreeSitterImportGraphProbe` shipping the `tree_sitter_import_graph` slice shape + `_WARNING_IDS` frozenset), S4-05 (`DepGraphProbe` shipping the `dep_graph` slice and `DepGraphProbeOutput` Pydantic model + `_WARNING_IDS` frozenset), S4-06 (the three marker probes shipping `generated_code`/`node_reflection`/`semantic_index_meta` slices + `_WARNING_IDS` frozensets — `node_reflection` is the slice key per S4-06 final shape, not `reflection`)
 **ADRs honored:** Phase 1 ADR-0004 (`additionalProperties: false` at sub-schema root + every nested block — the per-probe sub-schema convention), Phase 1 ADR-0007 (warning/error ID pattern `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$` enforced on `warnings[]` and `errors[]`), Phase 1 ADR-0010 (slice optional at envelope), Phase 0 ADR-0013 (envelope `probes.*: additionalProperties: true`, per-probe sub-schemas strict — the layering this story extends), [`02-ADR-0006`](../ADRs/0006-index-freshness-sum-type-location.md) (the `index_health` sub-schema embeds the `IndexFreshness` Pydantic JSON Schema generated from `codegenie.indices.freshness`)
@@ -61,7 +70,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — Seven sub-schema files exist with the canonical `$id` shape.** Under `src/codegenie/schema/probes/`:
+- [x] **AC-1 — Seven sub-schema files exist with the canonical `$id` shape.** Under `src/codegenie/schema/probes/`:
   - `index_health.schema.json` — `$id: "https://codewizard-sherpa.dev/schemas/probes/index_health/v0.1.0.json"`
   - `scip_index.schema.json` — `$id: "https://codewizard-sherpa.dev/schemas/probes/scip_index/v0.1.0.json"`
   - `tree_sitter_import_graph.schema.json` — `$id: ".../tree_sitter_import_graph/v0.1.0.json"`
@@ -71,7 +80,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
   - `semantic_index_meta.schema.json` — `$id: ".../semantic_index_meta/v0.1.0.json"`
   Each is a valid JSON Schema 2020-12 document (`$schema: "https://json-schema.org/draft/2020-12/schema"`), self-contained (no cross-file `$ref` — the `IndexFreshness` sub-schema is **embedded** in `index_health.schema.json`'s `$defs` rather than `$ref`'d, to defer the cross-schema-ref convention to Phase 3+), and Phase-1-ADR-0004 compliant. The `$id` URL stem matches the canonical pattern set by the six Layer A sub-schemas (`grep '"\$id"' src/codegenie/schema/probes/*.schema.json` is the spec).
 
-- [ ] **AC-1b — Envelope `$ref` wiring for all seven Layer B sub-schemas.** `src/codegenie/schema/repo_context.schema.json`'s `properties.probes.properties` is **edited additively** to add the seven `$ref` entries:
+- [x] **AC-1b — Envelope `$ref` wiring for all seven Layer B sub-schemas.** `src/codegenie/schema/repo_context.schema.json`'s `properties.probes.properties` is **edited additively** to add the seven `$ref` entries:
   ```json
   "index_health":            {"$ref": "https://codewizard-sherpa.dev/schemas/probes/index_health/v0.1.0.json"},
   "scip_index":              {"$ref": "https://codewizard-sherpa.dev/schemas/probes/scip_index/v0.1.0.json"},
@@ -83,7 +92,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
   ```
   **This wiring is what activates per-slice validation.** Without it, Phase 0 ADR-0013's `probes.*: additionalProperties: true` swallows any rogue field silently — the sub-schemas on disk become inert. A test (`test_envelope_refs_every_layer_b_subschema`) asserts each of the seven slice names maps to a `$ref` whose target equals the corresponding sub-schema's `$id`.
 
-- [ ] **AC-2 — `additionalProperties: false` at root AND every nested object (including `$defs`, `oneOf`/`anyOf`/`allOf` branches, `items`, `prefixItems`).** Each sub-schema sets `additionalProperties: false`:
+- [x] **AC-2 — `additionalProperties: false` at root AND every nested object (including `$defs`, `oneOf`/`anyOf`/`allOf` branches, `items`, `prefixItems`).** Each sub-schema sets `additionalProperties: false`:
   - At the document root (the slice object).
   - At every nested `type: "object"` block (e.g., `index_health.<index_name>.freshness`, `index_health.<index_name>.freshness.reason`, `generated_code.files[*]`, `node_reflection.decorator_usage`, `semantic_index_meta` is single-level so root is sufficient).
   - At every object node reachable through `$defs.*`, `oneOf[*]`, `anyOf[*]`, `allOf[*]`, `if`/`then`/`else`, `items`, `prefixItems[*]`, and `additionalProperties` (when itself a schema). The `index_health` schema is the load-bearing case — its embedded `IndexFreshness` lives under `$defs.Fresh` / `$defs.Stale` / `$defs.CommitsBehind` / … each of which is a nested object node.
@@ -92,7 +101,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   **Mutation-resistance check (T-02b):** an additional test takes the committed `index_health.schema.json`, deep-copies it, deletes `additionalProperties: false` at a randomly chosen nested object path (e.g., `$defs.Stale`), and asserts `_walk_object_nodes` flags that exact path. This proves the walker isn't passing by accident on schemas that already conform.
 
-- [ ] **AC-3 — `warnings[]` and `errors[]` are ADR-0007-pattern-constrained as flat strings.** Each sub-schema declares:
+- [x] **AC-3 — `warnings[]` and `errors[]` are ADR-0007-pattern-constrained as flat strings.** Each sub-schema declares:
   ```json
   "warnings": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"}},
   "errors":   {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"}}
@@ -101,13 +110,13 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   **Cross-check (T-04):** for each of the seven Layer B probe modules, load `_WARNING_IDS: Final[frozenset[str]]` (and `_ERROR_IDS` if present) at import time; assert every member matches the regex pinned in its sub-schema. The convention is established: `src/codegenie/probes/layer_b/dep_graph.py:82`, `index_health.py:109`, `scip_index.py:90`, `src/codegenie/probes/ci.py:160`, `deployment.py:132/147`, `node_build_system.py:226/240`. **Precondition for AC-3:** the four probes whose `_WARNING_IDS` shipping is in-flight (S4-04 tree_sitter_import_graph, S4-06 generated_code, S4-06 node_reflection, S4-06 semantic_index_meta) must expose this frozenset at module level. If any probe lands without `_WARNING_IDS`, T-04 is allowed to skip *that* probe with `pytest.skip` AND a `warnings.warn(stacklevel=2)` so the gap is logged loudly (Rule 12 — fail loud, never silent).
 
-- [ ] **AC-4 — Slice optional at envelope level (positive + negative check).** Each Layer B sub-schema is wired by `$ref` under `properties.probes.properties.<name>` (AC-1b) but is NOT declared `required` at envelope level (Phase 1 ADR-0010). Two assertions, both load-bearing:
+- [x] **AC-4 — Slice optional at envelope level (positive + negative check).** Each Layer B sub-schema is wired by `$ref` under `properties.probes.properties.<name>` (AC-1b) but is NOT declared `required` at envelope level (Phase 1 ADR-0010). Two assertions, both load-bearing:
   - **Positive:** `envelope.properties.probes.properties` contains each of the seven Layer B probe names (proves wiring exists).
   - **Negative:** either `envelope.properties.probes.required` does NOT exist (current state — Phase 0 ADR-0013 keeps `probes.*: additionalProperties: true` and no `required` list) OR, if a `required` array IS present, none of the seven Layer B probe names appear in it.
 
   The negative check is structured this way because asserting "names not in `required`" when `required` doesn't exist is **vacuously true**; the original AC was vulnerable to a future contributor adding a `required: ["index_health"]` after the test was written and the test still passing. The positive check (presence under `properties`) plus the conditional negative (absence from `required` when it exists) together close the gap. A unit test (`test_layer_b_slices_wired_and_optional_at_envelope`) parses `repo_context.schema.json` and asserts both.
 
-- [ ] **AC-5 — `index_health` sub-schema embeds the `IndexFreshness` JSON Schema, regenerated from Pydantic.** The `index_health.schema.json` contains a `$defs` block with `Fresh`, `Stale`, `CommitsBehind`, `DigestMismatch`, `CoverageGap`, `IndexerError` definitions — **generated** at sub-schema build time from the Pydantic models (`Fresh.model_json_schema()`, etc.) via `tools/regenerate_probe_schemas.py` (note the **drop of `_layer_b`** in the name — see Notes for the implementer D-3: a Phase 3 Layer C probe extends this script by tuple-registry insertion, not by edit-and-rename).
+- [x] **AC-5 — `index_health` sub-schema embeds the `IndexFreshness` JSON Schema, regenerated from Pydantic.** The `index_health.schema.json` contains a `$defs` block with `Fresh`, `Stale`, `CommitsBehind`, `DigestMismatch`, `CoverageGap`, `IndexerError` definitions — **generated** at sub-schema build time from the Pydantic models (`Fresh.model_json_schema()`, etc.) via `tools/regenerate_probe_schemas.py` (note the **drop of `_layer_b`** in the name — see Notes for the implementer D-3: a Phase 3 Layer C probe extends this script by tuple-registry insertion, not by edit-and-rename).
 
   The script is reviewed-as-code; running it on a clean tree must produce byte-identical sub-schemas to those committed. A unit test (`test_index_health_subschema_regenerates_identically`) shells out to the script (`python -m tools.regenerate_probe_schemas`) in a tempdir copy of the repo and diffs against the committed `index_health.schema.json` — must be byte-identical (`assert produced == committed`).
 
@@ -119,7 +128,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
   ```
   T-06 asserts this block exists and lists at minimum these two paths. This mirrors the probe `declared_inputs` discipline (Phase 0 cache key) and is the structural defense against "I changed the Pydantic model, forgot to rerun the script."
 
-- [ ] **AC-5b — Embedded sum-type discriminator integrity.** The generated `index_health.schema.json`'s `$defs` block includes exactly six entries — `Fresh`, `Stale`, `CommitsBehind`, `DigestMismatch`, `CoverageGap`, `IndexerError` — each carrying:
+- [x] **AC-5b — Embedded sum-type discriminator integrity.** The generated `index_health.schema.json`'s `$defs` block includes exactly six entries — `Fresh`, `Stale`, `CommitsBehind`, `DigestMismatch`, `CoverageGap`, `IndexerError` — each carrying:
   - `$defs.Fresh.properties.kind` with `const: "fresh"`,
   - `$defs.Stale.properties.kind` with `const: "stale"`,
   - `$defs.CommitsBehind.properties.kind` with `const: "commits_behind"`,
@@ -129,7 +138,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   matching the Pydantic `Literal["..."]` discriminators at `src/codegenie/indices/freshness.py` (`commits_behind` @45, `digest_mismatch` @56, `coverage_gap` @68, `indexer_error` @79, `fresh` @96, and `Stale.kind` in the rest of the file). A unit test (`test_index_freshness_discriminators_preserved_in_schema`) loads the generated schema and asserts each `const` value equals the Pydantic model class's `kind` field default. **Catches "Pydantic Literal renamed without schema regeneration."**
 
-- [ ] **AC-6 — Per-probe sub-schema rejection test (with validator-fingerprint + round-trip control).** Each of the seven schemas has a parametrized test entry in `tests/unit/probes/layer_b/test_subschemas.py`:
+- [x] **AC-6 — Per-probe sub-schema rejection test (with validator-fingerprint + round-trip control).** Each of the seven schemas has a parametrized test entry in `tests/unit/probes/layer_b/test_subschemas.py`:
   ```python
   @pytest.mark.parametrize("probe_name, extra_field_pointer", [
       ("index_health",             "/probes/index_health/rogue_field"),
@@ -150,7 +159,7 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   Each row exercises **one** extra-field rejection; nested cases (`generated_code`, `node_reflection`) prove `additionalProperties: false` propagates beyond the root. AC-2's recursive test is the **structural** check (the flag is set at every depth); AC-6 is the **behavioral** check (the validator actually fires AND fires for the right reason); AC-1b's wiring is the **integration** check (the envelope's `$ref` routes the slice to the sub-schema). All three are needed — drop any one and a class of regression slips through silently.
 
-- [ ] **AC-7 — Round-trip validation of typed Pydantic model output (not full probe runs).** A unit test (`test_layer_b_typed_model_round_trips_against_subschema`) parametrized over the seven slices:
+- [x] **AC-7 — Round-trip validation of typed Pydantic model output (not full probe runs).** A unit test (`test_layer_b_typed_model_round_trips_against_subschema`) parametrized over the seven slices:
   1. Constructs a hand-built, minimal-valid instance of the slice's Pydantic model (e.g., `DepGraphProbeOutput(graph_path=None, confidence="low", reason="no_strategy_for_ecosystem")` for `dep_graph`).
   2. Serializes via `model.model_dump(mode="json")` wrapped in the canonical envelope: `{"schema_version": "0.1.0", "generated_at": "2026-05-16T00:00:00Z", "repo": {"root": "/tmp/x", "git_commit": None}, "probes": {"<slice_name>": <slice>}}`.
   3. Validates the full envelope through `codegenie.schema.validator.validate` (the **production chokepoint** — exercises the `$ref` resolution from AC-1b AND the sub-schema's interior, in one assertion).
@@ -158,13 +167,13 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   **Why typed-model serialization, not full probe runs:** invoking each probe against a synthetic `ProbeContext` with synthetic fixtures couples this test to probe runtime quirks (git state, SCIP binaries, tree-sitter grammars, network access). The honest contract this AC enforces is "the schema accepts what the model emits"; the model is the contract surface. Full probe-run round-trip tests live per-probe (S4-01, S4-03, S4-04, S4-05, S4-06) and are out of scope here. **A slice without a Pydantic model** (e.g., `scip_index` ships as a `TypedDict`, not a Pydantic model — verify per probe) **skips its row with `pytest.skip(...)` AND a `warnings.warn(...)` (stacklevel=2)** so the gap is logged loudly, never silently passed (Rule 12).
 
-- [ ] **AC-7b — Structural bidirectional check (model ↔ schema).** A unit test (`test_typed_model_matches_subschema_structure`) for each Pydantic-modelled slice asserts both directions of the contract:
+- [x] **AC-7b — Structural bidirectional check (model ↔ schema).** A unit test (`test_typed_model_matches_subschema_structure`) for each Pydantic-modelled slice asserts both directions of the contract:
   - **Model fields ⊆ schema declared properties:** every field name on the Pydantic model (`Model.model_fields.keys()`) appears in `schema["properties"]` (recursively resolved through `$ref` for the `index_health` case). Catches "the model added a field the schema doesn't declare → `additionalProperties: false` would reject it the moment a probe emits a non-default value."
   - **Schema `required[]` ⊆ model required fields:** every name in `schema["required"]` is a field on the Pydantic model that is non-`Optional[T]` without a default. Catches "schema requires X, model marks X optional → schema-allows-LESS-than-model."
 
   Both directions are needed: dropping either side admits a silent contract drift. **Skip-with-warn** for slices without a Pydantic model, same as AC-7.
 
-- [ ] **AC-8 — `src/codegenie/probes/__init__.py` lists seven Layer B additive imports in stable alphabetical order, matching the grouped-import codebase convention.** The current file (verified at `src/codegenie/probes/__init__.py:26-30`) uses the **grouped** form:
+- [x] **AC-8 — `src/codegenie/probes/__init__.py` lists seven Layer B additive imports in stable alphabetical order, matching the grouped-import codebase convention.** The current file (verified at `src/codegenie/probes/__init__.py:26-30`) uses the **grouped** form:
   ```python
   from codegenie.probes.layer_b import (
       dep_graph,               # noqa: F401 — S4-05 registration
@@ -182,16 +191,16 @@ Seven JSON Schema files exist at `src/codegenie/schema/probes/`, one per Layer B
 
   Rule 11 — match codebase convention; the per-line form (one `from … import x` per line) is NOT used here because Phase 0/1 chose grouped. Stable alphabetical order means a future PR adding an eighth Layer B probe inserts ONE name at its alphabetical position — diff is minimal, `git blame` is informative.
 
-- [ ] **AC-9 — All seven probes registered in `default_registry`.** A unit test (`test_layer_b_probes_in_default_registry`) imports `default_registry` (forcing module-level decorator runs), enumerates `default_registry.all_probes()`, and asserts the seven probe names are present. **This is a cross-cutting consolidation test** — each probe's individual story has its own membership test; this one asserts collective presence.
+- [x] **AC-9 — All seven probes registered in `default_registry`.** A unit test (`test_layer_b_probes_in_default_registry`) imports `default_registry` (forcing module-level decorator runs), enumerates `default_registry.all_probes()`, and asserts the seven probe names are present. **This is a cross-cutting consolidation test** — each probe's individual story has its own membership test; this one asserts collective presence.
 
-- [ ] **AC-10 — Sub-schemas pass JSON Schema meta-schema validation.** A unit test (`test_subschemas_are_valid_json_schema_documents`) loads each of the seven sub-schemas, validates against the JSON Schema 2020-12 meta-schema (`jsonschema.Draft202012Validator.check_schema(...)`), and asserts no exception. **Catches the "malformed schema typo" failure mode.**
+- [x] **AC-10 — Sub-schemas pass JSON Schema meta-schema validation.** A unit test (`test_subschemas_are_valid_json_schema_documents`) loads each of the seven sub-schemas, validates against the JSON Schema 2020-12 meta-schema (`jsonschema.Draft202012Validator.check_schema(...)`), and asserts no exception. **Catches the "malformed schema typo" failure mode.**
 
-- [ ] **AC-10b — `$id` uniqueness, canonical pattern, and slice-name agreement.** A unit test (`test_subschema_ids_are_unique_and_canonical`) asserts three properties of the seven sub-schemas' `$id` values:
+- [x] **AC-10b — `$id` uniqueness, canonical pattern, and slice-name agreement.** A unit test (`test_subschema_ids_are_unique_and_canonical`) asserts three properties of the seven sub-schemas' `$id` values:
   1. **Pairwise distinct.** Two sub-schemas sharing an `$id` would silently overwrite each other in the `referencing` Registry (`src/codegenie/schema/validator.py:54-58`) — a `set()` of the seven `$id`s must have length 7.
   2. **Canonical pattern.** Each `$id` matches the regex `^https://codewizard-sherpa\.dev/schemas/probes/[a-z][a-z0-9_]*/v\d+\.\d+\.\d+\.json$` — same shape as the six Layer A sub-schemas.
   3. **Slice-name agreement.** For each sub-schema, the trailing `<probe_name>` segment of its `$id` equals the slice key the envelope's `$ref` points to (AC-1b). Catches "the file is named `index_health.schema.json` but its `$id` says `.../scip_index/v0.1.0.json` and the envelope wires it to `index_health`" — a class of copy-paste bug that produces silent validation no-ops.
 
-- [ ] **AC-11 — Tooling green.** `ruff check`, `ruff format --check`, `mypy --strict tools/regenerate_probe_schemas.py`, `pytest tests/unit/probes/layer_b/test_subschemas.py`, `pytest tests/unit/probes/test_init.py` (if the init-shape tests live there) — all pass. Pre-commit hook `jsonlint` (if Phase 0 has one — verify) reports no issues on the seven JSON files.
+- [x] **AC-11 — Tooling green.** `ruff check`, `ruff format --check`, `mypy --strict tools/regenerate_probe_schemas.py`, `pytest tests/unit/probes/layer_b/test_subschemas.py`, `pytest tests/unit/probes/test_init.py` (if the init-shape tests live there) — all pass. Pre-commit hook `jsonlint` (if Phase 0 has one — verify) reports no issues on the seven JSON files.
 
 ## Implementation outline
 
