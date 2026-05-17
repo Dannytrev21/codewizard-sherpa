@@ -81,6 +81,38 @@ def _is_under_phase2_banned_package(path: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 S5-01 — model_construct ban extended to the sum-type kernels.
+# ---------------------------------------------------------------------------
+
+
+def _is_under_phase2_s5_01_sum_type_modules(path: Path) -> bool:
+    """Return True iff *path* sits under
+    ``src/codegenie/probes/_shared/**`` or is the load-bearing
+    ``src/codegenie/probes/layer_c/scenario_result.py`` — the two pure-
+    typing sum-type kernels planted by S5-01.
+
+    These modules are explicitly out-of-scope for
+    ``_is_under_phase2_banned_package`` (which keys on the top-level
+    package name under ``codegenie/``); the S5-01 sum types live under
+    ``probes/`` so they need their own scoping predicate. The
+    smart-constructor invariants (``frozen=True``, ``extra="forbid"``,
+    ``Literal[...]`` discriminator) are exactly what ``model_construct``
+    would bypass.
+    """
+    parts = path.parts
+    try:
+        idx = parts.index("codegenie")
+    except ValueError:
+        return False
+    tail = parts[idx + 1 :]
+    if len(tail) >= 2 and tail[0] == "probes" and tail[1] == "_shared":
+        return True
+    if tail[-3:] == ("probes", "layer_c", "scenario_result.py"):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 S4-01 — mtime ban scoped to ``probes/layer_b/index_health.py``
 # ---------------------------------------------------------------------------
 
@@ -228,6 +260,18 @@ _RULES: list[Rule] = [
             "`from_validated_input(...)` or the public model factory."
         ),
         applies_when=_is_under_phase2_banned_package,
+    ),
+    # Phase 2 S5-01 — same ban extended to the sum-type kernels.
+    Rule(
+        label="model_construct (Phase 2 S5-01 sum-type modules)",
+        pattern=re.compile(r"\.model_construct\s*\(|\bmodel_construct\s*="),
+        advice=(
+            "02-ADR-0010 §Decision + production ADR-0033 §3 — smart "
+            "constructors must be the only public path for the S5-01 sum "
+            "types (probes/_shared/** + probes/layer_c/scenario_result.py); "
+            "use `Model(...)` or `Model.model_validate(...)`."
+        ),
+        applies_when=_is_under_phase2_s5_01_sum_type_modules,
     ),
 ]
 

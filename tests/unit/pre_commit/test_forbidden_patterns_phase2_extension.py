@@ -93,6 +93,81 @@ def test_model_construct_not_banned_under_phase0_phase1_packages(tmp_path: Path,
     )
 
 
+# ---------------------------------------------------------------------------
+# S5-01 extension — `_shared/**` + `layer_c/scenario_result.py` are banned
+# packages too (sum-type kernels whose smart-constructor invariants
+# `model_construct` would silently bypass).
+# ---------------------------------------------------------------------------
+
+S5_01_BANNED_PATHS = (
+    "probes/_shared/synth.py",
+    "probes/_shared/sub/synth.py",
+    "probes/layer_c/scenario_result.py",
+)
+S5_01_ALLOWED_NEIGHBOUR_PATHS = (
+    "probes/layer_a/synth.py",
+    "probes/layer_b/synth.py",
+    # layer_c/ sibling modules (other than scenario_result.py itself) are NOT
+    # part of S5-01's scope — only the sum-type kernel is banned. This catches
+    # accidental over-scoping that would block S5-02's RuntimeTraceProbe later.
+    "probes/layer_c/runtime_trace_probe.py",
+)
+
+
+@pytest.mark.parametrize("rel_path", S5_01_BANNED_PATHS)
+@pytest.mark.parametrize("form_name,body", list(SOURCE_FORMS.items()))
+def test_model_construct_banned_under_s5_01_sum_type_modules(
+    tmp_path: Path, rel_path: str, form_name: str, body: str
+) -> None:
+    """S5-01 AC: extension covers `_shared/**` and `layer_c/scenario_result.py`.
+
+    The matrix (3 paths × 4 source forms = 12 cells) mirrors S1-11's
+    discipline: weakening the regex collapses one column instead of one cell.
+    """
+    target = _write_synth(tmp_path, f"src/codegenie/{rel_path}", body)
+    # Place a synth name where SOURCE_FORMS would otherwise collide with the
+    # real scenario_result.py basename.
+    if target.name == "scenario_result.py":
+        target = _write_synth(tmp_path, "src/codegenie/probes/layer_c/scenario_result.py", body)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        f"S5-01 hook must reject model_construct under {rel_path} ({form_name}); "
+        f"got exit 0; output:\n{combined}"
+    )
+    assert "02-ADR-0010 §Decision" in combined, f"missing 02-ADR-0010 §Decision in: {combined}"
+    assert "production ADR-0033 §3" in combined, f"missing production ADR-0033 §3 in: {combined}"
+
+
+@pytest.mark.parametrize("rel_path", S5_01_ALLOWED_NEIGHBOUR_PATHS)
+def test_model_construct_not_banned_under_s5_01_allowed_neighbours(
+    tmp_path: Path, rel_path: str
+) -> None:
+    """Negative coverage: the S5-01 predicate is surgical, not blanket.
+
+    `layer_a/`, `layer_b/`, and `layer_c/` sibling modules (anything except
+    `scenario_result.py` itself) must NOT trip the new rule; otherwise S5-02
+    onwards would be blocked.
+    """
+    body = SOURCE_FORMS["class_call"]
+    target = _write_synth(tmp_path, f"src/codegenie/{rel_path}", body)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"S5-01 hook must NOT reject model_construct under {rel_path}; "
+        f"got exit {result.returncode}; output:\n{result.stdout}{result.stderr}"
+    )
+
+
 def test_existing_phase0_rules_still_fire(tmp_path: Path) -> None:
     """AC-14 — regression guard: refactoring ``_RULES`` row shape must not
     silently drop any of the 11 Phase-0 rules. Each banned construct in turn
