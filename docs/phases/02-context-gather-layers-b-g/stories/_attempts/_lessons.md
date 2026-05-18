@@ -513,3 +513,10 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** Eight heterogeneous GitHub-issue payloads as inline dicts in a script makes per-issue test functions a copy/paste exercise. Adding a ninth issue silently widens the surface; primitive obsession on `str` for `milestone` makes typos invisible.
 - **Fix:** A `Final[tuple[IssueSpec, ...]]` of frozen Pydantic models in a pure-data module (zero `subprocess`/`os` imports), consumed by a separate impure shell. Tests parametrize over the tuple; AC-driven literal-substring assertions become a sweep, not a stamp.
 - **Why it matters:** S8-04 had 16 substring-driven assertions across 5 handoff + 3 backlog issue bodies. The registry kept the test file ~200 LOC; the dict-shuffling alternative would have been 500+. Open/Closed at the registry boundary: a future handoff story adds one row, the script logic stays unchanged.
+
+## L-meta — Phase retrospectives are auto-aggregated, then human-curated
+
+- **Source:** Phase 2 closeout.
+- **Symptom:** `_lessons.md` grows append-only to ~84 H2 entries; attempt logs accumulate ~35 files × ~5 H3 sections each. Pattern discovery becomes archaeology — no one re-reads 200 sections to find the recurring shapes.
+- **Fix:** `scripts/synthesize_phase_lessons.py --phase <slug>` walks every `_attempts/S*.md` log, buckets H3 sections by keyword into `RETROSPECTIVE.md`. Pure code, no LLM, no judgment — output is byte-deterministic and re-runnable. Categorization is the human's job; the script just surfaces the raw signal grouped by category.
+- **Why it matters:** Future phases inherit a 4-bucket retrospective at zero cost. The validator skill can read prior-phase `RETROSPECTIVE.md` files to harden upcoming stories against patterns we've already paid for. Re-run after each story closes (or on phase exit) — output is idempotent.
