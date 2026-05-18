@@ -15,7 +15,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import codegenie
 from codegenie.probes.base import ProbeContext, RepoSnapshot
+
+# S6-04 AC-14: anchor the manifest-README lookup against the installed
+# package root, not ``Path(__file__).parents[N]`` (which breaks if the
+# tests tree moves). ``codegenie`` is installed in editable mode, so
+# ``__file__`` points at ``<repo>/src/codegenie/__init__.py``;
+# ``parents[2]`` is the repo root.
+_PROJECT_ROOT: Path = Path(codegenie.__file__).resolve().parents[2]
 
 
 def _make_repo(tmp_path: Path, *, name: str = "myrepo") -> RepoSnapshot:

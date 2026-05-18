@@ -1,0 +1,19 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/external_docs/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotOptedInExternalDocsSlice",
+  "description": "Phase-2 closed shape for the external_docs probe (Layer D). The probe is registered as a Null Object stub per final-design.md Open Q 4 — the opted-in allowlist schema lands when the first real user opts in. `opted_in` is the discriminator key for the eventual tagged union (Annotated[NotOptedInExternalDocsSlice | OptedInExternalDocsSlice, Field(discriminator='opted_in')]). Generated from src/codegenie/probes/layer_d/external_docs.py::NotOptedInExternalDocsSlice (Pydantic model is the source of truth).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["opted_in", "reason"],
+  "properties": {
+    "opted_in": {
+      "description": "Discriminator key. Phase 2 pins this to false; the opted-in variant will land as a new sibling model with opted_in: true.",
+      "const": false
+    },
+    "reason": {
+      "description": "Why the probe emitted the not-opted-in slice. Single-variant in Phase 2; widens to a typed union if other not-opted-in reasons emerge.",
+      "const": "not_opted_in"
+    }
+  }
+}

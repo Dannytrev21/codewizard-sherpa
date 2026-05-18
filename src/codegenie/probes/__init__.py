@@ -43,6 +43,7 @@ from codegenie.probes.layer_d import (
     adrs,  # noqa: F401 — S6-03 registration
     conventions,  # noqa: F401 — S6-02 registration
     exceptions,  # noqa: F401 — S6-03 registration
+    external_docs,  # noqa: F401 — S6-04 registration
     policy,  # noqa: F401 — S6-03 registration
     repo_config,  # noqa: F401 — S6-03 registration
     repo_notes,  # noqa: F401 — S6-03 registration
@@ -61,6 +62,7 @@ __all__ = [
     "dockerfile",
     "entrypoint",
     "exceptions",
+    "external_docs",
     "generated_code",
     "index_health",
     "language_detection",

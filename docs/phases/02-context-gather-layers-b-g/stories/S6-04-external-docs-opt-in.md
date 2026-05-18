@@ -1,7 +1,7 @@
 # Story S6-04 — `ExternalDocsProbe` opt-in skip-cleanly stub
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** Hardened (ready for executor)
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S6-04.md`](_attempts/S6-04.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S6-03 (Layer D marker-probe shape established — async `run(repo, ctx)`; `_make_context`/`_make_repo` test helpers; flat schema path; `_PROBE_ID: Final[ProbeId]` constant alongside `name: str` ABC attr; `default_registry._entries` registry lookup; functional-core/imperative-shell split; "absence is the data → `confidence='high'`" precedent from S6-01 empty-install case).
 **ADRs honored:** Phase 0 ADR-0007 (`Probe` ABC frozen byte-for-byte against `localv2.md §4` — `name: str`, `async def run(self, repo, ctx)`, `ProbeOutput` six-field shape, `confidence: Literal["high","medium","low"]`), 02-ADR-0003 (`@register_probe(heaviness=…)` is a registry kwarg — NOT a `Probe` ABC field), 02-ADR-0007 (no plugin loader in Phase 2 — and by extension, no Confluence/Notion HTTP clients), 02-ADR-0005 (no plaintext persistence), 02-ADR-0008 (no event stream in Phase 2 — RAG-store handoff deferred to Phase 4)
