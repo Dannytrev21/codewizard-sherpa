@@ -33,6 +33,18 @@ from codegenie.probes.layer_g.ast_grep import (
 from codegenie.probes.layer_g.ast_grep import (
     _ToolMissing as AgMissing,
 )
+from codegenie.probes.layer_g.gitleaks import (
+    _classify_gitleaks_outcome,
+)
+from codegenie.probes.layer_g.gitleaks import (
+    _ProcessExited as GlExited,
+)
+from codegenie.probes.layer_g.gitleaks import (
+    _ProcessTimedOut as GlTimedOut,
+)
+from codegenie.probes.layer_g.gitleaks import (
+    _ToolMissing as GlMissing,
+)
 from codegenie.probes.layer_g.ripgrep_curated import (
     _classify_ripgrep_outcome,
 )
@@ -139,3 +151,34 @@ def test_ripgrep_classifier_total_on_tool_missing() -> None:
 def test_ripgrep_classifier_total_on_timeout() -> None:
     outcome, _ = _classify_ripgrep_outcome(RgTimedOut())
     assert isinstance(outcome, ScannerFailed)
+
+
+# ---------------------------------------------------------------------------
+# Gitleaks (S6-07)
+# ---------------------------------------------------------------------------
+
+
+@given(
+    exit_code=st.integers(min_value=-128, max_value=255),
+    stdout=st.binary(max_size=4096),
+    stderr_tail=st.text(max_size=512),
+)
+def test_gitleaks_classifier_total_on_process_exited(exit_code, stdout, stderr_tail) -> None:
+    outcome, _findings, _raw = _classify_gitleaks_outcome(
+        GlExited(exit_code=exit_code, stdout=stdout, stderr_tail=stderr_tail)
+    )
+    assert isinstance(outcome, (ScannerRan, ScannerSkipped, ScannerFailed))
+
+
+def test_gitleaks_classifier_total_on_tool_missing() -> None:
+    outcome, _findings, raw = _classify_gitleaks_outcome(GlMissing())
+    assert isinstance(outcome, ScannerSkipped)
+    assert outcome.reason == "tool_missing"
+    assert raw is None
+
+
+def test_gitleaks_classifier_total_on_timeout() -> None:
+    outcome, _findings, raw = _classify_gitleaks_outcome(GlTimedOut())
+    assert isinstance(outcome, ScannerFailed)
+    assert outcome.exit_code == 124
+    assert raw is None

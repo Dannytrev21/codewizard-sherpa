@@ -141,6 +141,7 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         "sbom",
         "cve",
         "ownership",
+        "gitleaks",  # Phase 2 S6-07 — Layer G secret scanner; universal.
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "

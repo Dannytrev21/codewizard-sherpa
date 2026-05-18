@@ -56,6 +56,7 @@ from codegenie.probes.layer_e import (
 )
 from codegenie.probes.layer_g import (
     ast_grep,  # noqa: F401 — S6-06 registration
+    gitleaks,  # noqa: F401 — S6-07 registration
     ripgrep_curated,  # noqa: F401 — S6-06 registration
     semgrep,  # noqa: F401 — S6-06 registration
 )
@@ -75,6 +76,7 @@ __all__ = [
     "exceptions",
     "external_docs",
     "generated_code",
+    "gitleaks",
     "index_health",
     "language_detection",
     "node_build_system",

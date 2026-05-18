@@ -1,0 +1,6 @@
+{
+  "name": "secret-in-source-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase 2 S6-07 adversarial fixture — seeded AWS Access Key."
+}

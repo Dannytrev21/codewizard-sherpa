@@ -1,7 +1,7 @@
 # Story S6-07 — `Gitleaks` scanner + `secret_in_source` adversarial
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S6-07.md`](_attempts/S6-07.md) for the per-AC evidence table + kernel-drift fixes + gate log)
 **Effort:** M
 **Depends on:** S6-06 (three sibling Layer G scanners — `gitleaks` is the *fourth* and final scanner; landing it in its own story makes the no-shared-`ScannerRunner` discipline visible in the PR queue), S3-03 (writer signature tightened to `RedactedSlice`; envelope-level `_seam_redact_envelope` is the composition pass at the writer chokepoint)
 **ADRs honored:** 02-ADR-0001 (`gitleaks` added to `ALLOWED_BINARIES`), **02-ADR-0005** (no plaintext persistence — this story is the load-bearing test of that ADR), **02-ADR-0010** (`RedactedSlice` smart constructor at writer boundary — the test confirms a caller cannot bypass the redactor)

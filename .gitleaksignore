@@ -1,0 +1,14 @@
+# Fingerprints whitelisted from pre-commit gitleaks scanning.
+#
+# These entries correspond to DELIBERATE seeds inside the S6-07
+# (`tests/adv/phase02/test_secret_in_source.py`) adversarial fixture.
+# The whole point of those files is to seed a known fake AWS Access Key
+# ID — gitleaks correctly flags it, the SecretRedactor correctly
+# replaces it everywhere persistence happens, and the test verifies
+# the chokepoint commitment end-to-end. Allowing the seed to live in
+# the committed fixture is what makes the test reproducible.
+#
+# Format: ``<file>:<rule-id>:<line>`` per gitleaks 8.x.
+tests/adv/phase02/fixtures/secret_in_source/src/config.ts:generic-api-key:4
+tests/adv/phase02/fixtures/secret_in_source/docs/internal-notes.md:generic-api-key:4
+tests/unit/probes/layer_g/test_gitleaks.py:generic-api-key:360

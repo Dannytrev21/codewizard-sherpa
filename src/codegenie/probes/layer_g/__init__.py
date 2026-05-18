@@ -24,8 +24,9 @@ encode the carve-outs and the rich shapes.
 
 from codegenie.probes.layer_g import (
     ast_grep,
+    gitleaks,
     ripgrep_curated,
     semgrep,
 )
 
-__all__ = ["ast_grep", "ripgrep_curated", "semgrep"]
+__all__ = ["ast_grep", "gitleaks", "ripgrep_curated", "semgrep"]

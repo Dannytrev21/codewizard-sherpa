@@ -372,14 +372,25 @@ def test_catalog_edit_invalidates_only_node_manifest(
     warm_state = _cache_state_from_logs(warm_logs)
 
     # Aggregate assertion — pins BOTH directions:
-    #   - under-invalidation: node_manifest must be a miss (the catalog
+    #   - under-invalidation: node_manifest MUST be a miss (the catalog
     #     change must propagate to the cache key)
-    #   - over-invalidation: ONLY node_manifest is a miss (siblings stay
-    #     warm). A surgical-flush mutant fails this single equality.
+    #   - over-invalidation: only probes whose declared_inputs *legitimately*
+    #     contain the catalog file glob are misses. node_manifest reads the
+    #     catalog directly; ``gitleaks`` (S6-07) declares ``**/*.yaml`` so
+    #     it scans every yaml — including this catalog — for secret leakage,
+    #     and a catalog yaml-bytes edit is a legitimate cache-key change for
+    #     it. A surgical-flush mutant that touched a non-yaml-consuming
+    #     probe (e.g., ``adrs`` / ``conventions``) still fails this.
     misses = {p for p, s in warm_state.items() if s == "miss"}
-    assert misses == {"node_manifest"}, (
-        f"S3-06 AC-7 — catalog edit must invalidate node_manifest AND ONLY "
-        f"node_manifest; got misses={misses}, warm_state={warm_state}"
+    _expected_subset = {"node_manifest", "gitleaks"}
+    assert "node_manifest" in misses, (
+        f"S3-06 AC-7 — catalog edit must invalidate node_manifest; "
+        f"got misses={misses}, warm_state={warm_state}"
+    )
+    assert misses <= _expected_subset, (
+        f"S3-06 AC-7 — catalog edit invalidated unexpected probes "
+        f"(over-flush). Expected misses ⊆ {_expected_subset}; got "
+        f"misses={misses}, warm_state={warm_state}"
     )
 
     # Per-sibling pinning (parametrize): each sibling must be a hit.
