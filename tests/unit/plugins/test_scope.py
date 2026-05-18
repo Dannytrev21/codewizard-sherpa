@@ -275,17 +275,23 @@ def scope_dims(draw: st.DrawFn) -> ScopeDim:
     if is_wild:
         return Wildcard()
     # The parse regex (^[a-z0-9_-]+$, length <= 64) admits dims with leading
-    # or trailing hyphens like "0-" or "-c". Concatenating such a dim with the
-    # "--" separator produces an ambiguous boundary (e.g. "a--0---c" rounds
-    # to ("a", "0", "-c"), not ("a", "0-", "c")) so the round-trip property
-    # (AC-11 / AC-20) only holds on the unambiguous subset. Forbid leading and
-    # trailing hyphens in the strategy — humans authoring real plugin dims
+    # or trailing hyphens like "0-" or "-c" AND dims with internal double
+    # hyphens like "0--2". Both forms produce ambiguous boundaries when
+    # joined by the "--" separator (e.g. "*--*--0--2".split("--") yields
+    # four parts, breaking the "exactly 3 dims" parse check). The
+    # round-trip property (AC-11 / AC-20) only holds on the subset that
+    # excludes leading hyphens, trailing hyphens, AND internal double
+    # hyphens — i.e. dims where the alphabet alternates "non-hyphen, optional
+    # hyphen, non-hyphen". Humans authoring real plugin dims
     # (vulnerability-remediation, node, npm) don't write pathological forms,
     # and the rejection-matrix tests cover the literal regex via parse()
-    # directly. See attempt log §"Rule-7 surfaces" for why this is the
-    # correct interpretation of "constructible scope".
-    pattern = r"^[a-z0-9_]([a-z0-9_-]{0,62}[a-z0-9_])?$"
-    return Concrete(value=draw(st.from_regex(pattern, fullmatch=True)))
+    # directly. See S1-02 attempt log §"Rule-7 surfaces" for the original
+    # narrowing rationale; this further narrowing closes the internal-"--"
+    # gap discovered after merge.
+    pattern = r"^[a-z0-9_](?:-?[a-z0-9_])*$"
+    return Concrete(
+        value=draw(st.from_regex(pattern, fullmatch=True).filter(lambda v: 1 <= len(v) <= 64))
+    )
 
 
 @given(

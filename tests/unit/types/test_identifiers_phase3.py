@@ -224,6 +224,7 @@ PHASE3_NAMES = {
     "PrimitiveName",
     "TransformKind",
     "AttemptNumber",
+    "ErrorId",
 }
 PHASE2_NAMES = {
     "ConventionId",
