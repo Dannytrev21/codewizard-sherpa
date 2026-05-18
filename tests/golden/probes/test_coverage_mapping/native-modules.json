@@ -1,0 +1,11 @@
+{
+  "test_coverage_mapping": {
+    "files_seen": null,
+    "findings_detail": [],
+    "format": null,
+    "outcome": {
+      "kind": "skipped",
+      "reason": "upstream_unavailable"
+    }
+  }
+}

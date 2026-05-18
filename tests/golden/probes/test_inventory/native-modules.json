@@ -1,0 +1,16 @@
+{
+  "test_inventory": {
+    "commands": {},
+    "coverage_data": {
+      "parse_error": false,
+      "present": false,
+      "totals": null
+    },
+    "e2e_framework": null,
+    "framework": null,
+    "smoke_test_path": null,
+    "unit_test_count_is_file_count": true,
+    "unit_test_file_count": 0,
+    "warnings": []
+  }
+}

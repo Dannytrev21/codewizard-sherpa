@@ -1,0 +1,24 @@
+{
+  "manifests": {
+    "catalog_version": 1,
+    "errors": [],
+    "primary": {
+      "bundled_dependencies": [],
+      "declared_engines": {},
+      "direct_dependencies": {
+        "dev": 1,
+        "runtime": 0
+      },
+      "lockfile": {
+        "name": "pnpm-lock.yaml"
+      },
+      "native_modules": {
+        "detected": false,
+        "packages": []
+      },
+      "optional_dependencies": 0,
+      "path": "package.json"
+    },
+    "warnings": []
+  }
+}

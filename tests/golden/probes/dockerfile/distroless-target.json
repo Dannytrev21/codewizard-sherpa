@@ -1,0 +1,80 @@
+{
+  "dockerfile": {
+    "confidence": "high",
+    "dockerfiles": [
+      {
+        "copy_directives": [
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "package.json ./",
+            "stage_index": 0
+          },
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "index.js ./",
+            "stage_index": 0
+          },
+          {
+            "from_stage": "build",
+            "from_stage_resolved": true,
+            "raw": "--from=build /app /app",
+            "stage_index": 1
+          }
+        ],
+        "global_args": [],
+        "parser_directive": null,
+        "path": "Dockerfile",
+        "run_commands": [
+          {
+            "command": "npm ci --omit=dev || true",
+            "stage_index": 0
+          }
+        ],
+        "stages": [
+          {
+            "args": [],
+            "base_image": "node:20-slim",
+            "cmd_argv": [],
+            "cmd_command": null,
+            "cmd_form": "absent",
+            "entrypoint_argv": [],
+            "entrypoint_command": null,
+            "entrypoint_form": "absent",
+            "env": {},
+            "expose": [],
+            "healthcheck": null,
+            "index": 0,
+            "inherits_from": null,
+            "labels": {},
+            "name": "build",
+            "user": null,
+            "workdir": "/app"
+          },
+          {
+            "args": [],
+            "base_image": "<REDACTED:fingerprint=c220aa5a>",
+            "cmd_argv": [
+              "index.js"
+            ],
+            "cmd_command": null,
+            "cmd_form": "exec",
+            "entrypoint_argv": [],
+            "entrypoint_command": null,
+            "entrypoint_form": "absent",
+            "env": {},
+            "expose": [],
+            "healthcheck": null,
+            "index": 1,
+            "inherits_from": null,
+            "labels": {},
+            "name": null,
+            "user": null,
+            "workdir": "/app"
+          }
+        ]
+      }
+    ]
+  }
+}

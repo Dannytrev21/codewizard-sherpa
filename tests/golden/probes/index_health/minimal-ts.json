@@ -1,0 +1,42 @@
+{
+  "index_health": {
+    "conventions": {
+      "confidence": "high",
+      "freshness": {
+        "kind": "fresh"
+      }
+    },
+    "gitleaks": {
+      "confidence": "high",
+      "freshness": {
+        "kind": "fresh"
+      }
+    },
+    "runtime_trace": {
+      "confidence": "low",
+      "freshness": {
+        "kind": "stale",
+        "reason": {
+          "kind": "indexer_error",
+          "message": "upstream_runtime_trace_unavailable"
+        }
+      }
+    },
+    "scip": {
+      "confidence": "low",
+      "freshness": {
+        "kind": "stale",
+        "reason": {
+          "kind": "indexer_error",
+          "message": "upstream_scip_unavailable"
+        }
+      }
+    },
+    "semgrep": {
+      "confidence": "high",
+      "freshness": {
+        "kind": "fresh"
+      }
+    }
+  }
+}

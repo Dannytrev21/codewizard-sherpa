@@ -1,0 +1,20 @@
+{
+  "semantic_index_meta": {
+    "confidence": "high",
+    "exclude_globs": [
+      "dist",
+      "node_modules"
+    ],
+    "files_count_estimate": 6,
+    "has_extends": false,
+    "include_globs": [
+      "src/**/*",
+      "main.ts"
+    ],
+    "module": "ESNext",
+    "module_resolution": "node",
+    "strict": true,
+    "target": "ES2022",
+    "tsconfig_path": "tsconfig.json"
+  }
+}

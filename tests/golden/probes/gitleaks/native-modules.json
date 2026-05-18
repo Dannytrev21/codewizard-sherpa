@@ -1,0 +1,10 @@
+{
+  "gitleaks": {
+    "findings_count": 0,
+    "findings_detail": [],
+    "outcome": {
+      "findings": [],
+      "kind": "ran"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "language_stack": {
+    "counts": {
+      "typescript": 3
+    },
+    "framework_hints": [],
+    "monorepo": {
+      "markers": [
+        "package.json",
+        "pnpm-workspace.yaml"
+      ],
+      "tool": "pnpm-workspaces"
+    },
+    "primary": "typescript"
+  }
+}

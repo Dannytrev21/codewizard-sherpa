@@ -1,0 +1,13 @@
+{
+  "ci": {
+    "additional_providers": [],
+    "builds_image": false,
+    "image_build_command": null,
+    "provider": null,
+    "references_secrets": [],
+    "smoke_test_command": null,
+    "unit_test_command": null,
+    "warnings": [],
+    "workflow_files": []
+  }
+}

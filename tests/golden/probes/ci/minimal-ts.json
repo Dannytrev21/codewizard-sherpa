@@ -1,0 +1,15 @@
+{
+  "ci": {
+    "additional_providers": [],
+    "builds_image": false,
+    "image_build_command": null,
+    "provider": "github_actions",
+    "references_secrets": [],
+    "smoke_test_command": null,
+    "unit_test_command": "pnpm install && pnpm test",
+    "warnings": [],
+    "workflow_files": [
+      "ci.yml"
+    ]
+  }
+}

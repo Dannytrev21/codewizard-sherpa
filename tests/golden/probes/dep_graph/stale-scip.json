@@ -1,0 +1,10 @@
+{
+  "dep_graph": {
+    "confidence": "low",
+    "ecosystem": null,
+    "edges_count": 0,
+    "graph_path": null,
+    "nodes_count": 0,
+    "reason": "no_manifest_detected"
+  }
+}

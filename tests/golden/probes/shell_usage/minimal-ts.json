@@ -1,0 +1,11 @@
+{
+  "shell_usage": {
+    "confidence": "unavailable",
+    "dynamic_shell_invocation_count": null,
+    "static": {
+      "final_stage_cmd_form": "absent",
+      "final_stage_entrypoint_form": "absent",
+      "final_stage_run_commands": []
+    }
+  }
+}

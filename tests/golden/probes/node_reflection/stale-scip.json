@@ -1,0 +1,22 @@
+{
+  "reflection": {
+    "affected_files": [],
+    "confidence_impact": "low",
+    "decorator_usage": {
+      "class_validator": false,
+      "custom_decorators_detected": 0,
+      "nestjs": false,
+      "typeorm": false
+    },
+    "dynamic_import_count": 0,
+    "dynamic_property_access_count": 0,
+    "dynamic_require_count": 0,
+    "env_var_reads": {
+      "code_path_affecting": 0,
+      "count": 0
+    },
+    "eval_usage": 0,
+    "function_constructor_usage": 0,
+    "prototype_manipulation_count": 0
+  }
+}

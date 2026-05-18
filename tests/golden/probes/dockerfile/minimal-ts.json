@@ -1,0 +1,59 @@
+{
+  "dockerfile": {
+    "confidence": "high",
+    "dockerfiles": [
+      {
+        "copy_directives": [
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "package.json pnpm-lock.yaml ./",
+            "stage_index": 0
+          },
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "src ./src",
+            "stage_index": 0
+          },
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "tsconfig.json ./",
+            "stage_index": 0
+          }
+        ],
+        "global_args": [],
+        "parser_directive": null,
+        "path": "Dockerfile",
+        "run_commands": [],
+        "stages": [
+          {
+            "args": [],
+            "base_image": "node:20-slim",
+            "cmd_argv": [
+              "node",
+              "dist/index.js"
+            ],
+            "cmd_command": null,
+            "cmd_form": "exec",
+            "entrypoint_argv": [],
+            "entrypoint_command": null,
+            "entrypoint_form": "absent",
+            "env": {},
+            "expose": [
+              "3000"
+            ],
+            "healthcheck": null,
+            "index": 0,
+            "inherits_from": null,
+            "labels": {},
+            "name": null,
+            "user": "node",
+            "workdir": "/app"
+          }
+        ]
+      }
+    ]
+  }
+}

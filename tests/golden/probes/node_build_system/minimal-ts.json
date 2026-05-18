@@ -1,0 +1,32 @@
+{
+  "build_system": {
+    "additional_lockfiles": [],
+    "bundler": null,
+    "commands": {
+      "build": "tsc -p .",
+      "start": "node dist/index.js",
+      "test": "vitest run"
+    },
+    "node_version_constraint": ">=20.0.0",
+    "node_version_pinned": "v20.11.0",
+    "node_version_resolved_locally": "v25.9.0",
+    "output_artifacts": [],
+    "package_manager": "pnpm",
+    "package_manager_version": null,
+    "typescript": {
+      "compiler_options_path": "tsconfig.json",
+      "resolved_compiler_options": {
+        "esModuleInterop": true,
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "outDir": "dist",
+        "rootDir": "src",
+        "strict": true,
+        "target": "ES2022"
+      }
+    },
+    "warnings": [
+      "node.version_declared_resolved_disagree"
+    ]
+  }
+}

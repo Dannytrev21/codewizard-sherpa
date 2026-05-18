@@ -1,0 +1,10 @@
+{
+  "dep_graph": {
+    "confidence": "low",
+    "ecosystem": "pnpm",
+    "edges_count": 0,
+    "graph_path": ".codegenie/context/raw/dep-graph.json",
+    "nodes_count": 0,
+    "reason": "no_strategy_for_ecosystem"
+  }
+}

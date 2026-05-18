@@ -1,0 +1,10 @@
+{
+  "language_stack": {
+    "counts": {
+      "typescript": 6
+    },
+    "framework_hints": [],
+    "monorepo": null,
+    "primary": "typescript"
+  }
+}

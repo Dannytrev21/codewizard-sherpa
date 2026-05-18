@@ -1,0 +1,12 @@
+{
+  "language_stack": {
+    "counts": {
+      "typescript": 1
+    },
+    "framework_hints": [
+      "express"
+    ],
+    "monorepo": null,
+    "primary": "typescript"
+  }
+}

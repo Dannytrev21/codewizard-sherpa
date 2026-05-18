@@ -1,0 +1,95 @@
+{
+  "dockerfile": {
+    "confidence": "high",
+    "dockerfiles": [
+      {
+        "copy_directives": [
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "package.json pnpm-workspace.yaml pnpm-lock.yaml ./",
+            "stage_index": 0
+          },
+          {
+            "from_stage": null,
+            "from_stage_resolved": true,
+            "raw": "packages/ ./packages/",
+            "stage_index": 0
+          },
+          {
+            "from_stage": "build",
+            "from_stage_resolved": true,
+            "raw": "--from=build /app/packages/app/dist ./packages/app/dist",
+            "stage_index": 1
+          },
+          {
+            "from_stage": "build",
+            "from_stage_resolved": true,
+            "raw": "--from=build /app/node_modules ./node_modules",
+            "stage_index": 1
+          },
+          {
+            "from_stage": "build",
+            "from_stage_resolved": true,
+            "raw": "--from=build /app/packages/app/package.json ./packages/app/",
+            "stage_index": 1
+          }
+        ],
+        "global_args": [],
+        "parser_directive": null,
+        "path": "Dockerfile",
+        "run_commands": [
+          {
+            "command": "npm install -g pnpm@8 && pnpm install --frozen-lockfile && pnpm -r build",
+            "stage_index": 0
+          }
+        ],
+        "stages": [
+          {
+            "args": [],
+            "base_image": "node:20-slim",
+            "cmd_argv": [],
+            "cmd_command": null,
+            "cmd_form": "absent",
+            "entrypoint_argv": [],
+            "entrypoint_command": null,
+            "entrypoint_form": "absent",
+            "env": {},
+            "expose": [],
+            "healthcheck": null,
+            "index": 0,
+            "inherits_from": null,
+            "labels": {},
+            "name": "build",
+            "user": null,
+            "workdir": "/app"
+          },
+          {
+            "args": [],
+            "base_image": "node:20-slim",
+            "cmd_argv": [
+              "node",
+              "packages/app/dist/index.js"
+            ],
+            "cmd_command": null,
+            "cmd_form": "exec",
+            "entrypoint_argv": [],
+            "entrypoint_command": null,
+            "entrypoint_form": "absent",
+            "env": {},
+            "expose": [
+              "3000"
+            ],
+            "healthcheck": null,
+            "index": 1,
+            "inherits_from": null,
+            "labels": {},
+            "name": null,
+            "user": "node",
+            "workdir": "/app"
+          }
+        ]
+      }
+    ]
+  }
+}

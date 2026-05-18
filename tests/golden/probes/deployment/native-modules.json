@@ -1,0 +1,14 @@
+{
+  "deployment": {
+    "chart_path": null,
+    "environments": [],
+    "exposed_ports": [],
+    "image_reference": null,
+    "kustomization_resource_path_outside_repo": false,
+    "required_env_vars": [],
+    "security_context": null,
+    "terraform_files": [],
+    "type": "none",
+    "warnings": []
+  }
+}

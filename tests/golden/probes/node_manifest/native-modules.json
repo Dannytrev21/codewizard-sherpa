@@ -1,0 +1,37 @@
+{
+  "manifests": {
+    "catalog_version": 1,
+    "errors": [],
+    "primary": {
+      "bundled_dependencies": [],
+      "declared_engines": {},
+      "direct_dependencies": {
+        "dev": 0,
+        "runtime": 1
+      },
+      "lockfile": {
+        "name": "pnpm-lock.yaml"
+      },
+      "native_modules": {
+        "detected": true,
+        "packages": [
+          {
+            "binary_artifacts_glob": [
+              "build/Release/*.node"
+            ],
+            "catalog_entry_version": 1,
+            "name": "bcrypt",
+            "requires_node_gyp": true,
+            "system_deps_required": [
+              "libstdc++"
+            ],
+            "version": "5.1.0"
+          }
+        ]
+      },
+      "optional_dependencies": 0,
+      "path": "package.json"
+    },
+    "warnings": []
+  }
+}
