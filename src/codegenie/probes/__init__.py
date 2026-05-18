@@ -40,6 +40,7 @@ from codegenie.probes.layer_c import (
     shell_usage,  # noqa: F401 — S5-03 registration
 )
 from codegenie.probes.layer_d import (
+    conventions,  # noqa: F401 — S6-02 registration
     skills_index,  # noqa: F401 — S6-01 registration
 )
 
@@ -47,6 +48,7 @@ __all__ = [
     "base",
     "certificate",
     "ci",
+    "conventions",
     "default_registry",
     "dep_graph",
     "deployment",

@@ -1,7 +1,7 @@
 # Story S6-02 — `ConventionsProbe` Layer D
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** Hardened (ready for executor)
+**Status:** Done — GREEN 2026-05-17 (phase-story-executor; see [`_attempts/S6-02.md`](_attempts/S6-02.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S2-02 (`ConventionsCatalogLoader` with `load_all() -> Result[CatalogLoadOutcome, FatalLoadError]`, `Catalog.apply(repo) -> list[ConventionResult]`, the four `ConventionRule*` discriminated variants, and the `ConventionResult = Pass | Fail | NotApplicable` discriminated union with `Fail.evidence: str` and `NotApplicable.reason: str`); S6-01 (`SkillsIndexProbe` — the probe-shape precedent every Layer-D probe inherits from).
 **ADRs honored:** 02-ADR-0006 (typed sum types as discriminated unions — `ConventionResult` matches the `IndexFreshness` discipline), 02-ADR-0003 (`@register_probe(heaviness=...)` registry kwarg — NOT a `Probe` ABC field), 02-ADR-0007 (no plugin loader in Phase 2; the loader is kernel-side), Phase 0 ADR-0007 (`Probe` ABC frozen byte-for-byte against `localv2.md §4` — `name: str`, `async def run(repo, ctx)`), Phase 1 ADR-0006 (`safe_yaml` chokepoint — the loader, not the probe, does YAML I/O).

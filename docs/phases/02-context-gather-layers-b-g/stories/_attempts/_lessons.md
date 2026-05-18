@@ -387,3 +387,15 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** Story Implementation Outline §3 named two options for the JSON-Schema: ship a placeholder OR leave it for S6-08. The outline marked "leave to S6-08" as "preferred". But AC-19 was a hard runtime test (`importlib.resources.files(...).read_text()` → `jsonschema.validate`), so deferring meant AC-19 would fail and the story could not reach `Status: Done`.
 - **Fix:** Ship the dependency in the current PR when the AC needs it at runtime. Flag the choice in the attempt log under "Surprises during implementation". Future schema refinement can happen in S6-08 without breaking anything (the test will continue to pass against the refined schema as long as the slice's required fields stay populated).
 - **Why it matters:** A story's "outline-level preference" and an AC's "runtime test" can disagree; the AC wins. The executor should not interpret "preferred deferred" as a license to skip the AC. The right framing: ship the minimum that makes every AC green; future stories own the refinement.
+
+## S6-02 — Patch at the binding site, not the source module
+
+- **Symptom:** AC-22 prescribed patching `codegenie.conventions._io.read_capped_text` to count Dockerfile reads. The patch did not intercept any read because `catalog.py` imports the helper as a direct binding (`from codegenie.conventions._io import read_capped_text`), so the call site looks up `catalog.read_capped_text`, not `_io.read_capped_text`. Read count stayed at 0; test failed.
+- **Fix:** Patch where the call resolves, not where the function is defined: `patch.object(codegenie.conventions.catalog, "read_capped_text", ...)`. The function object is the same; only the lookup name changes.
+- **Why it matters:** Python's `from X import Y` rebinds `Y` in the importing module's namespace at import time. Future tests that monkeypatch shared utilities (capped readers, hash helpers, subprocess wrappers) need to target the *caller's* namespace, not the *definer's*. This is the same lesson as S6-01's `tracemalloc` patch (target the consumer, not `linecache`).
+
+## S6-02 — Validate the story's example regexes against the example fixtures before lifting them
+
+- **Symptom:** Story's TDD plan paired `r"npm (start|run)"` with `CMD ["npm", "start"]` as a `dockerfile_pattern_inverted` Fail row. The regex requires a single space between `npm` and `start`; the fixture has `", "` between them. The regex did not match → the rule returned `Pass` → the test asserted `Fail` → red.
+- **Fix:** Swap to `r"\bnpm\b"` (matches the bare token regardless of quoting). Semantics preserved ("forbidden pattern is npm"). Log the story-text correction in the attempt log for the next story-writer pass.
+- **Why it matters:** Story authors prove the prose; story executors prove the runtime. A 30-second `python -c 'import re; re.search(...)'` against the fixture catches mismatches before a TDD red-step turns into a debug-the-test session. Same root-cause family as the AC-11 substring interdict from S6-01 — the literal-text contract has to hold against the literal-text inputs.
