@@ -1,7 +1,7 @@
 # Story S1-01 — Phase 3 newtype identifiers + smart constructors
 
 **Step:** Step 1 — Scaffold packages, domain primitives, sum types, and structural CI fences
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S1-01.md`](_attempts/S1-01.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** —
 **ADRs honored:** ADR-0010 (domain-modeling discipline — newtype every domain identifier), ADR-0001 (Phase-5 contract surface needs `AttemptNumber`, `WorkflowId`, `TransformId` already typed)
