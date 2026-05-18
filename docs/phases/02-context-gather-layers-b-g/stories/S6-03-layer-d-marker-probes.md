@@ -1,7 +1,7 @@
 # Story S6-03 — `ADRs` + `RepoNotes` + `RepoConfig` + `Policy` + `Exceptions` Layer D marker probes
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** Hardened (ready for executor)
+**Status:** Done — GREEN 2026-05-17 (phase-story-executor; see [`_attempts/S6-03.md`](_attempts/S6-03.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S6-02 (`ConventionsProbe` — probe-shape precedent + file layout convention); S6-01 (`SkillsIndexProbe` — every Layer-D probe-shape convention; three-state confidence policy; `_make_context` test helper; flat schema path; `_PROBE_ID: Final[ProbeId]` constant); S1-03 (`safe_yaml.py` — this story adds a tiny `safe_yaml.loads(bytes, ...)` chokepoint extension required by `RepoConfigProbe`'s frontmatter path)
 **ADRs honored:** 02-ADR-0005 (no plaintext persistence — bodies are not loaded; marker probes record paths + headings only), 02-ADR-0003 (`@register_probe(heaviness=...)` is a registry kwarg, NOT a `Probe` ABC field), 02-ADR-0007 (no plugin loader — all five probes are kernel-registered), Phase 0 ADR-0007 (`Probe` ABC frozen byte-for-byte against `localv2.md §4` — `name: str`, `async def run(self, repo, ctx)`), Phase 1 ADR-0006 (`safe_yaml` chokepoint — every YAML read goes through `safe_yaml.load` or the new `safe_yaml.loads`; no direct `yaml.load` / `yaml.safe_load` / `yaml.CSafeLoader` reference in the five probe modules)

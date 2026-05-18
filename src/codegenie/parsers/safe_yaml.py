@@ -61,14 +61,15 @@ from typing import Final
 
 import yaml
 
-from codegenie.errors import MalformedYAMLError
+from codegenie.errors import MalformedYAMLError, SizeCapExceeded
 from codegenie.parsers import JSONValue
 from codegenie.parsers._depth import assert_max_depth
 from codegenie.parsers._io import open_capped
 
-__all__ = ["load", "load_all"]
+__all__ = ["load", "load_all", "loads"]
 
 _PARSER_KIND: Final[str] = "safe_yaml"
+_IN_MEMORY_PATH: Final[Path] = Path("<in-memory>")
 
 if getattr(yaml, "CSafeLoader", None) is None:  # pragma: no cover - import-time guard
     raise ImportError(
@@ -105,6 +106,39 @@ def load(path: Path, *, max_bytes: int, max_depth: int = 64) -> Mapping[str, JSO
         kind = "None" if obj is None else type(obj).__name__
         raise MalformedYAMLError(f"{path}: top-level must be a mapping (got {kind})")
     assert_max_depth(obj, max_depth=max_depth, path=path, parser_kind=_PARSER_KIND)
+    return obj
+
+
+def loads(data: bytes, *, max_bytes: int, max_depth: int = 64) -> Mapping[str, JSONValue]:
+    """Parse ``data`` as a single top-level YAML mapping with size + depth caps.
+
+    Mirrors :func:`load` but consumes in-memory bytes rather than a path.
+    The chokepoint discipline is preserved by routing through the shared
+    ``_parse_one`` + ``assert_max_depth`` primitives — adding this entry
+    point did not introduce a parallel YAML pathway.
+
+    Args:
+        data: In-memory YAML bytes. ``len(data) > max_bytes`` raises
+            :class:`SizeCapExceeded` before any decode runs.
+        max_bytes: Hard upper bound on input size.
+        max_depth: Maximum container nesting depth. Defaults to 64.
+
+    Returns:
+        The decoded YAML mapping as ``dict[str, JSONValue]``.
+
+    Raises:
+        SizeCapExceeded: ``len(data) > max_bytes``.
+        MalformedYAMLError: empty input, ``yaml.YAMLError`` (any subclass),
+            or top-level non-mapping (list / scalar / ``None``).
+        DepthCapExceeded: container nesting exceeds ``max_depth``.
+    """
+    if len(data) > max_bytes:
+        raise SizeCapExceeded(f"{_IN_MEMORY_PATH}: size={len(data)} > max={max_bytes}")
+    obj = _parse_one(data, path=_IN_MEMORY_PATH)
+    if obj is None or not isinstance(obj, dict):
+        kind = "None" if obj is None else type(obj).__name__
+        raise MalformedYAMLError(f"{_IN_MEMORY_PATH}: top-level must be a mapping (got {kind})")
+    assert_max_depth(obj, max_depth=max_depth, path=_IN_MEMORY_PATH, parser_kind=_PARSER_KIND)
     return obj
 
 

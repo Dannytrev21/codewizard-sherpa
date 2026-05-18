@@ -52,7 +52,8 @@ def test_load_all_signature_is_keyword_only_caps_and_default_depth_is_64() -> No
 
 
 def test_module_all_exports_load_and_load_all_only() -> None:
-    assert set(safe_yaml.__all__) == {"load", "load_all"}
+    # S6-03 added ``loads`` (in-memory bytes sibling) to the chokepoint surface.
+    assert set(safe_yaml.__all__) == {"load", "load_all", "loads"}
 
 
 def test_happy_path_returns_mapping(tmp_path: Path) -> None:

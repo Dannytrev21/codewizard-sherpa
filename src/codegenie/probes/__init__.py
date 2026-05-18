@@ -40,11 +40,17 @@ from codegenie.probes.layer_c import (
     shell_usage,  # noqa: F401 — S5-03 registration
 )
 from codegenie.probes.layer_d import (
+    adrs,  # noqa: F401 — S6-03 registration
     conventions,  # noqa: F401 — S6-02 registration
+    exceptions,  # noqa: F401 — S6-03 registration
+    policy,  # noqa: F401 — S6-03 registration
+    repo_config,  # noqa: F401 — S6-03 registration
+    repo_notes,  # noqa: F401 — S6-03 registration
     skills_index,  # noqa: F401 — S6-01 registration
 )
 
 __all__ = [
+    "adrs",
     "base",
     "certificate",
     "ci",
@@ -54,13 +60,17 @@ __all__ = [
     "deployment",
     "dockerfile",
     "entrypoint",
+    "exceptions",
     "generated_code",
     "index_health",
     "language_detection",
     "node_build_system",
     "node_manifest",
     "node_reflection",
+    "policy",
     "registry",
+    "repo_config",
+    "repo_notes",
     "runtime_trace",
     "scip_index",
     "semantic_index_meta",
