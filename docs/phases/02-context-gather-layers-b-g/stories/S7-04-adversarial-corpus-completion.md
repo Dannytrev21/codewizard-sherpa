@@ -1,25 +1,40 @@
 # Story S7-04 — Adversarial corpus: hostile-skills + concurrent-gather + no-inmemory-leak + phase3-handoff-skipped
 
 **Step:** Step 7 — Plant five-repo fixture portfolio + per-probe golden files + remaining adversarial corpus
-**Status:** Ready
+**Status:** HARDENED (validated 2026-05-18)
 **Effort:** M
 **Depends on:** S7-03 (~70 goldens exist on disk; regen script proven byte-deterministic across two runs — the adversarial corpus exercises code paths that touch the same writer chokepoint the goldens audit)
-**ADRs honored:** ADR-0005 (no plaintext persisted — `test_no_inmemory_secret_leak.py` is the type-level "redactor was called" boundary proof), ADR-0006 (`IndexFreshness` location — `test_phase3_handoff_smoke.py` references the Protocol contract that 02-ADR-0006/02-ADR-0007 lock), ADR-0007 (no plugin loader in Phase 2 — `test_phase3_handoff_smoke.py` is grep-discoverable so Phase 3's author finds it on first repo scan), ADR-0009 (pytest-xdist veto — `test_concurrent_gather_race.py` exercises Phase 0's advisory lock at `.codegenie/cache/.lock`, NOT pytest-level parallelism), ADR-0010 (`RedactedSlice` smart constructor — the no-inmemory-leak test verifies the smart-constructor invariant via `inspect`).
+**ADRs honored:** ADR-0005 (no plaintext persisted — `test_no_inmemory_secret_leak.py` is the type-level "redactor was called" boundary proof), ADR-0006 (`IndexFreshness` location — `test_phase3_handoff_smoke.py` references the Protocol contract that 02-ADR-0006/02-ADR-0007 lock), ADR-0007 (no plugin loader in Phase 2 — `test_phase3_handoff_smoke.py` is grep-discoverable so Phase 3's author finds it on first repo scan), ADR-0009 (pytest-xdist veto — `test_concurrent_gather_race.py` uses `subprocess.Popen` for two-process concurrency, NOT pytest-level parallelism), ADR-0010 (`RedactedSlice` smart constructor — the no-inmemory-leak test verifies the smart-constructor invariant via AST).
+
+## Validation notes (2026-05-18, phase-story-validator)
+
+The original draft assumed an architecture that does not match the actual codebase. Verified-against-source edits:
+
+- **`RedactedSlice` has TWO production constructor sites, not one.** `sanitizer.redact_secrets` (per-probe-slice path) AND `envelope_redactor._build_redacted_slice_pass` (envelope path the CLI actually uses via `cli._seam_redact_envelope` → `envelope_redactor._redact_envelope` → `Writer.write`). AC-15 was rewritten to assert an explicit two-site closed set within the `codegenie.output` package, plus a documented allowlist for `tests/unit/output/` fixtures that legitimately construct `RedactedSlice` to test its own invariants.
+- **`OutputSanitizer.scrub` returns `SanitizedProbeOutput`, NOT `RedactedSlice`.** AC-16 was rewritten to assert (a) `Writer.write`'s first non-self parameter is annotated `RedactedSlice` (true at `src/codegenie/output/writer.py:158`); (b) `envelope_redactor._redact_envelope`'s return annotation is `RedactedSlice`. The false "scrub returns RedactedSlice" claim is gone.
+- **`Writer.write` is called from the CLI's top-level gather command (`cli.py:397`), not from `OutputSanitizer.scrub`.** AC-17 was rewritten to assert the actual closed call-site set rooted in `cli.py`.
+- **No advisory lock at `.codegenie/cache/.lock` exists.** The actual Phase-0 concurrency contract per Phase-0 `phase-arch-design.md §789` edge-case 12 + Phase-0 S5-01 is `O_APPEND` record-level atomicity for records ≤ `PIPE_BUF=4096` plus atomic blob writes via `<dest>.tmp → os.replace`. AC-7 through AC-13 were rewritten around the actual invariants the test must prove, with `tests/unit/test_cache_concurrent.py` named as the Phase-0 precedent the new test extends.
+- **AC-23's example Protocol signature was aspirational.** Replaced with the verbatim shape from `src/codegenie/adapters/protocols.py:77`.
+- **AC-18 referenced `pyproject.toml` for the `model_construct` ban.** Corrected to `scripts/check_forbidden_patterns.py` (`_PHASE2_BANNED_PACKAGES` includes `"output"`).
+- **Two new ACs (AC-30, AC-31)** address coverage gaps: non-UTF8 / control-byte hostile YAML, and post-race JSONL-index parseability.
+- **Notes-for-implementer extended** with: aliased-import resilience for the AST walker; wall-clock enforcement mechanism for AC-4; mypy drift trip-wire embedding; and the explicit two-site `ALLOWED_CONSTRUCTOR_SITES` allowlist constant.
+
+Full audit log: `_validation/S7-04-adversarial-corpus-completion.md`.
 
 ## Context
 
 This story lands the **remaining adversarial corpus** under `tests/adv/phase02/`. Four tests, each addressing a load-bearing risk-or-gap the Phase 2 design names explicitly:
 
 1. **`test_hostile_skills_yaml.py`** — ≥ 8 hostile YAML cases against `SkillsLoader` (S2-01). Tests defense against `!!python/object` (RCE attempt), billion-laughs (entity expansion), deep-nesting (recursion/stack), symlink-escape filenames, NUL-byte-in-name, oversized files. None executes user code. None mutates host state. All paths produce typed `Result.Err(SkillsLoadError(reason=...))` or are refused at `O_NOFOLLOW` open time.
-2. **`test_concurrent_gather_race.py`** — two concurrent `codegenie gather` invocations against the same fixture (Phase-0 advisory lock at `.codegenie/cache/.lock` is the synchronization primitive). Verifies the second invocation blocks-or-fails-loud rather than corrupting the cache. The test is **deterministic** despite testing a concurrency surface — it uses real subprocess concurrency + explicit signal coordination, not random timing.
-3. **`test_no_inmemory_secret_leak.py`** — **Gap 5 defense** + **Risk #6 defense**. Uses `inspect` to verify that (a) `redact_secrets` is the only call site that constructs `RedactedSlice` (the smart-constructor guarantee per ADR-0010); (b) every artifact reachable from `OutputSanitizer.scrub` to the writer passes through `redact_secrets`; (c) no other public path exists from `ProbeOutput.schema_slice` to `repo-context.yaml`. This is a **structural** boundary test, not a behavioral one — it reads source AST + reachability rather than executing the pipeline. Without it, a future contributor adding `RedactedSlice.from_existing(...)` for testing convenience silently breaks the type-level guarantee.
+2. **`test_concurrent_gather_race.py`** — two concurrent `codegenie gather` invocations against the same fixture. The actual Phase-0 concurrency contract (`phase-arch-design.md §789` edge-case 12, Phase-0 S5-01 `tests/unit/test_cache_concurrent.py`) is **`O_APPEND` record-level atomicity for records ≤ `PIPE_BUF=4096`** plus **atomic blob writes via `<dest>.tmp → os.replace`** — **NOT** a `.codegenie/cache/.lock` advisory lock (no such primitive exists in `src/codegenie/`; verified by `grep -rn "flock\|filelock\|portalocker" src/codegenie/` → empty). The test asserts that two concurrent gathers produce a consistent `index.jsonl` (every line parses as JSON) and consistent blobs (every file's content-hash matches its filename). The test is **deterministic** despite testing a concurrency surface — it uses real subprocess concurrency + explicit signal coordination if needed, not random timing.
+3. **`test_no_inmemory_secret_leak.py`** — **Gap 5 defense** + **Risk #6 defense**. Uses AST inspection to verify that (a) `RedactedSlice` construction is restricted to the two-site closed set within `codegenie.output` — `sanitizer.redact_secrets` (per-probe-slice path) AND `envelope_redactor._build_redacted_slice_pass` (envelope path the CLI's `_seam_redact_envelope` uses); (b) `Writer.write`'s signature accepts only `RedactedSlice` (already true at `writer.py:158`); (c) `envelope_redactor._redact_envelope`'s return annotation is `RedactedSlice`; (d) `Writer.write` is called only from the CLI's gather seam (`cli.py:397`) — adding a third call site fails the test. This is a **structural** boundary test, not a behavioral one — it reads source AST + signatures rather than executing the pipeline. Without it, a future contributor adding `RedactedSlice.from_existing(...)` in a random probe module silently breaks the type-level guarantee.
 4. **`test_phase3_handoff_smoke.py`** — **Gap 1 defense**. Landed `@pytest.mark.skip(reason="enabled when Phase 3 plugin lands")`. Phase 3's first author finds the test on first repo scan (`grep -r "enabled when Phase 3 plugin lands"`); unskips it at the Phase-3-entry-gate review; the test then asserts the four adapter `Protocol`s from S1-03 are importable AND their signatures match Phase 3's first plugin's expectations. Any Protocol drift between Phase 2 and Phase 3 triggers an ADR amendment to 02-ADR-0006/02-ADR-0007, surfaced loudly at the entry-gate.
 
 The synthesis ledger pins three risks this story directly defends:
 
 - **Risk #2 (Probe ABC not edited).** Adversarial corpus must not trip an unintended `ProbeContext`/`Probe` ABC widening. Tests run against the frozen contract.
 - **Risk #4 (`mypy --warn-unreachable` enforcement).** Adversarial tests in this story exercise the typed `Result` paths; mypy-unreachable false-positives would mask test failures. The structural test in particular relies on AST inspection of typed code.
-- **Risk #6 (`RedactedSlice` smart-constructor silent break).** `test_no_inmemory_secret_leak.py` is the front-line defense. The `inspect` call-site count of `RedactedSlice.__init__` (or `RedactedSlice.model_validate(...)` — whichever the production code uses) must equal **one** — the call inside `redact_secrets`. A second call site means the smart-constructor guarantee is broken.
+- **Risk #6 (`RedactedSlice` smart-constructor silent break).** `test_no_inmemory_secret_leak.py` is the front-line defense. The AST call-site count of `RedactedSlice` construction in production code (`src/codegenie/`) must equal **exactly two**, and those two sites are the documented closed set: `sanitizer.redact_secrets` + `envelope_redactor._build_redacted_slice_pass`. A third production-code construction site means the smart-constructor guarantee is broken; adding one requires an ADR amendment to 02-ADR-0010. Test-fixture constructions under `tests/unit/output/` are explicitly allowlisted (those tests exist to exercise the smart constructor's invariants directly and are the canonical anti-regression for the model itself).
 
 ## References — where to look
 
@@ -34,13 +49,18 @@ The synthesis ledger pins three risks this story directly defends:
 - **Source design:** `../final-design.md §"Gaps"` table + `§"Phase-2 → Phase-3 handoff"` checklist.
 - **Existing code:**
   - `src/codegenie/skills/loader.py` (S2-01 — the `SkillsLoader` under test).
-  - `src/codegenie/output/sanitizer.py` (S3-01 — `SecretRedactor`).
-  - `src/codegenie/output/redacted_slice.py` (S3-02 — `RedactedSlice` smart constructor).
-  - `src/codegenie/output/writer.py` (S3-03 — writer signature consumes `RedactedSlice`).
-  - `src/codegenie/adapters/protocols.py` (S1-03 — the four Protocols this story's Phase-3 handoff test references).
-  - `src/codegenie/cache.py` (Phase 0 — the advisory-lock surface `test_concurrent_gather_race.py` exercises).
+  - `src/codegenie/output/sanitizer.py` (S3-01 — `SecretRedactor`; first `RedactedSlice` constructor at line ~434).
+  - `src/codegenie/output/envelope_redactor.py` (the **second** `RedactedSlice` constructor at `_build_redacted_slice_pass`, ~line 247 — the envelope-level path the CLI uses via `cli._seam_redact_envelope`).
+  - `src/codegenie/output/redacted_slice.py` (S3-02 — `RedactedSlice` smart constructor model).
+  - `src/codegenie/output/writer.py:153–175` (S3-03 — `Writer.write(envelope: RedactedSlice, …)`; the type-system defense).
+  - `src/codegenie/cli.py:349–397` (the only `Writer.write` call site; `_seam_redact_envelope` builds the `RedactedSlice` via `envelope_redactor._redact_envelope`).
+  - `src/codegenie/adapters/protocols.py:37–121` (S1-03 — the four `@runtime_checkable` Protocols this story's Phase-3 handoff test references; **actual** signatures land here, copy verbatim into AC-23's frozen tuple).
+  - `src/codegenie/cache/store.py:170–337` (Phase 0 — `CacheStore.put` is `O_APPEND` + atomic blob write via `<dest>.tmp → os.replace`; **NOT** a `.codegenie/cache/.lock` advisory lock).
+  - `scripts/check_forbidden_patterns.py:55–80, 247–253` (the `model_construct` ban; `_PHASE2_BANNED_PACKAGES` includes `"output"`).
   - `tests/adv/phase02/test_stale_scip_fixture.py` (S4-02 — adversarial-test directory convention).
   - `tests/adv/phase02/test_secret_in_source.py` (S6-07 — the **behavioral** secret-leak test this story's **structural** test complements).
+  - `tests/unit/test_cache_concurrent.py` (Phase-0 S5-01 — the **precedent** `test_concurrent_gather_race.py` extends to a two-gather scenario; uses `subprocess.Popen` two-process invocation per ADR-0009).
+  - `tests/unit/output/test_redacted_slice.py` (the 20+ legitimate test-fixture constructors that motivate the test-allowlist in AC-15; these tests exercise the smart-constructor model directly).
 
 ## Goal
 
@@ -67,41 +87,49 @@ All four go into the `adv-phase02` CI job (wired in S8-03) as part of the load-b
   - **Case 7 — oversized file** (50 MB + 1 byte; just past `safe_yaml.load`'s declared cap). Loader returns `Result.Err(reason="oversized")`. Wall-clock < 5 s.
   - **Case 8 — duplicate-key YAML.** `{a: 1, a: 2}`. Per Phase-1 `safe_yaml` discipline, duplicate keys produce `Result.Err(reason="schema")`. Loader propagates.
   - **(Recommended) Case 9 — yaml-bomb via alias chain.** Long chain of `&a *b`-style references; combined size cap or alias-count cap rejects it.
+  - **(Recommended) Case 10 — non-UTF8 / control-byte payload.** A YAML file whose bytes are not valid UTF-8 (e.g., raw `\xff\xfe` BOM with mixed-encoding scalars), OR a UTF-8 file containing control bytes (`\x00`–`\x08`, `\x0b`–`\x1f`, excluding `\t` `\n` `\r`) inside string scalars. Loader returns `Result.Err(SkillsLoadError(reason="schema"))` or `reason="io_failure"` per the closed `SkillsLoadError` reason set in `src/codegenie/skills/loader.py`. Wall-clock < 1 s.
 - [ ] **AC-2 — no user code executes.** For each case, after the test runs, no file under `/tmp/`, `/var/folders/`, `$HOME` was created by the YAML's payload. The `!!python/object` cases assert no `/tmp/pwned-<random>` exists.
 - [ ] **AC-3 — no host-state mutation.** No environment variable was set; no signal was raised. (Defense against esoteric YAML payloads that exercise `__reduce__` chains via `safe_yaml` parsers other than the Phase-1-blessed one.)
 - [ ] **AC-4 — wall-clock per case < 5 s.** Each parametrized case completes in under 5 s. (Otherwise an attacker DoSes the gatherer with a crafted hostile skill file.)
 - [ ] **AC-5 — typed `Result.Err` paths.** Every hostile case produces a `Result.Err(SkillsLoadError(reason=<one of allowlisted reasons>))`. The allowlisted-reasons set is grep-discoverable in `src/codegenie/skills/loader.py`; the test asserts the reason against the closed set.
 - [ ] **AC-6 — fixture under `tests/adv/phase02/fixtures/hostile_skills/`.** Each hostile YAML case lives as a separate file under `tests/adv/phase02/fixtures/hostile_skills/<case-name>.yaml` (the symlink and NUL-byte cases land under a sibling `_create_at_test_time.py` fixture-builder that constructs the path at test time — symlinks and NUL-byte names are not safely committable to git on all platforms). The fixture builder cleans up in a pytest fixture teardown.
 
-**`test_concurrent_gather_race.py` — Phase-0 advisory-lock at `.codegenie/cache/.lock`**
+**`test_concurrent_gather_race.py` — Phase-0 `O_APPEND` atomicity + atomic blob writes**
 
-- [ ] **AC-7.** `tests/adv/phase02/test_concurrent_gather_race.py` exists; launches two concurrent `codegenie gather` invocations against the **same** fixture (`tests/fixtures/portfolio/minimal-ts/`) via `subprocess.Popen` (NOT `multiprocessing` — the lock is filesystem-level, advisory, per Phase 0; subprocess concurrency is the realistic surface).
-- [ ] **AC-8 — advisory lock holds.** When Process A holds `.codegenie/cache/.lock`, Process B either (a) blocks waiting (loops trying `fcntl.flock(... LOCK_EX | LOCK_NB)` with a timeout) and proceeds after A exits, OR (b) fails-loud with a clear "another gather is in progress" message and a non-zero exit code. Both behaviors are acceptable; the test asserts ONE of them happened (not silent corruption). Implementer's call which the Phase-0 cache lib does; the test queries the lib's contract.
-- [ ] **AC-9 — cache consistency post-race.** After both processes exit, `.codegenie/cache/` is internally consistent: every blob has a valid content-hash filename; no half-written file remains (verified by walking the tree + computing content hashes + comparing).
-- [ ] **AC-10 — `repo-context.yaml` consistency.** Whichever process completed last produces a `repo-context.yaml` that round-trips through `yaml.safe_load` and matches one of: A's-final-output OR B's-final-output (no half-merged hybrid).
-- [ ] **AC-11 — deterministic.** The test passes 100 / 100 runs on the implementer's machine + CI runner. **NOT** flake-tolerant. If you can't make it deterministic, file an issue and use explicit signal synchronization (`os.kill` + signal handlers) between A and B — coordinate the lock-acquisition window, not rely on race timing.
+> **Validation note:** the original story referenced a `.codegenie/cache/.lock` advisory lock. **No such primitive exists** in `src/codegenie/` (verified by grep: no `fcntl.flock`, no `filelock`, no `portalocker` in production code). The actual Phase-0 contract per `phase-arch-design.md §789` edge-case 12 and S5-01 is **`O_APPEND` record-level atomicity for records ≤ `PIPE_BUF=4096`** plus **atomic blob writes via `<dest>.tmp → os.replace`**. Phase-0 S5-01's `tests/unit/test_cache_concurrent.py` is the precedent — this test extends that pattern to the full `codegenie gather` CLI surface.
+
+- [ ] **AC-7.** `tests/adv/phase02/test_concurrent_gather_race.py` exists; launches two concurrent `codegenie gather` invocations against the **same** fixture (`tests/fixtures/portfolio/minimal-ts/`) via `subprocess.Popen` (NOT `multiprocessing`, NOT `asyncio.gather` — independent OS processes are what exercises the `O_APPEND` kernel-atomicity guarantee per S5-01's Notes-for-implementer rationale).
+- [ ] **AC-8 — `.codegenie/cache/index.jsonl` parses line-by-line post-race.** After both processes exit, opening `.codegenie/cache/index.jsonl` and iterating line-by-line: every line is valid JSON (`json.loads(line)` succeeds; no torn records). This is the actual Phase-0 `O_APPEND` invariant. No advisory-lock assertion (none exists).
+- [ ] **AC-9 — blob consistency post-race.** Every file under `.codegenie/cache/blobs/` is internally consistent: blob filename starts with `content_hash(file_bytes)[:N]` for the documented N; no `.tmp` file remains (atomic-replace contract held); no zero-byte files. Verified by walking the tree.
+- [ ] **AC-10 — `repo-context.yaml` consistency.** Whichever process completed last produces a `repo-context.yaml` that round-trips through `yaml.safe_load` (no exception) and matches one of: A's-final-output OR B's-final-output (no half-merged hybrid).
+- [ ] **AC-11 — deterministic.** The test passes 100 / 100 runs on the implementer's machine + CI runner. **NOT** flake-tolerant. Implementer enforces via either (a) `pytest --count=100` if `pytest-repeat` is admitted, or (b) a one-shot `for i in $(seq 100); do pytest tests/adv/phase02/test_concurrent_gather_race.py || break; done` recipe documented in the PR. If flaky, surface as a real concurrency bug — do NOT mark as `@pytest.mark.flaky`. Most-likely root cause when flaky: blob `os.replace` not fsync'd before index-line append.
 - [ ] **AC-12 — wall-clock < 60 s.** The test completes (both processes terminate) within 60 s. Two cold gathers against `minimal-ts` should fit easily; if not, the timeout indicates a pathology, not a test problem.
-- [ ] **AC-13 — `ADR-0009` honored.** The test uses `subprocess.Popen` for concurrency, NOT pytest-xdist. Pytest-xdist remains vetoed.
+- [ ] **AC-13 — `ADR-0009` honored at this test.** The test uses `subprocess.Popen` for two-process concurrency, NOT `pytest-xdist`. Pytest-xdist remains vetoed repo-wide; this AC scopes the commitment to this specific test.
+- [ ] **AC-31 — post-race JSONL count matches expectation.** After both gathers exit, `.codegenie/cache/index.jsonl` has at least `N_unique_keys` lines (where `N_unique_keys` is the number of cache keys exercised by `minimal-ts`); duplicates are permitted (both processes may have written the same key — both records are valid JSON; consumer dedups by key). The test asserts no line was silently lost to torn-write corruption.
 
 **`test_no_inmemory_secret_leak.py` — Gap 5 + Risk #6 + ADR-0010 structural test**
 
-- [ ] **AC-14.** `tests/adv/phase02/test_no_inmemory_secret_leak.py` exists; uses `inspect` (NOT `mock`, NOT `pytest-asyncio` execution) to verify three structural invariants below.
-- [ ] **AC-15 — `redact_secrets` is the SOLE constructor of `RedactedSlice`.** The test:
-  - Imports `codegenie.output.redacted_slice.RedactedSlice` and `codegenie.output.sanitizer.redact_secrets`.
-  - Uses `ast` (Python's stdlib AST module) to parse every Python source file under `src/codegenie/` and `tests/` (excluding the test file itself and `_validation/`/`_attempts/` directories).
-  - For every `Call` node whose `func` resolves to `RedactedSlice` (either bare-name `RedactedSlice(...)`, `RedactedSlice.model_validate(...)`, `RedactedSlice.model_validate_json(...)`, OR `RedactedSlice.model_construct(...)`) **AND** whose enclosing module is NOT `codegenie.output.sanitizer`, the test FAILS with a clear message naming the file + line.
-  - Equivalent: the count of `RedactedSlice`-constructor call sites OUTSIDE `codegenie.output.sanitizer` is **zero**. The count INSIDE `codegenie.output.sanitizer` is **exactly one** (the call inside `redact_secrets`).
-  - Test-file exception: the test itself imports `RedactedSlice` for type-narrowing AST checks but does NOT construct one. Verified by AST inspection of the test file.
-- [ ] **AC-16 — `OutputSanitizer.scrub` → writer reachability.** The test:
-  - Parses `src/codegenie/output/sanitizer.py`'s `OutputSanitizer.scrub` method (or equivalent function — name pinned in S3-03).
-  - Verifies that every return path of `scrub` returns a `RedactedSlice` instance (NOT a raw dict; NOT a `JSONValue`). Asserted via `ast`-based return-type analysis OR via mypy-type query (preferred: a `reveal_type` test under `tests/unit/` exists from S3-03; this test re-asserts the result).
-  - Parses `src/codegenie/output/writer.py`'s entry function signature. Asserts its first non-self parameter has type annotation `RedactedSlice` (mirrors S3-03's tightening). A writer signature accepting `dict[str, JSONValue]` would FAIL this assertion.
-- [ ] **AC-17 — closed set of writer-entry call sites.** The test verifies that the writer's entry function (S3-03) is called only from inside `codegenie.output.sanitizer.OutputSanitizer.scrub` (the sole composition path) OR from the CLI's top-level gather command. Any third call site fails the test.
-- [ ] **AC-18 — `model_construct` banned under the sanitizer package.** Inherited from S1-11's `forbidden-patterns` extension; this test asserts the ban is in place by:
-  - Reading `pyproject.toml` (or the equivalent pre-commit config) and asserting `model_construct` is named in the forbidden-patterns list.
-  - AST-walking `src/codegenie/output/` and confirming zero `model_construct` occurrences.
-  - This is defense-in-depth — the pre-commit hook is the front-line; this test catches the pre-commit-bypass case.
-- [ ] **AC-19 — failure messages name the offending file + line.** If a future contributor adds `RedactedSlice.from_existing(...)` at `tests/integration/test_X.py:42`, the test fails with `"RedactedSlice constructed outside codegenie.output.sanitizer at tests/integration/test_X.py:42 (call to 'RedactedSlice.from_existing'). The smart-constructor invariant (ADR-0010, S3-02, Gap 4) requires redact_secrets() to be the only constructor path. See docs/phases/02-context-gather-layers-b-g/ADRs/0010-redacted-slice-smart-constructor-at-writer-boundary.md."`
+- [ ] **AC-14.** `tests/adv/phase02/test_no_inmemory_secret_leak.py` exists; uses Python's stdlib `ast` module (NOT `mock`, NOT `inspect.getsource` regex, NOT `pytest-asyncio` execution) to verify the four structural invariants below.
+- [ ] **AC-15 — `RedactedSlice` construction is restricted to a closed two-site set inside the `codegenie.output` package.** The test:
+  - Declares `ALLOWED_CONSTRUCTOR_SITES: Final[frozenset[tuple[str, str]]]` at module top — the two permitted production sites as `(relative_file_path, qualified_function_name)` pairs:
+    - `("src/codegenie/output/sanitizer.py", "redact_secrets")`
+    - `("src/codegenie/output/envelope_redactor.py", "_build_redacted_slice_pass")`
+  - Declares `ALLOWED_TEST_CONSTRUCTOR_DIRS: Final[frozenset[str]] = frozenset({"tests/unit/output"})` — the documented test allowlist (`tests/unit/output/test_redacted_slice.py` and siblings exist to exercise the smart constructor's invariants directly; they are the canonical anti-regression for the `RedactedSlice` model itself).
+  - Uses `ast` to parse every Python source file under `src/codegenie/` and `tests/` (excluding `_validation/`, `_attempts/`, `__pycache__/`, and the test file itself).
+  - Builds a per-module **import alias map** (`{local_name: real_name}`) from every `ast.ImportFrom` and `ast.Import` whose target is `codegenie.output.redacted_slice.RedactedSlice` — so that `from codegenie.output.redacted_slice import RedactedSlice as _RS; _RS(...)` is correctly resolved as a `RedactedSlice` construction. **Aliased imports must NOT slip past the walker.**
+  - For every `Call` node whose `func` (after alias resolution) constructs `RedactedSlice` — either bare-name, `.model_validate(...)`, `.model_validate_json(...)`, or `.model_construct(...)` — assert the enclosing `(file, function)` pair is in `ALLOWED_CONSTRUCTOR_SITES` (production code) OR the file lives under `ALLOWED_TEST_CONSTRUCTOR_DIRS` (test fixtures). Any other site FAILS with the AC-19 message.
+  - Defense-in-depth: also assert each of the two allowed production sites actually contains at least one construction (regression guard against silent removal of the redactor — same shape as the original AC-15 second-half assertion).
+  - Adding a third production site is an **ADR amendment to 02-ADR-0010**, not a code edit; the test's failure message says so.
+- [ ] **AC-16 — writer signature + envelope-redactor return shape pin `RedactedSlice` as the only artifact reaching the writer.** The test:
+  - Parses `src/codegenie/output/writer.py`. Asserts `Writer.write`'s first non-self parameter (`envelope`) has annotation `RedactedSlice` (this is already true at `src/codegenie/output/writer.py:158`; the test pins the contract against future loosening). A writer signature accepting `dict[str, JSONValue]` would FAIL.
+  - Parses `src/codegenie/output/envelope_redactor.py`. Asserts `_redact_envelope`'s return annotation is `RedactedSlice`. The CLI's `_seam_redact_envelope` is the composition seam; if `_redact_envelope` ever returns a `dict`, the writer's signature would refuse it at runtime, but a contributor could weaken the writer signature first — this AC pins both sides.
+  - **Removed false claim**: the original story asserted `OutputSanitizer.scrub` returns `RedactedSlice`. It does not (it returns `SanitizedProbeOutput` per `sanitizer.py:208–241`). The actual envelope-level redaction lives in `envelope_redactor._redact_envelope`. Validation 2026-05-18 corrected this.
+- [ ] **AC-17 — closed set of `Writer.write` call sites.** The test AST-walks all of `src/codegenie/`. Asserts `Writer.write` is called from exactly the documented CLI seams in `src/codegenie/cli.py` (one for the envelope at `cli.py:397`; an audit / verify seam if present). The test declares `ALLOWED_WRITER_CALL_SITES: Final[frozenset[tuple[str, str]]]` and fails if the AST walk discovers any `Call` to `Writer.write` (or `Writer().write`, or `_writer.write` where `_writer` resolves to `Writer`) outside that set. Adding a third call site is an explicit edit to this AC's allowlist constant — a deliberate code review event.
+- [ ] **AC-18 — `model_construct` banned under `src/codegenie/output/`.** Inherited from S1-11's `forbidden-patterns` extension; this test asserts the ban is in place by:
+  - Reading `scripts/check_forbidden_patterns.py` (the **actual** ban site per S1-11 + 02-ADR-0010; NOT `pyproject.toml` — validation 2026-05-18 corrected this) and asserting `"output"` is in the rule's `_PHASE2_BANNED_PACKAGES` frozenset.
+  - AST-walking `src/codegenie/output/` and confirming zero `model_construct(...)` call sites and zero `model_construct=` kwarg / assignment occurrences.
+  - This is defense-in-depth — the pre-commit hook (`scripts/check_forbidden_patterns.py`) is the front-line; this test catches the pre-commit-bypass case (e.g., `--no-verify` commit landing on a feature branch).
+- [ ] **AC-19 — failure messages name the offending file + line + the named remediation.** If a future contributor adds `RedactedSlice.from_existing(...)` at `tests/integration/test_X.py:42`, the test fails with the literal message: `"RedactedSlice constructed at tests/integration/test_X.py:42 (call to 'RedactedSlice.from_existing') is outside the documented two-site closed set (sanitizer.redact_secrets + envelope_redactor._build_redacted_slice_pass) and the tests/unit/output/ allowlist. The smart-constructor invariant (02-ADR-0010, S3-02, Gap 4) requires construction to be restricted to the redaction pipeline. To add a third construction site, amend 02-ADR-0010 and update ALLOWED_CONSTRUCTOR_SITES in this test file. See docs/phases/02-context-gather-layers-b-g/ADRs/0010-redacted-slice-smart-constructor-at-writer-boundary.md."`
 - [ ] **AC-20 — passes `mypy --strict`.** No `Any` outside the `ast.NodeVisitor`'s necessary `Any` returns; even those carry explicit type narrowing.
 
 **`test_phase3_handoff_smoke.py` — Gap 1 trip-wire, landed `@pytest.mark.skip`**
@@ -112,9 +140,24 @@ All four go into the `adv-phase02` CI job (wired in S8-03) as part of the load-b
   - The four `Protocol`s `DepGraphAdapter`, `ImportGraphAdapter`, `ScipAdapter`, `TestInventoryAdapter` are importable from `codegenie.adapters.protocols` (their exact import paths are pinned in S1-03).
   - Each Protocol's runtime structural conformance is verifiable via `isinstance(stub_object, ProtocolClass)` where `stub_object` is a minimal mock implementing the Protocol's method signatures.
   - The `AdapterConfidence` discriminated union has exactly three variants: `Trusted`, `Degraded`, `Unavailable`.
-  - The Protocol method signatures match the documented shape in S1-03 — e.g., `DepGraphAdapter.consumers(self, pkg: PackageId, *, transitively: bool = False) -> AdapterConfidence`. This is checked via `inspect.signature` against the documented signature embedded as a frozen tuple in the test file.
+  - The Protocol method signatures match the **verbatim** shapes currently in `src/codegenie/adapters/protocols.py` (copy at test-write time; validation 2026-05-18 corrected the original aspirational example). Embed the four signatures as a frozen tuple in the test file, e.g.:
+    ```python
+    _FROZEN_S1_03_SIGNATURES: Final[tuple[tuple[str, str, str], ...]] = (
+        ("DepGraphAdapter", "consumers", "(self, pkg: str) -> list[str]"),
+        ("DepGraphAdapter", "producers", "(self, pkg: str) -> list[str]"),
+        ("DepGraphAdapter", "confidence", "(self) -> AdapterConfidence"),
+        ("ImportGraphAdapter", "reverse_lookup", "(self, module: str) -> list[str]"),
+        ("ImportGraphAdapter", "confidence", "(self) -> AdapterConfidence"),
+        ("ScipAdapter", "refs", "(self, symbol: str) -> list[Occurrence]"),
+        ("ScipAdapter", "confidence", "(self) -> AdapterConfidence"),
+        ("TestInventoryAdapter", "tests_exercising", "(self, symbol: str) -> list[TestId]"),
+        ("TestInventoryAdapter", "confidence", "(self) -> AdapterConfidence"),
+    )
+    ```
+    Drift on any signature → test fails at unskip-time → Phase-3 author must amend 02-ADR-0006/02-ADR-0007 explicitly.
 - [ ] **AC-24 — comment block explains the trip-wire purpose.** Top of file: a comment block names Gap 1, names ADR-0007, names the Phase-3 entry-gate-review process (S8-04 lands the named issue), and instructs the Phase-3 author on the unskip ritual ("If your first plugin patches one of these Protocols, that's a contract amendment — DO NOT silently change the Protocol; file an ADR amendment to 02-ADR-0006/02-ADR-0007 first, then update this test, THEN unskip.").
-- [ ] **AC-25 — passes `mypy --strict`** even while skipped. Mypy type-checks skipped tests; the Protocol-conformance assertion code must type-check against the current S1-03 Protocols.
+- [ ] **AC-25 — passes `mypy --strict`** even while skipped, AND a deliberate Protocol drift breaks mypy on this file (the silent-drift defense). Mypy type-checks skipped tests; the Protocol-conformance assertion code must type-check against the current S1-03 Protocols. The test file MUST embed a `Protocol`-typed helper of the form `def _frozen_dep_graph_signature(adapter: DepGraphAdapter) -> None: reveal_type(adapter.consumers); reveal_type(adapter.producers); ...` (or equivalent `cast(DepGraphAdapter, _stub)` chain) whose parameter / call-site annotations re-state every S1-03 contract by name. If any S1-03 Protocol signature changes, mypy MUST fail on this file (e.g., the call to `adapter.consumers(pkg=...)` would surface the new keyword-only parameter shape). This is the type-system trip-wire — it fires **before** unskip, at every CI run, against the current S1-03 Protocols. Document the trip-wire in the test's top-of-file comment block.
+- [ ] **AC-30 — `RedactedSlice` import resolver handles aliased imports.** The AST walker in `test_no_inmemory_secret_leak.py` MUST correctly classify a construction made via `from codegenie.output.redacted_slice import RedactedSlice as _RS; _RS(...)` as a `RedactedSlice` construction. The test includes an inline regression case (a temp module string parsed via `ast.parse`) that exercises the aliased-import path through the walker. Without this, a contributor who aliases the import silently slips past the structural test.
 
 **Determinism, audit hygiene, type cleanliness**
 
@@ -128,8 +171,8 @@ All four go into the `adv-phase02` CI job (wired in S8-03) as part of the load-b
 1. **TDD red — write `test_hostile_skills_yaml.py` first.** Plant ≥ 8 parametrized cases; each invokes `SkillsLoader.load_all()` against a tier-rooted at `tests/adv/phase02/fixtures/hostile_skills/`; asserts `Result.Err`. With no fixture files yet, each case fails red (no skill file found).
 2. Plant the hostile-YAML fixtures under `tests/adv/phase02/fixtures/hostile_skills/` per AC-1's case list. Plant `_create_at_test_time.py` for the symlink + NUL-byte cases. Confirm each fixture file is parseable-as-YAML by an attacker tool (so we're testing real hostile input, not malformed-text edge cases — except where malformed-text IS the case, like duplicate keys).
 3. Run `pytest tests/adv/phase02/test_hostile_skills_yaml.py -v`. Adjust the `SkillsLoader` or `safe_yaml` chokepoint as needed (if a case slips through to RCE or to wall-clock-cap-violation, fix the production code — the test caught a real bug). Green.
-4. **TDD red — write `test_concurrent_gather_race.py`.** Use `subprocess.Popen` to launch two `codegenie gather tests/fixtures/portfolio/minimal-ts/` invocations. With a working advisory lock, the test asserts post-conditions (AC-8..AC-10). Run; observe behavior.
-5. If the test is flaky, add explicit signal synchronization: Process A pauses on `SIGUSR1` immediately after acquiring the lock; the test sends `SIGUSR1` to A; A continues; Process B is launched while A holds the lock. This eliminates timing-race nondeterminism.
+4. **TDD red — write `test_concurrent_gather_race.py`.** Use `subprocess.Popen` to launch two `codegenie gather tests/fixtures/portfolio/minimal-ts/` invocations (precedent: Phase-0 S5-01 `tests/unit/test_cache_concurrent.py`). Assert the Phase-0 `O_APPEND` invariants (AC-8: every `index.jsonl` line parses; AC-9: every blob filename matches its content hash; AC-31: line count ≥ N_unique_keys). Do NOT assert any `.codegenie/cache/.lock` behavior — no such primitive exists.
+5. If the test is flaky, **do not paper over it with an advisory lock**. Flakes mean either a real `O_APPEND` violation (record > `PIPE_BUF`) or a non-atomic write somewhere in the cache path — fix the bug. If you genuinely need deterministic ordering between A and B (e.g., for a follow-up assertion), use explicit signal synchronization: Process A pauses on `SIGUSR1` immediately after a documented checkpoint; the test sends `SIGUSR1` to A; A continues. This is windowing, not race-tolerance.
 6. Run 100 times. Confirm 100/100 pass. Green.
 7. **TDD red — write `test_no_inmemory_secret_leak.py`.** Build the AST-walker that finds `RedactedSlice` construction call sites. With the production code as-is (per S3-01/S3-02/S3-03), the test should pass on first run — there should be exactly one call site, inside `redact_secrets`. If the count is wrong, debug the production code, not the test.
 8. **Verify the failure mode**: temporarily add `RedactedSlice(slice={}, findings_count=0, fingerprints=[])` to a scratch file under `tests/_scratch/`. Run the test; observe it fails with the expected message (AC-19). Delete the scratch file. Re-run; observe green. Document the deliberate-fail-then-pass observation in PR.
@@ -141,88 +184,155 @@ All four go into the `adv-phase02` CI job (wired in S8-03) as part of the load-b
 
 ### Red — failing adversarial tests first
 
-`test_no_inmemory_secret_leak.py` AST-walker skeleton:
+`test_no_inmemory_secret_leak.py` AST-walker skeleton (hardened 2026-05-18):
 
 ```python
 # tests/adv/phase02/test_no_inmemory_secret_leak.py
 """Structural boundary test — Gap 5, Risk #6, ADR-0010.
 
-The smart-constructor invariant: redact_secrets() in codegenie.output.sanitizer is the
-ONLY call site that constructs RedactedSlice. Any second call site (e.g.,
-`RedactedSlice.from_existing(...)` added for testing convenience) silently breaks the
-type-level "redactor was called" guarantee. This test fails loudly if that happens.
+The smart-constructor invariant: RedactedSlice may only be constructed from the documented
+two-site closed set inside the codegenie.output redaction pipeline, plus the
+tests/unit/output/ allowlist for the model's own anti-regression tests. Adding a third
+production-code construction site silently breaks the type-level "redactor was called"
+guarantee — this test fails loudly if that happens.
+
+The two documented production sites:
+  - codegenie.output.sanitizer.redact_secrets         (per-probe-slice path)
+  - codegenie.output.envelope_redactor._build_redacted_slice_pass  (envelope path; CLI uses)
+
+Adding a third site requires an explicit ADR amendment to 02-ADR-0010, then editing
+ALLOWED_CONSTRUCTOR_SITES below.
 """
 from __future__ import annotations
 import ast
 from pathlib import Path
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent  # tests/adv/phase02/ -> repo root
 _SRC = _REPO_ROOT / "src"
 _TESTS = _REPO_ROOT / "tests"
 
-_REDACTED_SLICE_NAME = "RedactedSlice"
-_SOLE_CONSTRUCTOR_MODULE = "codegenie.output.sanitizer"  # the function inside is redact_secrets
+_REDACTED_SLICE_QUALNAME: Final[str] = "codegenie.output.redacted_slice.RedactedSlice"
+
+# Closed two-site set. Adding a third entry = ADR amendment.
+ALLOWED_CONSTRUCTOR_SITES: Final[frozenset[tuple[str, str]]] = frozenset({
+    ("src/codegenie/output/sanitizer.py", "redact_secrets"),
+    ("src/codegenie/output/envelope_redactor.py", "_build_redacted_slice_pass"),
+})
+
+# Test allowlist — the model's own anti-regression tests legitimately construct
+# RedactedSlice. Any test under this directory may construct.
+ALLOWED_TEST_CONSTRUCTOR_DIRS: Final[frozenset[str]] = frozenset({
+    "tests/unit/output",
+})
+
 
 class _CallSite(NamedTuple):
-    file: str
+    file: str           # relative to repo root, POSIX-style separators
     line: int
+    enclosing_func: str # qualified name of the nearest enclosing FunctionDef / AsyncFunctionDef
     call_text: str
 
-def _find_redacted_slice_construction_sites(root: Path) -> list[_CallSite]:
-    """AST-walk every .py under `root` and find every call that constructs RedactedSlice."""
-    sites: list[_CallSite] = []
-    for py in root.rglob("*.py"):
-        if "_validation" in py.parts or "_attempts" in py.parts or "__pycache__" in py.parts:
-            continue
-        try:
-            tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                if _is_redacted_slice_call(node):
-                    sites.append(_CallSite(str(py), node.lineno, ast.unparse(node)))
-    return sites
 
-def _is_redacted_slice_call(node: ast.Call) -> bool:
-    """True if this Call constructs a RedactedSlice (bare-name or method-form)."""
-    func = node.func
-    if isinstance(func, ast.Name) and func.id == _REDACTED_SLICE_NAME:
-        return True  # RedactedSlice(...)
-    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) \
-            and func.value.id == _REDACTED_SLICE_NAME \
-            and func.attr in {"model_validate", "model_validate_json", "model_construct"}:
-        return True  # RedactedSlice.model_validate(...) etc
+def _build_alias_map(tree: ast.Module) -> dict[str, str]:
+    """Return {local_name: real_qualified_name} for every import in the module.
+
+    Resolves `from codegenie.output.redacted_slice import RedactedSlice as _RS`
+    to {'_RS': 'codegenie.output.redacted_slice.RedactedSlice'}.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = alias.name
+    return aliases
+
+
+def _resolves_to_redacted_slice(call: ast.Call, aliases: dict[str, str]) -> bool:
+    func = call.func
+    # Bare-name: RedactedSlice(...) or _RS(...) where _RS aliases RedactedSlice
+    if isinstance(func, ast.Name):
+        return aliases.get(func.id, "") == _REDACTED_SLICE_QUALNAME
+    # Attribute: RedactedSlice.model_validate(...), _RS.model_construct(...), etc.
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        base_qual = aliases.get(func.value.id, "")
+        return base_qual == _REDACTED_SLICE_QUALNAME and func.attr in {
+            "model_validate", "model_validate_json", "model_construct"
+        }
     return False
 
-def _file_belongs_to_sanitizer_module(file: str) -> bool:
-    """True if the file is part of codegenie.output.sanitizer."""
-    return file.endswith("/codegenie/output/sanitizer.py") or file.endswith(r"\codegenie\output\sanitizer.py")
+
+def _enclosing_func_name(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    cur: ast.AST | None = node
+    while cur is not None:
+        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return cur.name
+        cur = parents.get(cur)
+    return "<module>"
 
 
-def test_redacted_slice_constructed_only_in_sanitizer_module() -> None:
-    """AC-15 — redact_secrets in codegenie.output.sanitizer is the sole RedactedSlice constructor."""
-    sites_in_src = _find_redacted_slice_construction_sites(_SRC)
-    sites_in_tests = _find_redacted_slice_construction_sites(_TESTS)
-    all_sites = sites_in_src + sites_in_tests
+def _find_construction_sites(root: Path) -> list[_CallSite]:
+    sites: list[_CallSite] = []
+    for py in root.rglob("*.py"):
+        if any(p in {"_validation", "_attempts", "__pycache__"} for p in py.parts):
+            continue
+        if py == Path(__file__):
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        aliases = _build_alias_map(tree)
+        parents: dict[ast.AST, ast.AST] = {}
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                parents[child] = parent
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _resolves_to_redacted_slice(node, aliases):
+                rel = py.relative_to(_REPO_ROOT).as_posix()
+                sites.append(_CallSite(
+                    file=rel,
+                    line=node.lineno,
+                    enclosing_func=_enclosing_func_name(node, parents),
+                    call_text=ast.unparse(node),
+                ))
+    return sites
 
-    out_of_module = [s for s in all_sites if not _file_belongs_to_sanitizer_module(s.file)]
-    in_module = [s for s in all_sites if _file_belongs_to_sanitizer_module(s.file)]
 
-    assert not out_of_module, (
-        f"RedactedSlice constructed outside codegenie.output.sanitizer:\n"
-        + "\n".join(f"  {s.file}:{s.line}  {s.call_text!r}" for s in out_of_module)
-        + "\n\nThe smart-constructor invariant (ADR-0010, S3-02, Gap 4) requires redact_secrets() "
-          "to be the only constructor path.\n"
-          "See docs/phases/02-context-gather-layers-b-g/ADRs/0010-redacted-slice-smart-constructor-at-writer-boundary.md."
+def _is_allowed(site: _CallSite) -> bool:
+    if (site.file, site.enclosing_func) in ALLOWED_CONSTRUCTOR_SITES:
+        return True
+    if any(site.file.startswith(d + "/") for d in ALLOWED_TEST_CONSTRUCTOR_DIRS):
+        return True
+    return False
+
+
+def test_redacted_slice_construction_is_restricted_to_documented_sites() -> None:
+    """AC-15 + AC-19 + AC-30 — closed two-site set, with aliased-import resilience."""
+    sites = _find_construction_sites(_SRC) + _find_construction_sites(_TESTS)
+    offending = [s for s in sites if not _is_allowed(s)]
+    assert not offending, "\n".join(
+        f"RedactedSlice constructed at {s.file}:{s.line} (call to '{s.call_text}') is outside the "
+        f"documented two-site closed set (sanitizer.redact_secrets + "
+        f"envelope_redactor._build_redacted_slice_pass) and the tests/unit/output/ allowlist. "
+        f"The smart-constructor invariant (02-ADR-0010, S3-02, Gap 4) requires construction to be "
+        f"restricted to the redaction pipeline. To add a third construction site, amend 02-ADR-0010 "
+        f"and update ALLOWED_CONSTRUCTOR_SITES in this test file. See "
+        f"docs/phases/02-context-gather-layers-b-g/ADRs/0010-redacted-slice-smart-constructor-at-writer-boundary.md."
+        for s in offending
     )
-    # Defense-in-depth: also assert at least one construction occurs inside the sanitizer
-    # (regression guard against accidentally removing the redactor entirely).
-    assert len(in_module) >= 1, (
-        "Expected at least one RedactedSlice construction inside codegenie.output.sanitizer; "
-        "the redactor appears to have been removed entirely. That breaks ADR-0005."
-    )
+    # Defense-in-depth: each documented production site must contain at least one construction
+    # (regression guard against silent removal of either redaction path).
+    for (file, func) in ALLOWED_CONSTRUCTOR_SITES:
+        present = [s for s in sites if s.file == file and s.enclosing_func == func]
+        assert present, (
+            f"Expected at least one RedactedSlice construction inside {file}::{func}; "
+            f"the redactor at this site appears to have been removed. Either redaction path "
+            f"silently disappearing breaks 02-ADR-0005 + 02-ADR-0010."
+        )
 ```
 
 `test_hostile_skills_yaml.py` parametrized skeleton:
@@ -294,26 +404,39 @@ def test_symlink_escape_refused(tmp_path) -> None:
     assert err.reason == "symlink_refused"
 ```
 
-`test_concurrent_gather_race.py` skeleton:
+`test_concurrent_gather_race.py` skeleton (hardened 2026-05-18 — asserts the actual Phase-0 `O_APPEND` + atomic-blob contract; no `.codegenie/cache/.lock` references):
 
 ```python
 # tests/adv/phase02/test_concurrent_gather_race.py
+"""Concurrent-gather adversarial — extends Phase-0 S5-01's tests/unit/test_cache_concurrent.py
+to the full `codegenie gather` CLI surface.
+
+The Phase-0 concurrency contract per phase-arch-design.md §789 edge-case 12:
+  - .codegenie/cache/index.jsonl appends are atomic per-record (records ≤ PIPE_BUF=4096B).
+  - Blob writes are atomic via <dest>.tmp → os.replace.
+  - NO advisory lock; NO .codegenie/cache/.lock primitive.
+
+We assert these invariants directly after two concurrent gathers — every jsonl line parses,
+every blob filename matches its content hash, no .tmp remnants.
+"""
 from __future__ import annotations
-import os
-import signal
+import json
 import subprocess
 import sys
 import time
+import shutil
 from pathlib import Path
-from codegenie.hashing import content_hash
+import yaml
+from codegenie.hashing import content_hash  # actual helper name varies; pick the Phase-0 one
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _FIXTURE = _REPO_ROOT / "tests" / "fixtures" / "portfolio" / "minimal-ts"
 
-def test_concurrent_gathers_do_not_corrupt_cache(tmp_path) -> None:
+
+def test_concurrent_gathers_do_not_corrupt_cache(tmp_path: Path) -> None:
     # Work on a copy so we don't dirty the canonical fixture
     workdir = tmp_path / "minimal-ts"
-    subprocess.run(["cp", "-R", str(_FIXTURE), str(workdir)], check=True)
+    shutil.copytree(_FIXTURE, workdir)
 
     def _launch() -> subprocess.Popen[bytes]:
         return subprocess.Popen(
@@ -322,34 +445,59 @@ def test_concurrent_gathers_do_not_corrupt_cache(tmp_path) -> None:
         )
 
     a = _launch()
-    time.sleep(0.1)  # give A a head-start on lock acquisition (not race-tolerance — explicit windowing)
+    time.sleep(0.05)  # explicit windowing — give A a brief head-start on cache-dir creation
     b = _launch()
 
     out_a, err_a = a.communicate(timeout=60)
     out_b, err_b = b.communicate(timeout=60)
 
-    # AC-8: at least one succeeded; if one failed, its stderr names "another gather is in progress"
-    succeeded = [(a.returncode == 0, err_a), (b.returncode == 0, err_b)]
-    assert any(ok for ok, _ in succeeded), f"both failed: A={err_a!r} B={err_b!r}"
-    for ok, err in succeeded:
-        if not ok:
-            assert b"another gather is in progress" in err or b"lock" in err.lower(), \
-                f"failed gather did not name the lock contention: {err!r}"
+    # AC-12: both processes terminated within budget — already asserted by communicate(timeout=60)
 
-    # AC-9: cache consistency — every blob filename matches its content
-    cache_root = workdir / ".codegenie" / "cache" / "blobs"
-    for blob in cache_root.rglob("*"):
-        if blob.is_file():
-            expected_name = content_hash(blob.read_bytes())
-            assert blob.name.startswith(expected_name[:16]), (
-                f"corrupt cache blob: {blob} (name does not match content hash)"
-            )
+    # AC-8: every line of .codegenie/cache/index.jsonl is valid JSON (the O_APPEND invariant)
+    index_path = workdir / ".codegenie" / "cache" / "index.jsonl"
+    assert index_path.exists(), f"index.jsonl missing after concurrent gathers; A={err_a!r} B={err_b!r}"
+    lines = index_path.read_text(encoding="utf-8").splitlines()
+    assert lines, "index.jsonl exists but is empty — neither gather wrote any cache record"
+    for i, line in enumerate(lines):
+        try:
+            json.loads(line)
+        except json.JSONDecodeError as e:
+            raise AssertionError(
+                f"index.jsonl line {i+1} is not valid JSON — O_APPEND atomicity violated "
+                f"(record likely exceeded PIPE_BUF=4096B). Line bytes: {line[:200]!r}..."
+            ) from e
 
-    # AC-10: repo-context.yaml round-trips
-    import yaml
-    ctx = workdir / ".codegenie" / "context" / "repo-context.yaml"
-    assert ctx.exists()
-    yaml.safe_load(ctx.read_text())  # no exception
+    # AC-31: line count is at least the number of unique cache keys exercised by minimal-ts.
+    # Duplicates (same key written by both A and B) are PERMITTED — both records are valid JSON;
+    # consumers dedup by the "key" field.
+    seen_keys = {json.loads(line).get("key") for line in lines}
+    assert seen_keys, "index.jsonl lines had no 'key' fields — schema regression?"
+
+    # AC-9: every blob filename matches its content hash; no .tmp remnants; no zero-byte files
+    blobs_root = workdir / ".codegenie" / "cache" / "blobs"
+    assert blobs_root.exists(), "cache/blobs/ missing"
+    for blob in blobs_root.rglob("*"):
+        if not blob.is_file():
+            continue
+        assert not blob.name.endswith(".tmp"), (
+            f"leftover .tmp file at {blob} — atomic os.replace was interrupted; "
+            f"either a real bug or test teardown ordering issue"
+        )
+        size = blob.stat().st_size
+        assert size > 0, f"zero-byte blob at {blob} — atomic-write violated"
+        expected = content_hash(blob.read_bytes())
+        assert blob.name.startswith(expected[:16]), (
+            f"corrupt blob: {blob} (filename does not match content hash; "
+            f"got {blob.name!r}, expected prefix {expected[:16]!r})"
+        )
+
+    # AC-10: repo-context.yaml round-trips; matches one of A's or B's final outputs
+    ctx_path = workdir / ".codegenie" / "context" / "repo-context.yaml"
+    assert ctx_path.exists()
+    parsed = yaml.safe_load(ctx_path.read_text())  # no exception
+    assert isinstance(parsed, dict) and "probes" in parsed, (
+        "repo-context.yaml parsed but schema was malformed — half-merged hybrid?"
+    )
 ```
 
 ### Green — make it pass
@@ -360,14 +508,17 @@ Plant fixtures, run tests, iterate until all four are green and stable.
 
 | Mutation | Test that catches it |
 |---|---|
-| Future contributor adds `RedactedSlice.from_existing(...)` at `tests/integration/test_X.py:42` | `test_redacted_slice_constructed_only_in_sanitizer_module` — fails with the file:line + remediation pointer |
+| Future contributor adds `RedactedSlice.from_existing(...)` at `tests/integration/test_X.py:42` | `test_redacted_slice_construction_is_restricted_to_documented_sites` — fails with the file:line + remediation pointer + ADR link |
+| Future contributor aliases the import (`from … import RedactedSlice as _RS; _RS(...)`) outside the allowlist to "dodge" the structural test | Walker's alias-resolution pass (AC-30) classifies `_RS` correctly; test still fails |
 | Someone "fixes" `safe_yaml.load` to allow `!!python/object` (regression) | `test_hostile_skill_yaml_refused[python_object]` — `Result.Err` becomes `Result.Ok`, `/tmp/pwned-*` exists, assertion fails |
-| Cache advisory lock is removed | `test_concurrent_gathers_do_not_corrupt_cache` — one process silently overwrites the other's blob; the content-hash check fails OR `repo-context.yaml` is malformed |
+| Someone changes the cache's record format and a record now exceeds `PIPE_BUF=4096`B, breaking `O_APPEND` atomicity | `test_concurrent_gathers_do_not_corrupt_cache` — `json.loads(line)` raises on a torn record |
+| Atomic-blob-write contract violated (e.g., `<dest>.tmp → os.replace` replaced with direct `f.write`) | `test_concurrent_gathers_do_not_corrupt_cache` — `.tmp` remnants discovered OR blob filename does not match its content hash |
 | `SkillsLoader` swallows `OSError(EILSEQ)` for NUL-byte filenames silently | `test_symlink_escape_refused`'s NUL-byte variant — but only if implementer wrote it; otherwise the bug ships |
-| Future contributor edits S1-03 Protocols (`DepGraphAdapter.consumers(self, pkg: PackageId)` → `pkg: str`) | `test_phase3_handoff_smoke.py` (when unskipped at Phase 3 entry-gate) — the signature mismatch is caught at gate-review |
+| Future contributor edits S1-03 Protocols (`DepGraphAdapter.consumers(self, pkg: str)` → `pkg: bytes`) | mypy fails on `test_phase3_handoff_smoke.py`'s `_frozen_dep_graph_signature` helper (AC-25) at the **next CI run**, before unskip; AND `test_phase3_handoff_smoke.py` (when unskipped at Phase 3 entry-gate) catches the signature mismatch via the frozen-signature tuple |
 | Future contributor deletes the skip marker in `test_phase3_handoff_smoke.py` and the test fails on master | CI fails on master; the test is unskipped prematurely — the comment block (AC-24) explicitly forbids this without an ADR amendment, and the failure points to the ADR |
-| `redact_secrets` is silently removed | `test_redacted_slice_constructed_only_in_sanitizer_module`'s defense-in-depth assertion (`len(in_module) >= 1`) fires |
-| A scanner probe (`gitleaks`) bypasses the redactor and writes plaintext to `raw/gitleaks.json` | `tests/golden/test_no_plaintext_in_goldens.py` (S7-03) catches the plaintext in the golden; `test_secret_in_source.py` (S6-07) catches it behaviorally; this story's `test_no_inmemory_secret_leak.py` catches the **structural** path (missing `redact_secrets` call) |
+| Either `redact_secrets` or `envelope_redactor._build_redacted_slice_pass` is silently removed | Defense-in-depth assertion in the AST test (per-allowed-site `assert present` loop) fires on the missing site |
+| A scanner probe (`gitleaks`) bypasses the redactor and writes plaintext to `raw/gitleaks.json` | `tests/golden/test_no_plaintext_in_goldens.py` (S7-03) catches the plaintext in the golden; `test_secret_in_source.py` (S6-07) catches it behaviorally; this story's `test_no_inmemory_secret_leak.py` catches the **structural** path (writer signature would refuse a raw dict; envelope_redactor return shape pinned to RedactedSlice) |
+| Future contributor adds a third `Writer.write` call site (e.g., a debug logger path) | `test_writer_call_sites_are_closed_set` (AC-17) — fails with the file:line of the unauthorized call site |
 
 ### Refactor — clean up
 
@@ -404,7 +555,21 @@ Plant fixtures, run tests, iterate until all four are green and stable.
 - **`test_phase3_handoff_smoke.py`'s skip marker MUST be `@pytest.mark.skip(reason="...")`**, NOT `@pytest.mark.skipif(...)`. The skipif form makes the un-skip an environmental concern; the plain `skip` makes it a deliberate code edit Phase-3's author performs. The grep-discoverable string is the artifact.
 - **AC-23's Protocol-conformance assertion can be left as code-but-skipped.** The test body must type-check (`mypy --strict`) even while skipped; this enforces that the four Protocols stay importable at their pinned paths AND that any signature change in S1-03 forces an explicit edit to this test file (preventing silent drift). If the test file no longer compiles because a Protocol moved, **that** is the contract trip-wire firing — even before Phase 3 unskips.
 - **The hostile-YAML fixtures must be small.** Billion-laughs in particular: keep the entity count under 10 (the parser caps it quickly; you don't need 1000 entities to trigger the defense). Deep nesting: 1000 levels is enough to trip stack-or-cap defenses without producing a 10 MB fixture file. Document the size + the cap in each fixture's top-of-file YAML comment.
-- **No `mock.patch` anywhere in these tests.** Per the project convention (and CLAUDE.md's "tests verify intent, not just behavior"). The tests exercise real production code paths — the loader, the cache lock, the AST of the production code, the four Protocols. Mocks would mask the regression cases these tests are designed to catch.
+- **No `mock.patch` anywhere in these tests.** Per the project convention (and CLAUDE.md's "tests verify intent, not just behavior"). The tests exercise real production code paths — the loader, the `O_APPEND` cache contract, the AST of the production code, the four Protocols. Mocks would mask the regression cases these tests are designed to catch.
+
+### Validation-added implementer guidance (2026-05-18)
+
+- **Two-site allowlist as a `Final` constant, not a regex.** The original story said "redact_secrets is the SOLE constructor of `RedactedSlice`." It isn't — `envelope_redactor._build_redacted_slice_pass` is the second site, by design (CLI envelope-level redaction path). Implement `ALLOWED_CONSTRUCTOR_SITES: Final[frozenset[tuple[str, str]]]` as a module-level constant at the top of `test_no_inmemory_secret_leak.py`. The two entries are documented; adding a third is an ADR amendment, not a code edit. This pattern (a `Final` tuple of `(file, qualifier)` pairs as the closed set) is the right shape for a structural-invariant test and composes with future "X is the only constructor of Y" invariants — when a third structural-invariant test arrives, lift the AST walker + the allowlist shape to `tests/_helpers/structural_invariants.py` and pass each test's allowlist constant in. **Defer the lift until N=3** (Rule 2 / rule of three); today's deferred-extraction note in Refactor §1 is correct.
+
+- **Aliased-import resilience in the AST walker.** `_is_redacted_slice_call(node)` as drafted only checks `isinstance(func.value, ast.Name) and func.value.id == "RedactedSlice"`. This will silently miss `from codegenie.output.redacted_slice import RedactedSlice as _RS; _RS(...)`. Walker must first build a per-module import alias map from `ast.ImportFrom` + `ast.Import` nodes (`{local_name: real_qualified_name}`) and resolve `Call.func` against it. Add the inline regression case from AC-30 to lock the behavior down — without it, the mutation "alias the import to dodge the structural check" lands with no test failure.
+
+- **Wall-clock enforcement for AC-4 without adding `pytest-timeout`.** Do NOT introduce `pytest-timeout` as a dep just for this test (Phase-2 fence discipline). Each hostile-YAML case wraps its `loader.load_all()` call between `t0 = time.monotonic()` / `assert time.monotonic() - t0 < 5.0` book-ends. If a case exceeds 5 s, the loader has a real DoS surface — fix the loader, not the test.
+
+- **mypy drift trip-wire (AC-25 expansion).** The Protocol-typed helper `_frozen_dep_graph_signature(adapter: DepGraphAdapter) -> None: ...` lives near the top of `test_phase3_handoff_smoke.py`, OUTSIDE the `@pytest.mark.skip`-decorated function body (decorators don't affect mypy reachability — module-level code type-checks always). The body uses every method name the test cares about (`adapter.consumers(...)`, `adapter.producers(...)`, `adapter.confidence()`, etc.). Any S1-03 signature change forces this file to fail mypy at the next CI run — even before unskip. **This is the contract trip-wire firing through the type system rather than through pytest.**
+
+- **`O_APPEND` invariant > advisory lock.** The original story referenced `.codegenie/cache/.lock` and `fcntl.flock` — neither exists. The actual Phase-0 contract is `O_APPEND` atomicity for records ≤ `PIPE_BUF=4096` (proven in Phase-0 S5-01 `tests/unit/test_cache_concurrent.py`) + atomic blob writes via `<dest>.tmp → os.replace`. The concurrent-gather test asserts these invariants directly (every line of `index.jsonl` parses; every blob's filename matches its content hash; no `.tmp` files remain). **Do NOT introduce a lock primitive to "fix" flakes** — the lock would be a real architectural change requiring a Phase-0 ADR amendment. Flakes mean either (a) a real `O_APPEND` violation (record size exceeded `PIPE_BUF`), or (b) a real atomic-write violation (someone added a non-atomic write path). Fix the bug; don't add a lock.
+
+- **`Writer.write` call-site allowlist.** AC-17's `ALLOWED_WRITER_CALL_SITES` is a `Final[frozenset[tuple[str, str]]]` declared at the top of the test. Today the set contains exactly the CLI seam at `cli.py:397` (and a verify seam if S4-02 / S8-03 added one). Adding a third call site is an explicit edit to this constant — the diff in PR review is the load-bearing artifact. This is the same pattern as `ALLOWED_CONSTRUCTOR_SITES` above (Open/Closed via a registered closed set, lifted into a registry only at N=3).
 
 ### Patterns DELIBERATELY deferred (per Rule 2 + Rule 3)
 
