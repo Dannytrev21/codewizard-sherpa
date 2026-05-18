@@ -1,7 +1,7 @@
 # Story S1-03 — Tagged-union outcome types
 
 **Step:** Step 1 — Scaffold packages, domain primitives, sum types, and structural CI fences
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S1-03.md`](_attempts/S1-03.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-01 (newtypes the outcome payloads carry: `TransformId`, `SignalKind`, `PluginId`, `RecipeId`, `WorkflowId`, `BranchName`, `ErrorId`)
 **ADRs honored:** ADR-0010 (tagged-union sum types on every state machine; `extra="forbid"`; `match` + `assert_never`), ADR-0001 (Phase-5 wraps `RemediationOutcome` and `RecipeOutcome` — the discriminated-union shape is the contract)

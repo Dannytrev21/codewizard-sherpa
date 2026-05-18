@@ -77,6 +77,10 @@ PrimitiveName = NewType("PrimitiveName", str)
 TransformKind = NewType("TransformKind", str)
 # Bounded retry counter (1..1024); S1-04 AttemptSummary.attempt.
 AttemptNumber = NewType("AttemptNumber", int)
+# Dotted snake-case error identifier (``^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$``,
+# Phase-1 ADR-0007 warning/error-ID format). Carried by ``RecipeError`` and
+# ``RemediationError`` on the ``Failed`` variants in S1-03's outcomes module.
+ErrorId = NewType("ErrorId", str)
 
 
 __all__ = [
@@ -85,6 +89,7 @@ __all__ = [
     "BranchName",
     "ConventionId",
     "CveId",
+    "ErrorId",
     "EventId",
     "IndexId",
     "IndexName",
@@ -135,4 +140,5 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "PrimitiveName": "Phase-3 sandbox primitive (ADR-0010); S4-05 capabilities.",
     "TransformKind": "Phase-3 transform kind (ADR-0010); S5-01 recipe registry.",
     "AttemptNumber": "Phase-3 retry counter (ADR-0010); S1-04 AttemptSummary.",
+    "ErrorId": "Phase-3 dotted snake-case error id (ADR-0010); S1-03 RecipeError/RemediationError.",
 }
