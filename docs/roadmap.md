@@ -92,6 +92,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Exit criteria.** Given a Node.js repo with a known npm CVE, the system writes a working patch diff on a local branch that — when applied — installs cleanly and passes the repo's own tests.
 
+**Provenance refuse-mode (precondition for Phase 7's full primitive).** Per [ADR-0038](production/adrs/0038-vulnerability-provenance-attribution.md), Phase 3 does **not** ship the full `vuln.provenance` primitive — that lands in Phase 7. What Phase 3 *does* ship is the precondition that prevents the embarrassing failure: when a CVE's affected component cannot be located in the app's resolved npm dep graph (because it's actually in the base image, the JRE, or vendored source), the `vulnerability-remediation--node--npm` plugin returns `Applicability.NotApplicable(reason=CVE_NOT_IN_APP_LAYER)` and the orchestrator routes to the universal HITL fallback ([S7-03](phases/03-vuln-deterministic-recipe/stories/S7-03-universal-hitl-fallback-plugin.md)). This is a small acceptance-criterion-grade addition to `match_recipe`, not a redesign. Without it, Phase 3 could silently produce a wrong fix (bump an unrelated npm package) when given a glibc CVE.
+
 ---
 
 ## Phase 4 — Vuln remediation: LLM fallback + solved-example RAG
@@ -171,6 +173,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Exit criteria.** Both task classes run from the same orchestration. The diff for this phase touches *only* the new plugin directory (and the bench cases added to the seed `bench/migration-chainguard-distroless/cases/`) — no Phase 0–6 source code is modified, and no existing plugin is touched.
 
+**First home of the `vuln.provenance` primitive.** Per [ADR-0038](production/adrs/0038-vulnerability-provenance-attribution.md), Phase 7 is where the full primitive lands — `vuln.provenance(cve_id, package_id, image_ref?) → Provenance` with seven sum-type variants (`app_direct`, `app_transitive`, `app_vendored`, `base_image`, `runtime_bundled`, `both`, `unknown`). The first concrete `VulnProvenanceAdapter` implementations ship here: an app-layer adapter (likely the Phase 3 `NpmVulnProvenanceAdapter` promoted from its refuse-mode shape) plus at least one base-image adapter (`AlpineVulnProvenanceAdapter` or `DistrolessVulnProvenanceAdapter`). The primitive reads the raw `syft-sbom.json` artifact Phase 2 already writes (`locations[].layerID` is the load-bearing field); **no Phase 2 changes are needed** — this is "wire new readers to existing evidence." The adapter-chain-assembly question (which adapters to invoke and in what order for repos that touch multiple layers) is owned by Phase 7's design pipeline. The `Both` variant — a CVE present in both app and base layers — is the headline test case proving the multi-plugin coordination story works.
+
 ---
 
 ## Phase 8 — Hierarchical Planner + pre-rendered hot views
@@ -208,6 +212,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Testing.** Discovery tests run against a mock GitHub API (recorded fixtures). Assessment scoring tests use a labeled fixture portfolio with some eligible and some non-eligible repos; correct classification is the assertion.
 
 **Exit criteria.** A nightly scheduled scan runs unattended and produces a portfolio dashboard of eligible repos per task class.
+
+**Assessment-stage task-class routing via `vuln.provenance`.** Per [ADR-0038](production/adrs/0038-vulnerability-provenance-attribution.md), Stage 1 Assessment is the first consumer of the provenance primitive for *routing*: eligibility scoring per task class is computed as a `vuln.provenance` query against each repo's open CVEs. A repo is eligible for `vulnerability-remediation--*` if at least one open CVE has provenance kind ∈ {`app_direct`, `app_transitive`, `both`}; eligible for `distroless-migration--*` if at least one has kind ∈ {`base_image`, `both`} *and* the base image is not already distroless; routed to the universal HITL fallback if all open CVEs have `Unknown` provenance. The `Both` case escalates as a multi-plugin coordination candidate to Phase 8's Planner. This sharpens what was previously described loosely as "score eligibility per task class" — the score is now a typed provenance distribution per repo.
 
 ---
 
