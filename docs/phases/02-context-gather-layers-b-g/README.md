@@ -57,3 +57,20 @@ The nine Step-1 ADRs (0001–0009) ship with the Step-1 code in story S1-11; eac
 - **Key ADRs absorbed:** [0029](../../production/adrs/0029-task-class-context-manifests.md), [0030](../../production/adrs/0030-graph-aware-context-queries.md), [0031](../../production/adrs/0031-plugin-architecture.md), [0032](../../production/adrs/0032-language-search-adapters.md), [0033](../../production/adrs/0033-domain-modeling-discipline.md), [0034](../../production/adrs/0034-event-sourcing-canonical-primitive.md)
 - **Skill that produced these artifacts:** `roadmap-phase-designer`
 - **Date generated:** 2026-05-14
+
+## Phase 2 exit-criteria — closed
+
+**Canonical mapping table:** see [stories/README.md §Exit-criteria coverage](stories/README.md#exit-criteria-coverage). The high-level G1–G10 sign-off below is a Step-8 summary, not a duplicate of the canonical table.
+
+- [x] **G1.** Every language-agnostic Layer B–G probe ships with golden-file coverage against the 5-repo portfolio (S4-01..S4-06, S5-02..S5-04, S6-01..S6-08, S7-01..S7-05).
+- [x] **G2.** `IndexHealthProbe` (B2) surfaces a real staleness case in CI against `stale-scip` (S4-01 + S4-02 + S7-02; gated by `adv-phase02` in S8-03).
+- [x] **G3.** Phase 0/1 frozen surfaces unchanged — contract-freeze snapshot still passes (S1-09 ADR-0004 amendment + S8-03 `contract-freeze` CI job).
+- [x] **G4.** `IndexFreshness = Fresh | Stale(reason)` at `src/codegenie/indices/freshness.py`; `confidence_section.py` consumes with exhaustive `match` + `assert_never` (S1-01 + S8-01 + S8-03 `mypy --warn-unreachable`).
+- [x] **G5.** Secret findings redacted at the writer chokepoint; plaintext in zero persisted files (S3-01 + S3-02 + S3-03 + S6-07 + S7-04).
+- [x] **G6.** One subprocess port for Layer B/G external CLIs (`run_external_cli`); Layer C uses `run_allowlisted` directly (S1-07 + S5-02 + S6-06..S6-08).
+- [x] **G7.** Cost target $0/run, tokens-per-gather = 0 — `fence` CI job stays green (S1-11 + S8-03).
+- [x] **G8.** Wall-clock advisory targets covered by three bench canaries including the hosted-runner emulation (S8-03 `bench` lane + nightly).
+- [x] **G9.** Kernel scaffolding ships — adapter `Protocol`s + `TCCMLoader` + `SkillsLoader` + `IndexFreshness`; NO Plugin Loader, NO `plugin.yaml` parser, NO `plugins/` directory (deferred to Phase 3 per 02-ADR-0007 + production ADR-0031).
+- [x] **G10.** Nine new ADRs land in `ADRs/` alongside the code (S1-11; 0001–0009 + 0010 pre-drafted enforced in S3-02).
+
+**Sign-off:** Phase 2 Step 8 closed by stories S8-01 (Confidence section renderer + `mypy --warn-unreachable`), S8-02 (CLI Phase-2 stdout summary block), S8-03 (eight CI lanes + three advisory bench canaries + hosted-runner nightly), and S8-04 (Phase-3 handoff issues + `docs/contributing.md` Layer B–G addendum + this exit-criteria sign-off).

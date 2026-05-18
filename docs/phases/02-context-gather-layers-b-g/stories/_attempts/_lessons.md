@@ -501,3 +501,15 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** A new `for line in block.as_lines(): print(line)` in `src/codegenie/cli.py` trips both ruff's `T201` rule and the `forbidden-patterns` pre-commit hook. The latter matches the literal `print(` substring **anywhere in the file**, including comments — so even a docstring or inline comment that mentions `print(` by name fails the hook.
 - **Fix:** Use `sys.stdout.write(line + "\n")` for operator-facing stdout in `src/`. Structured logs go through structlog; this is the second sanctioned output surface. Any comment explaining the choice must avoid the literal token `print(` (rephrase, e.g., "stdlib's builtin emit-and-newline helper").
 - **Why it matters:** Future stories that prescribe stdout output ("the CLI prints X", "log Y to the operator", etc.) should map "print" → "sys.stdout.write" without surfacing the conflict mid-implementation. The story's "calls print" is casual phrasing; the codebase convention is the contract (CLAUDE.md Rule 11).
+
+## L-S8-04 — `blake3` PyPI package ≠ `hashlib.blake2b(digest_size=32)`
+
+- **Symptom:** A "BLAKE3 freeze" test that imports `blake3` (the PyPI package implementing the real BLAKE3 hash) produces a different digest than `hashlib.blake2b(digest_size=32)`. The two algorithms are distinct; the digest length matches but the bytes do not.
+- **Fix:** When a story prescribes "BLAKE3 freeze", import `blake3` (already in `[dev]` extras) and pin via `blake3.blake3(bytes).hexdigest()`. A `hashlib.blake2b` fallback is acceptable ONLY if `blake3` is not on the dependency tree — and the test's expected-hash constant must be computed via the same function.
+- **Why it matters:** Future "file-freeze" tests (cassette pins, schema pins, etc.) need the right hash function. Sanity-check the expected constant by recomputing it locally with the EXACT import the test uses.
+
+## L-S8-04b — Doc-only stories still benefit from a typed registry when tests are substring-driven
+
+- **Symptom:** Eight heterogeneous GitHub-issue payloads as inline dicts in a script makes per-issue test functions a copy/paste exercise. Adding a ninth issue silently widens the surface; primitive obsession on `str` for `milestone` makes typos invisible.
+- **Fix:** A `Final[tuple[IssueSpec, ...]]` of frozen Pydantic models in a pure-data module (zero `subprocess`/`os` imports), consumed by a separate impure shell. Tests parametrize over the tuple; AC-driven literal-substring assertions become a sweep, not a stamp.
+- **Why it matters:** S8-04 had 16 substring-driven assertions across 5 handoff + 3 backlog issue bodies. The registry kept the test file ~200 LOC; the dict-shuffling alternative would have been 500+. Open/Closed at the registry boundary: a future handoff story adds one row, the script logic stays unchanged.
