@@ -81,9 +81,19 @@ def test_renderer_class_wraps_function() -> None:
 
 def test_exhaustive_match_every_variant() -> None:
     """Construct one of each variant; assert every variant-specific marker
-    appears in the rendered output. Adding a sixth ``StaleReason`` without
-    a case arm would (a) fail mypy in CI and (b) fail this list-build (the
-    marker for the new variant would not appear).
+    appears on the row keyed by *its own* index name AND no other
+    variant's marker appears on that row (per-row negative-space —
+    TQ-1).
+
+    Without the negative-space check, a degenerate renderer that emitted
+    a single row containing every marker (``- [OK] all · commits_behind=
+    digest_mismatch coverage_gap indexer_error``) would pass a
+    substring-bag assertion. The per-row check kills that mutant: each
+    row must own *its* variant and exclude every other.
+
+    Also pins row count: one ``[OK]`` row (Fresh) and four ``[STALE]``
+    rows (every ``StaleReason``). A renderer that dropped a variant or
+    duplicated one would fail.
     """
     now = datetime(2026, 5, 18, 12, 0, 0, tzinfo=UTC)
     slices = {
@@ -99,14 +109,50 @@ def test_exhaustive_match_every_variant() -> None:
     }
     out = render_confidence_section(_wrap(slices))
 
-    # One marker per variant.
-    assert "[OK]" in out  # Fresh
-    assert "commits_behind=3" in out  # CommitsBehind
-    assert "digest_mismatch" in out  # DigestMismatch
-    assert "coverage_gap" in out  # CoverageGap
-    assert "indexer_error" in out  # IndexerError
-    # Confidence heading present (AC-6 surface requirement; cheap to assert here).
+    # Confidence heading present.
     assert out.startswith("## Confidence")
+
+    # Exactly one row per variant — kills the "drop-a-case" and the
+    # "duplicate-a-row" mutants.
+    assert out.count("- [OK]") == 1
+    assert out.count("- [STALE]") == 4
+
+    # Parse rows by index name. Row shape is ``- [OK|STALE] <name> · …``.
+    import re
+
+    rows = {
+        m.group("name"): m.group(0)
+        for m in re.finditer(r"^- \[(?:OK|STALE)\] (?P<name>\S+) · .*$", out, re.M)
+    }
+    assert set(rows.keys()) == set(slices.keys()), (
+        f"expected one row per slice, got rows for {sorted(rows.keys())!r}"
+    )
+
+    # Markers uniquely identifying each variant. ``[OK]`` is unique to
+    # Fresh; ``[STALE]`` is intentionally shared by all four Stale
+    # variants so it's NOT in this table (the per-reason marker below
+    # identifies which Stale variant a row carries).
+    marker_for = {
+        "idx_fresh": "[OK]",
+        "idx_commits": "commits_behind=3",
+        "idx_digest": "digest_mismatch",
+        "idx_coverage": "coverage_gap",
+        "idx_error": "indexer_error",
+    }
+
+    for name, own_marker in marker_for.items():
+        row = rows[name]
+        assert own_marker in row, f"row for {name!r} missing its own marker {own_marker!r}: {row!r}"
+        # Negative-space: this row must not carry any *other* variant's
+        # unique marker. This is the mutation-killer — a degenerate
+        # renderer that emits "all markers in every row" fails here.
+        for other_name, other_marker in marker_for.items():
+            if other_name == name:
+                continue
+            assert other_marker not in row, (
+                f"row for {name!r} should not carry {other_marker!r} "
+                f"(belongs to {other_name!r}): {row!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -210,12 +256,35 @@ def test_malformed_freshness_missing_entirely() -> None:
     assert "- [STALE] bad · indexer_error · slice_malformed:" in out
 
 
-def test_empty_envelope_returns_heading_only() -> None:
-    """Zero registered indices → ``## Confidence`` heading only, no rows."""
+def test_empty_envelope_returns_placeholder() -> None:
+    """Zero registered indices → ``## Confidence`` heading + explicit
+    placeholder body. Without the placeholder, a degenerate renderer that
+    always returned the heading-only string would pass every observable
+    AC; the explicit ``_No index sources registered._`` line makes the
+    empty state mutation-resistant.
+    """
     out = render_confidence_section({"probes": {}})
-    assert out.startswith("## Confidence")
-    assert "[OK]" not in out
-    assert "[STALE]" not in out
+    assert out == "## Confidence\n\n_No index sources registered._\n"
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {},
+        {"probes": {}},
+        {"probes": {"index_health": {}}},
+        {"probes": {"index_health": {"index_health": {}}}},
+    ],
+)
+def test_empty_envelope_placeholder_byte_pinned(envelope: Any) -> None:
+    """Every empty-shaped envelope renders the same placeholder body
+    byte-for-byte. Closes COV-4 / TQ-6 (validator) — a renderer that
+    short-circuits on missing keys must not produce divergent output
+    for shape-isomorphic inputs.
+    """
+    assert (
+        render_confidence_section(envelope) == "## Confidence\n\n_No index sources registered._\n"
+    )
 
 
 # ---------------------------------------------------------------------------

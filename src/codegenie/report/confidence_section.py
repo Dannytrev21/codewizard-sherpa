@@ -76,6 +76,13 @@ _INDEX_FRESHNESS_ADAPTER: Final[TypeAdapter[IndexFreshness]] = TypeAdapter(Index
 # edit, not via copy-paste typo.
 _SECTION_HEADING: Final[str] = "## Confidence"
 
+# Placeholder body emitted when the envelope carries no IndexHealth
+# slices (non-Node repos, repos where B2 hasn't run, pathological shapes).
+# Without it, a degenerate renderer that always returned the heading-only
+# string would pass every observable AC — this line makes the empty-state
+# explicit to readers AND mutation-resistant.
+_NO_INDICES_PLACEHOLDER: Final[str] = "_No index sources registered._"
+
 
 # ---------------------------------------------------------------------------
 # Public surface
@@ -89,8 +96,10 @@ def render_confidence_section(envelope: dict[str, Any]) -> str:
     ``envelope["probes"]["index_health"]["index_health"][<name>]["freshness"]``
     (the shape produced by ``IndexHealthProbe.run`` after the coordinator's
     shallow-merge). Rows are sorted ASCII-lex by index name. The output
-    always starts with ``## Confidence\\n\\n``; if no indices are present,
-    the heading is returned with no rows.
+    always starts with ``## Confidence\\n\\n``; if no indices are present
+    (non-Node repos, repos where B2 hasn't run, pathological envelope
+    shapes), the placeholder ``_No index sources registered._`` is
+    emitted in place of rows so the empty state is explicit.
 
     Never raises — pathological envelope shapes (None, missing keys,
     wrong-typed nesting) yield the heading-only string. Per-entry
@@ -118,9 +127,9 @@ def render_confidence_section(envelope: dict[str, Any]) -> str:
             assert row_value is not None  # noqa: S101 — exhaustive on tuple shape
             rows.append(_render_row(row_name, row_value))
 
-    body = "\n".join(rows)
-    if body:
-        body += "\n"
+    if not rows:
+        return f"{_SECTION_HEADING}\n\n{_NO_INDICES_PLACEHOLDER}\n"
+    body = "\n".join(rows) + "\n"
     return f"{_SECTION_HEADING}\n\n{body}"
 
 
