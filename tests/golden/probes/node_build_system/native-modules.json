@@ -7,7 +7,6 @@
     },
     "node_version_constraint": null,
     "node_version_pinned": null,
-    "node_version_resolved_locally": "v25.9.0",
     "output_artifacts": [],
     "package_manager": "pnpm",
     "package_manager_version": null,

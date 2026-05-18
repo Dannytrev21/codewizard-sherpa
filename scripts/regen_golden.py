@@ -81,6 +81,7 @@ _EXCLUDED_FIELD_NAMES: frozenset[str] = frozenset(
         "run_id",  # per-invocation token
         "duration_ms",  # per-probe elapsed time
         "audit_anchor",  # references a per-run UTC-ISO anchor
+        "node_version_resolved_locally",  # local Node runtime version (macOS vs Linux CI runner)
     }
 )
 
