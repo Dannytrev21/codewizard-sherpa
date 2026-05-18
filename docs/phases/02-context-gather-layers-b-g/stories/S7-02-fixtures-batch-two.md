@@ -325,7 +325,7 @@ Plant the trees. Run the shape tests. Green. Then extract the kernel.
 - **Kernel pattern choice — flat helpers vs. test factories.** Two acceptable shapes:
   - **Test factories** (`make_existence_test`, `make_parses_test`, …): the kernel returns pytest-decorated test functions for module-level assignment in each consumer. Compact but unusual; pytest's natural module-level `@pytest.mark.parametrize` discovery is inverted.
   - **Flat helpers** (`assert_file_exists(fixture, spec)`, `assert_file_parses(fixture, spec)`, …): the kernel exposes pure helper functions; each consumer writes minimal `@pytest.mark.parametrize("spec", _FILE_SPECS, ids=lambda s: s.relpath) def test_fixture_file_exists(spec): assert_file_exists(_FIXTURE, spec)`. More pytest-natural; mypy --strict-clean without ergonomic dance; the kernel is a clean functional core.
-  
+
   **Validator recommends flat helpers** — but factory-based is acceptable if cleaner per the implementer's read. Pick one and apply consistently across all six consumers; the AC's requirement is "structural logic lives in the kernel; consumers declare only data".
 
 - **`enumerate_tracked` is the kernel's port for `git ls-files`.** Hexagonal discipline: subprocess invocation is encapsulated; consumers receive `tuple[str, ...]` of relpaths. The kernel is the ONLY call site for `run_allowlisted("git", "ls-files", str(fixture_path))` — no consumer shells out itself. This makes the kernel's I/O surface auditable in one place.
