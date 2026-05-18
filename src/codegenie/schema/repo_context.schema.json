@@ -85,6 +85,9 @@
         },
         "certificate": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/certificate/v0.1.0.json"
+        },
+        "skills_index": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/skills_index/v0.1.0.json"
         }
       }
     }

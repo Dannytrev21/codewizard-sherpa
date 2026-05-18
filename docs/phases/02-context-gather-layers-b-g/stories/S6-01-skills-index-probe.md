@@ -1,7 +1,7 @@
 # Story S6-01 — `SkillsIndexProbe` Layer D
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** Ready
+**Status:** Done — GREEN 2026-05-17 (phase-story-executor; see [`_attempts/S6-01.md`](_attempts/S6-01.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S2-01 (`SkillsLoader` three-tier merge with `O_NOFOLLOW` + `body_offset`/`body_size`/`body_blake3` recorded on `Skill`; per-file errors surfaced via `LoadOutcome.per_file_errors`)
 **ADRs honored:** 02-ADR-0005 (no plaintext persistence — body bytes are never read into memory; only the offset/size/BLAKE3 anchors persist), Phase 1 ADR-0006 (`safe_yaml` chokepoint — frontmatter loads exclusively via `safe_yaml.load`), 02-ADR-0003 (`@register_probe(heaviness=…)` is decorator-side, not an ABC field)

@@ -369,3 +369,21 @@ Append-only. Each entry: lesson · source story · how to apply it on the next a
 - **Symptom:** Story prescribes a pytest fixture that "registers `_NoOpLightProbe` via `@register_probe`, then unregisters at teardown". `codegenie.probes.registry.Registry` has no `unregister` method — and the global `default_registry` is the supply-chain trust boundary (per the registry's docstring).
 - **Fix:** The coordinator's `gather()` accepts `Sequence[Probe]` directly. Construct the probe instance in-test and pass it to `gather()` — no `@register_probe` call, no teardown dance. The fixture yields the probe class, NOT a registry registration.
 - **Why it matters:** Future stories that want to wire an ad-hoc probe alongside production probes for an integration test should follow the same pattern. Escalating to S1-08 for an unregister surface is the WRONG resolution — registry mutation across tests is structurally fragile (see S5-05's `clean_freshness_registry` precedent: snapshot + restore is the only safe pattern, and it's per-singleton).
+
+## S6-01 — `Probe.version` is load-bearing even though it's not on the frozen ABC
+
+- **Symptom:** New `SkillsIndexProbe` shipped with all 22 ACs green at the unit level, but 45 integration / CLI / cache / smoke tests crashed at gather-dispatch time with `AttributeError("'SkillsIndexProbe' object has no attribute 'version'")`. The story prescribed `name`, `layer`, `tier`, `applies_to_*`, `requires`, `timeout_seconds` and never named `version`.
+- **Fix:** Add `version: str = "0.1.0"` as a class attribute on every new probe. Every existing probe in `layer_b/` and `layer_c/` already carries it; the registry docstring explicitly admits it as "a *convention*, not part of the frozen ABC". The cache-key construction in the coordinator reads it.
+- **Why it matters:** Future Layer-D / Layer-E / Layer-G probes will hit this trap if the story author doesn't include `version` in the class-attribute checklist. Validators should include "every Probe subclass carries `version: str`" in their consistency critic. Cheapest signal: grep the closest sibling for `version: str = ` and copy.
+
+## S6-01 — AC-style source-grep interdicts catch docstring text too
+
+- **Symptom:** AC-11 used `inspect.getsource(si)` and asserted no occurrence of `os.open`, `os.read`, `.read_bytes`, `.read_text`, `.open(` anywhere. First GREEN landed with a helper docstring that contained "AC-11's source-grep interdict… does not contain `os.open` etc." — the substring matched the prose, not a real call, but the test failed identically.
+- **Fix:** When a story has a substring interdict over a module's source, prose docstrings in that module must use synonyms ("opendir/readdir", "no file-opening primitives") rather than literal forbidden tokens. Reword on first failure rather than weakening the assertion.
+- **Why it matters:** The substring interdict is intentionally aggressive — a comment saying "TODO: add `os.open` here" should fail the test just as loudly as the call itself. The reword cost is one-line; it preserves the architectural property.
+
+## S6-01 — "Defer dependency to a future story" collides with hard runtime ACs
+
+- **Symptom:** Story Implementation Outline §3 named two options for the JSON-Schema: ship a placeholder OR leave it for S6-08. The outline marked "leave to S6-08" as "preferred". But AC-19 was a hard runtime test (`importlib.resources.files(...).read_text()` → `jsonschema.validate`), so deferring meant AC-19 would fail and the story could not reach `Status: Done`.
+- **Fix:** Ship the dependency in the current PR when the AC needs it at runtime. Flag the choice in the attempt log under "Surprises during implementation". Future schema refinement can happen in S6-08 without breaking anything (the test will continue to pass against the refined schema as long as the slice's required fields stay populated).
+- **Why it matters:** A story's "outline-level preference" and an AC's "runtime test" can disagree; the AC wins. The executor should not interpret "preferred deferred" as a license to skip the AC. The right framing: ship the minimum that makes every AC green; future stories own the refinement.

@@ -39,6 +39,9 @@ from codegenie.probes.layer_c import (
     runtime_trace,  # noqa: F401 — S5-02 registration
     shell_usage,  # noqa: F401 — S5-03 registration
 )
+from codegenie.probes.layer_d import (
+    skills_index,  # noqa: F401 — S6-01 registration
+)
 
 __all__ = [
     "base",
@@ -60,6 +63,7 @@ __all__ = [
     "scip_index",
     "semantic_index_meta",
     "shell_usage",
+    "skills_index",
     "test_inventory",
     "tree_sitter_import_graph",
 ]
