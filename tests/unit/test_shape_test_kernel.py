@@ -44,7 +44,7 @@ def test_kernel_all_matches_documented_contract() -> None:
     missing = _EXPECTED_EXPORTS - actual
     assert not extra and not missing, (
         f"extras: {sorted(extra)}; missing: {sorted(missing)}. "
-        f"Update tests/unit/test_fixture_shape_kernel.py if the kernel's export "
+        f"Update tests/unit/test_shape_test_kernel.py if the kernel's export "
         f"contract changed deliberately."
     )
 

@@ -31,6 +31,7 @@ from tests.fixtures._shape_test_kernel import (
     assert_file_line_endings,
     assert_file_parses,
     assert_readme_references_every_spec,
+    assert_tree_is_closed_set,
 )
 
 _FIXTURE = Path(__file__).parent.parent / "fixtures" / "node_typescript_helm"
@@ -220,39 +221,19 @@ def test_no_forbidden_subpaths(forbidden: str) -> None:
     )
 
 
-# --- AC-14: closed-set complement ------------------------------------------------
-
-_FIXTURE_NOISE_NAMES = frozenset({"__pycache__", ".pytest_cache", ".DS_Store"})
-
-
-def _enumerate_via_rglob(root: Path) -> set[str]:
-    """Phase-1 closed-set kept rglob-based (not yet on `git ls-files`).
-
-    Phase-1's S2-03 used rglob-minus-noise; the S7-02 attempt log
-    documents this as a follow-up for a future unification with the
-    `git ls-files` port. Not in S7-02's scope.
-    """
-    out: set[str] = set()
-    for p in root.rglob("*"):
-        if p.is_dir():
-            continue
-        parts = p.relative_to(root).parts
-        if any(part in _FIXTURE_NOISE_NAMES or part.startswith(".pytest") for part in parts):
-            continue
-        out.add(str(p.relative_to(root)))
-    return out
+# --- AC-14: closed-set complement (via the kernel's git ls-files port) ----------
 
 
 def test_fixture_tree_is_closed_set() -> None:
     """AC-14 — REQUIRED_FILES is exhaustive. A stray file fails before it can
-    dirty the S6-01 golden silently."""
-    expected = {spec.relpath for spec in _FILE_SPECS}
-    actual = _enumerate_via_rglob(_FIXTURE)
-    extra = actual - expected
-    missing = expected - actual
-    assert not extra and not missing, (
-        f"extra files: {sorted(extra)}; missing files: {sorted(missing)}"
-    )
+    dirty the S6-01 golden silently.
+
+    Migrated from rglob-minus-noise to the kernel's ``enumerate_tracked``
+    port (single ``git ls-files -z`` call site) per the S7-02 follow-up.
+    Behavior is equivalent (this fixture has no gitignored content), but
+    the migration unifies all six shape-test consumers on the same port.
+    """
+    assert_tree_is_closed_set(_FIXTURE, _FILE_SPECS)
 
 
 # --- AC-17: README references every spec.relpath + every consumer ----------------

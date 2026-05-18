@@ -10,7 +10,7 @@ conclusively past — five Phase-2 portfolio fixtures plus Phase-1's
 - :data:`_ProbeName` — closed ``Literal[...]`` listing every Phase-1 +
   Phase-2 probe name; consumers' tuples must be a subset (mypy --strict
   catches typos; the runtime subset-semantics check in
-  ``tests/unit/test_fixture_shape_kernel.py`` catches probe renames /
+  ``tests/unit/test_shape_test_kernel.py`` catches probe renames /
   additions whose names don't make it into the Literal).
 - :data:`_ParserKind` — closed ``Literal`` admitting only the four
   parsers Phase 2 honors (``safe_json``, ``safe_yaml``, ``jsonc``,

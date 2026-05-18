@@ -8,11 +8,36 @@ the no-cache mutant.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 
 from codegenie.errors import ProbeError
 from codegenie.probes.base import Probe
 from codegenie.probes.registry import Registry, default_registry, register_probe
+
+
+@pytest.fixture
+def restore_default_registry() -> Generator[None, None, None]:
+    """Snapshot ``default_registry`` state; restore on teardown.
+
+    The decorator-roundtrip test registers a probe (``fake_one``) into
+    the module-level ``default_registry``. Without this fixture the
+    probe leaks into every subsequent test in the same pytest session
+    (registry is a process-wide singleton), polluting checks like the
+    shape-test kernel's `registered ⊆ _ProbeName Literal` subset
+    assertion.
+
+    Snapshots ``_entries`` (shallow copy of the entry list — entries are
+    immutable namedtuples) and ``_counter`` (int).
+    """
+    snapshot_entries = list(default_registry._entries)
+    snapshot_counter = default_registry._counter
+    try:
+        yield
+    finally:
+        default_registry._entries[:] = snapshot_entries
+        default_registry._counter = snapshot_counter
 
 
 def _make_probe(
@@ -38,8 +63,14 @@ def _make_probe(
     return _P
 
 
-def test_register_probe_decorator_adds_to_default_registry_and_returns_class() -> None:
-    """`register_probe(cls) is cls` — catches the `return None` mutant."""
+def test_register_probe_decorator_adds_to_default_registry_and_returns_class(
+    restore_default_registry: None,
+) -> None:
+    """`register_probe(cls) is cls` — catches the `return None` mutant.
+
+    Uses the ``restore_default_registry`` fixture so ``FakeProbe`` does
+    not leak into other tests' view of ``default_registry``.
+    """
 
     @register_probe
     class FakeProbe(Probe):
