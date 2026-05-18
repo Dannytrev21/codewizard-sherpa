@@ -133,6 +133,17 @@ include = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+# S7-01 — pre-commit's `identify` library classifies `.gyp` files as
+# Python (they share Python-like grammar), so ruff parses them by
+# default and trips B018 ("useless expression") on the bare-dict body
+# of `tests/fixtures/portfolio/native-modules/binding.gyp`. The file
+# is RFC-8259 JSON, NOT Python — exclude it from ruff. Future
+# `binding.gyp` fixtures inherit this exclusion via the glob.
+# `force-exclude = true` makes the exclusion apply even when ruff is
+# invoked with the file path explicitly (pre-commit's invocation
+# pattern).
+extend-exclude = ["**/binding.gyp"]
+force-exclude = true
 
 [tool.ruff.lint]
 # Minimum viable rule set — later phases extend by addition.
