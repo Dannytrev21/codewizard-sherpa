@@ -50,7 +50,7 @@ from typing import Annotated, Final, Literal, cast
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from codegenie.errors import MalformedYAMLError
+from codegenie.errors import DepthCapExceeded, MalformedYAMLError, SizeCapExceeded
 from codegenie.hashing import content_hash_fd
 from codegenie.parsers import safe_yaml
 from codegenie.result import Err, Ok, Result
@@ -338,7 +338,10 @@ def _load_one_skill(path: Path) -> Result[Skill, SkillsLoadError]:
             tf.write(frontmatter_bytes)
         try:
             data = safe_yaml.load(tmp_path, max_bytes=_FRONTMATTER_YAML_CAP)
-        except MalformedYAMLError:
+        except (MalformedYAMLError, SizeCapExceeded, DepthCapExceeded):
+            # S7-04 (adversarial corpus) — oversized and deeply-nested
+            # frontmatter is hostile YAML; collapse into UnsafeYaml so the
+            # loader's closed reason set continues to cover the surface.
             return Err(error=UnsafeYaml(path=path))
     finally:
         tmp_path.unlink(missing_ok=True)

@@ -1,7 +1,7 @@
 # Story S7-04 — Adversarial corpus: hostile-skills + concurrent-gather + no-inmemory-leak + phase3-handoff-skipped
 
 **Step:** Step 7 — Plant five-repo fixture portfolio + per-probe golden files + remaining adversarial corpus
-**Status:** HARDENED (validated 2026-05-18)
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S7-04.md`](_attempts/S7-04.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S7-03 (~70 goldens exist on disk; regen script proven byte-deterministic across two runs — the adversarial corpus exercises code paths that touch the same writer chokepoint the goldens audit)
 **ADRs honored:** ADR-0005 (no plaintext persisted — `test_no_inmemory_secret_leak.py` is the type-level "redactor was called" boundary proof), ADR-0006 (`IndexFreshness` location — `test_phase3_handoff_smoke.py` references the Protocol contract that 02-ADR-0006/02-ADR-0007 lock), ADR-0007 (no plugin loader in Phase 2 — `test_phase3_handoff_smoke.py` is grep-discoverable so Phase 3's author finds it on first repo scan), ADR-0009 (pytest-xdist veto — `test_concurrent_gather_race.py` uses `subprocess.Popen` for two-process concurrency, NOT pytest-level parallelism), ADR-0010 (`RedactedSlice` smart constructor — the no-inmemory-leak test verifies the smart-constructor invariant via AST).
