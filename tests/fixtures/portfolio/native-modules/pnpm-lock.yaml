@@ -1,0 +1,16 @@
+lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+dependencies:
+  bcrypt:
+    specifier: 5.1.0
+    version: 5.1.0
+
+packages:
+  /bcrypt@5.1.0:
+    resolution: {integrity: sha512-placeholder-hand-authored-pin-for-native-modules-fixture}
+    requiresBuild: true
+    dev: false

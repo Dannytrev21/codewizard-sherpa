@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minimal-ts
+version: "0.0.1"
+description: Phase-2 minimal-ts fixture chart — smallest Helm shape consumed by DeploymentProbe.
+type: application
+appVersion: "0.0.1"

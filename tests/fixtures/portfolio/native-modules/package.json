@@ -1,0 +1,10 @@
+{
+  "name": "native-modules-fixture",
+  "version": "0.0.1",
+  "dependencies": {
+    "bcrypt": "5.1.0"
+  },
+  "scripts": {
+    "install": "node-gyp rebuild"
+  }
+}

@@ -1,0 +1,4 @@
+.codegenie/
+built-image.digest
+*.tar
+*.tar.gz

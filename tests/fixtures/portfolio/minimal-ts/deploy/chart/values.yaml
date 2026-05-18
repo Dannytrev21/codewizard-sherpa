@@ -1,0 +1,10 @@
+image:
+  repository: ghcr.io/example/minimal-ts
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
