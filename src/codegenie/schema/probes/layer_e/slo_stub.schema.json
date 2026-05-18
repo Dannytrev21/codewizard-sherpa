@@ -1,0 +1,24 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_e/slo_stub/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer E slice produced by the slo_stub probe. Generated from codegenie.probes.layer_e.slo_stub.NotOptedInSloSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "opted_in": {
+      "const": false,
+      "title": "Opted In",
+      "type": "boolean"
+    },
+    "reason": {
+      "const": "phase_9_or_later",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "opted_in",
+    "reason"
+  ],
+  "title": "NotOptedInSloSlice (slo_stub)",
+  "type": "object"
+}

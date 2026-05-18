@@ -1,7 +1,7 @@
 # Story S6-08 — `TestCoverageMapping` + Layer D/E/G sub-schemas + freshness registrations
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S6-08.md`](_attempts/S6-08.md) for the per-AC evidence table + gate log)
 **Effort:** M
 
 ## Validation notes

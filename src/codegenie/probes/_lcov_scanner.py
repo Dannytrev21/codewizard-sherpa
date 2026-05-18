@@ -41,7 +41,7 @@ from typing import Final, NamedTuple
 
 from codegenie.parsers._io import open_capped
 
-__all__ = ["LcovTotals", "scan"]
+__all__ = ["LcovRecord", "LcovTotals", "scan", "scan_records"]
 
 
 class LcovTotals(NamedTuple):
@@ -53,6 +53,27 @@ class LcovTotals(NamedTuple):
     functions_hit: int
     branches_found: int
     branches_hit: int
+
+
+class LcovRecord(NamedTuple):
+    """Per-record projection: source file + the ordered set of lines hit.
+
+    Added by S6-08 for ``TestCoverageMappingProbe`` (the second consumer of
+    the lcov state machine after the Phase-1 ``TestInventoryProbe``). The
+    summed-totals API (:func:`scan`) is unaffected — both APIs share the
+    no-regex ``_LCOV_PREFIX_MAP`` prefix dispatch + the ``open_capped``
+    chokepoint.
+
+    ``test_file`` is currently always ``None``: lcov dialects do not encode
+    per-test attribution at the SF/DA level (Phase-3's
+    ``TestInventoryAdapter`` will project per-line attribution against this
+    raw evidence). ``lines_covered`` lists only lines with non-zero hit
+    counts; zero-hit ``DA:`` rows are excluded.
+    """
+
+    test_file: str | None
+    source_file: str
+    lines_covered: tuple[int, ...]
 
 
 # Closed dispatch table: prefix → ``LcovTotals`` field name. Adding a future
@@ -118,3 +139,78 @@ def scan(path: Path, *, max_bytes: int | None = None) -> LcovTotals:
         branches_found=accumulator["branches_found"],
         branches_hit=accumulator["branches_hit"],
     )
+
+
+def scan_records(path: Path, *, max_bytes: int | None = None) -> tuple[LcovRecord, ...]:
+    """Scan ``coverage/lcov.info`` returning per-source :class:`LcovRecord`s.
+
+    Additive companion to :func:`scan` (S6-08). Both share the
+    ``open_capped`` chokepoint + the no-regex prefix dispatch; only the
+    per-line state machine differs (this function tracks ``SF:`` /
+    ``DA:`` / ``end_of_record`` rather than summing six counters).
+
+    A record is emitted at every ``end_of_record`` boundary AND for any
+    open ``SF:`` block that reaches EOF without an explicit terminator —
+    the latter is the dominant shape lcov producers emit when the test
+    suite is killed mid-write.
+
+    Lines with non-positive hit counts are excluded from
+    ``lines_covered`` (uncovered lines are not coverage facts). Unknown
+    prefixes are silently dropped (lcov-dialect tolerance). ``TN:``
+    test-name records are not yet wired into ``LcovRecord.test_file``
+    because the per-test mapping is a Phase-3 concern; the field stays
+    in the signature so a future ``TN:`` extractor lands without an
+    API change.
+    """
+    effective_cap = _LCOV_MAX_BYTES if max_bytes is None else max_bytes
+    body = open_capped(path, max_bytes=effective_cap, parser_kind="lcov")
+    text = body.decode("utf-8", errors="replace")
+    records: list[LcovRecord] = []
+    current_source: str | None = None
+    current_lines: list[int] = []
+    for line in text.splitlines():
+        if line.startswith("SF:"):
+            if current_source is not None:
+                records.append(
+                    LcovRecord(
+                        test_file=None,
+                        source_file=current_source,
+                        lines_covered=tuple(current_lines),
+                    )
+                )
+            current_source = line[len("SF:") :]
+            current_lines = []
+            continue
+        if line.startswith("DA:"):
+            payload = line[len("DA:") :]
+            comma = payload.find(",")
+            if comma == -1:
+                raise ValueError(f"truncated DA: row: {line!r}")
+            try:
+                lineno = int(payload[:comma])
+                hits = int(payload[comma + 1 :])
+            except ValueError as exc:
+                raise ValueError(f"malformed DA: row: {line!r}") from exc
+            if hits > 0 and current_source is not None:
+                current_lines.append(lineno)
+            continue
+        if line.startswith("end_of_record"):
+            if current_source is not None:
+                records.append(
+                    LcovRecord(
+                        test_file=None,
+                        source_file=current_source,
+                        lines_covered=tuple(current_lines),
+                    )
+                )
+                current_source = None
+                current_lines = []
+    if current_source is not None:
+        records.append(
+            LcovRecord(
+                test_file=None,
+                source_file=current_source,
+                lines_covered=tuple(current_lines),
+            )
+        )
+    return tuple(records)

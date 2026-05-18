@@ -1,0 +1,54 @@
+{
+  "$defs": {
+    "PolicyRepoRef": {
+      "additionalProperties": false,
+      "properties": {
+        "exists_on_disk": {
+          "title": "Exists On Disk",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "type",
+        "exists_on_disk"
+      ],
+      "title": "PolicyRepoRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/policy/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the policy probe. Generated from codegenie.probes.layer_d.policy.PolicySlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    },
+    "policy_repos": {
+      "items": {
+        "$ref": "#/$defs/PolicyRepoRef"
+      },
+      "title": "Policy Repos",
+      "type": "array"
+    }
+  },
+  "required": [
+    "policy_repos",
+    "per_file_errors"
+  ],
+  "title": "PolicySlice (policy)",
+  "type": "object"
+}

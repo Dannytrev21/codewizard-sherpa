@@ -1,0 +1,332 @@
+{
+  "$defs": {
+    "CatalogFileUnreadable": {
+      "additionalProperties": false,
+      "properties": {
+        "errno_name": {
+          "title": "Errno Name",
+          "type": "string"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "catalog_file_unreadable",
+          "default": "catalog_file_unreadable",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "errno_name"
+      ],
+      "title": "CatalogFileUnreadable",
+      "type": "object"
+    },
+    "DepthCapExceeded": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "depth_cap_exceeded",
+          "default": "depth_cap_exceeded",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "DepthCapExceeded",
+      "type": "object"
+    },
+    "Fail": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "title": "Evidence",
+          "type": "string"
+        },
+        "kind": {
+          "const": "fail",
+          "default": "fail",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "evidence"
+      ],
+      "title": "Fail",
+      "type": "object"
+    },
+    "NotApplicable": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "not_applicable",
+          "default": "not_applicable",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "reason"
+      ],
+      "title": "NotApplicable",
+      "type": "object"
+    },
+    "Pass": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "pass",
+          "default": "pass",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id"
+      ],
+      "title": "Pass",
+      "type": "object"
+    },
+    "SchemaError": {
+      "additionalProperties": false,
+      "properties": {
+        "details": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Details",
+          "type": "array"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "schema",
+          "default": "schema",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "details"
+      ],
+      "title": "SchemaError",
+      "type": "object"
+    },
+    "SizeCapExceeded": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "size_cap_exceeded",
+          "default": "size_cap_exceeded",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "SizeCapExceeded",
+      "type": "object"
+    },
+    "SymlinkRefused": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "symlink_refused",
+          "default": "symlink_refused",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "SymlinkRefused",
+      "type": "object"
+    },
+    "UnknownPatternType": {
+      "additionalProperties": false,
+      "properties": {
+        "offending_kind": {
+          "title": "Offending Kind",
+          "type": "string"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "unknown_pattern_type",
+          "default": "unknown_pattern_type",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "offending_kind"
+      ],
+      "title": "UnknownPatternType",
+      "type": "object"
+    },
+    "UnsafeYaml": {
+      "additionalProperties": false,
+      "description": "Umbrella for every ``MalformedYAMLError`` cause.\n\nA YAML parse failure can be a hostile ``!!python/object`` constructor\nexploit, a syntactic ``ParserError``, a ``ScannerError``, or a\ntop-level-non-mapping. ``safe_yaml.load`` fuses all of these into a\nsingle :class:`MalformedYAMLError`; the operational response is the\nsame (inspect the file before re-running), so the umbrella naming\nmatches the response (S2-01 convention; story \u00a7\"Validation notes\" B6).",
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "const": "unsafe_yaml",
+          "default": "unsafe_yaml",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "UnsafeYaml",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/conventions/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the conventions probe. Generated from codegenie.probes.layer_d.conventions.ConventionsSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "catalog_paths_resolved": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Catalog Paths Resolved",
+      "type": "array"
+    },
+    "per_file_errors": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "catalog_file_unreadable": "#/$defs/CatalogFileUnreadable",
+            "depth_cap_exceeded": "#/$defs/DepthCapExceeded",
+            "schema": "#/$defs/SchemaError",
+            "size_cap_exceeded": "#/$defs/SizeCapExceeded",
+            "symlink_refused": "#/$defs/SymlinkRefused",
+            "unknown_pattern_type": "#/$defs/UnknownPatternType",
+            "unsafe_yaml": "#/$defs/UnsafeYaml"
+          },
+          "propertyName": "reason"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/UnknownPatternType"
+          },
+          {
+            "$ref": "#/$defs/SchemaError"
+          },
+          {
+            "$ref": "#/$defs/SymlinkRefused"
+          },
+          {
+            "$ref": "#/$defs/UnsafeYaml"
+          },
+          {
+            "$ref": "#/$defs/SizeCapExceeded"
+          },
+          {
+            "$ref": "#/$defs/DepthCapExceeded"
+          },
+          {
+            "$ref": "#/$defs/CatalogFileUnreadable"
+          }
+        ]
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    },
+    "results": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "fail": "#/$defs/Fail",
+            "not_applicable": "#/$defs/NotApplicable",
+            "pass": "#/$defs/Pass"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Pass"
+          },
+          {
+            "$ref": "#/$defs/Fail"
+          },
+          {
+            "$ref": "#/$defs/NotApplicable"
+          }
+        ]
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "rules_checked": {
+      "title": "Rules Checked",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "results",
+    "catalog_paths_resolved",
+    "per_file_errors",
+    "rules_checked"
+  ],
+  "title": "ConventionsSlice (conventions)",
+  "type": "object"
+}

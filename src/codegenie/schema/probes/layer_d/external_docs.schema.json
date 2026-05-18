@@ -1,0 +1,24 @@
+{
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/external_docs/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the external_docs probe. Generated from codegenie.probes.layer_d.external_docs.NotOptedInExternalDocsSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "opted_in": {
+      "const": false,
+      "title": "Opted In",
+      "type": "boolean"
+    },
+    "reason": {
+      "const": "not_opted_in",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "opted_in",
+    "reason"
+  ],
+  "title": "NotOptedInExternalDocsSlice (external_docs)",
+  "type": "object"
+}

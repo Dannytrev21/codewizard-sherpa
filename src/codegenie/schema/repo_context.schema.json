@@ -87,7 +87,52 @@
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/certificate/v0.1.0.json"
         },
         "skills_index": {
-          "$ref": "https://codewizard-sherpa.dev/schemas/probes/skills_index/v0.1.0.json"
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/skills_index/v0.1.0.json"
+        },
+        "conventions": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/conventions/v0.1.0.json"
+        },
+        "adrs": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/adrs/v0.1.0.json"
+        },
+        "repo_notes": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/repo_notes/v0.1.0.json"
+        },
+        "repo_config": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/repo_config/v0.1.0.json"
+        },
+        "policy": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/policy/v0.1.0.json"
+        },
+        "exceptions": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/exceptions/v0.1.0.json"
+        },
+        "external_docs": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/external_docs/v0.1.0.json"
+        },
+        "ownership": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_e/ownership/v0.1.0.json"
+        },
+        "service_topology_stub": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_e/service_topology_stub/v0.1.0.json"
+        },
+        "slo_stub": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_e/slo_stub/v0.1.0.json"
+        },
+        "semgrep": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_g/semgrep/v0.1.0.json"
+        },
+        "ast_grep": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_g/ast_grep/v0.1.0.json"
+        },
+        "ripgrep_curated": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_g/ripgrep_curated/v0.1.0.json"
+        },
+        "gitleaks": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_g/gitleaks/v0.1.0.json"
+        },
+        "test_coverage_mapping": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_g/test_coverage_mapping/v0.1.0.json"
         }
       }
     }

@@ -1,0 +1,94 @@
+{
+  "$defs": {
+    "IndexedSkill": {
+      "additionalProperties": false,
+      "description": "One row in the skills index \u2014 anchors only, never body bytes.\n\nNewtypes preserved end-to-end (ADR-0033 \u00a71 primitive-obsession): a\n``TaskClassId`` cannot be accidentally passed where a ``Language`` is\nexpected, and the Planner consumer gets the same ``mypy --strict``\nprotection the loader does.",
+      "properties": {
+        "applies_to_languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Applies To Languages",
+          "type": "array"
+        },
+        "applies_to_tasks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Applies To Tasks",
+          "type": "array"
+        },
+        "body_blake3": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "title": "Body Blake3",
+          "type": "string"
+        },
+        "body_offset": {
+          "minimum": 0,
+          "title": "Body Offset",
+          "type": "integer"
+        },
+        "body_size": {
+          "minimum": 0,
+          "title": "Body Size",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "applies_to_tasks",
+        "applies_to_languages",
+        "body_offset",
+        "body_size",
+        "body_blake3"
+      ],
+      "title": "IndexedSkill",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/skills_index/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the skills_index probe. Generated from codegenie.probes.layer_d.skills_index.SkillsIndexSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    },
+    "skills": {
+      "items": {
+        "$ref": "#/$defs/IndexedSkill"
+      },
+      "title": "Skills",
+      "type": "array"
+    },
+    "tier_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "propertyNames": {
+        "enum": [
+          "user",
+          "repo",
+          "org"
+        ]
+      },
+      "title": "Tier Counts",
+      "type": "object"
+    }
+  },
+  "required": [
+    "skills",
+    "tier_counts",
+    "per_file_errors"
+  ],
+  "title": "SkillsIndexSlice (skills_index)",
+  "type": "object"
+}

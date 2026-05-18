@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "RepoConfigFile": {
+      "additionalProperties": false,
+      "properties": {
+        "body_byte_offset": {
+          "title": "Body Byte Offset",
+          "type": "integer"
+        },
+        "frontmatter_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Frontmatter Keys",
+          "type": "array"
+        },
+        "has_body": {
+          "title": "Has Body",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "frontmatter_keys",
+        "has_body",
+        "body_byte_offset"
+      ],
+      "title": "RepoConfigFile",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/repo_config/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the repo_config probe. Generated from codegenie.probes.layer_d.repo_config.RepoConfigSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "files": {
+      "items": {
+        "$ref": "#/$defs/RepoConfigFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "files",
+    "per_file_errors"
+  ],
+  "title": "RepoConfigSlice (repo_config)",
+  "type": "object"
+}

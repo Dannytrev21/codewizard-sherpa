@@ -59,6 +59,7 @@ from codegenie.probes.layer_g import (
     gitleaks,  # noqa: F401 — S6-07 registration
     ripgrep_curated,  # noqa: F401 — S6-06 registration
     semgrep,  # noqa: F401 — S6-06 registration
+    test_coverage_mapping,  # noqa: F401 — S6-08 registration
 )
 
 __all__ = [
@@ -96,6 +97,7 @@ __all__ = [
     "shell_usage",
     "skills_index",
     "slo_stub",
+    "test_coverage_mapping",
     "test_inventory",
     "tree_sitter_import_graph",
 ]

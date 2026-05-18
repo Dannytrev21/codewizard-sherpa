@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict
 from codegenie.errors import ProbeTimeoutError, ToolMissingError
 from codegenie.exec import ProcessResult, run_external_cli
 from codegenie.hashing import content_hash_bytes
+from codegenie.indices.freshness import IndexFreshness
+from codegenie.indices.registry import register_index_freshness_check
 from codegenie.output.paths import raw_dir
 from codegenie.probes._shared.scanner_outcome import (
     STDERR_TAIL_CAP_BYTES,
@@ -29,9 +31,10 @@ from codegenie.probes._shared.scanner_outcome import (
     ScannerRan,
     ScannerSkipped,
 )
+from codegenie.probes._shared.version_freshness import compare_versions
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.registry import register_probe
-from codegenie.types.identifiers import ProbeId
+from codegenie.types.identifiers import IndexName, ProbeId
 
 __all__ = ["GitleaksFinding", "GitleaksProbe", "GitleaksSlice"]
 
@@ -237,3 +240,9 @@ class GitleaksProbe(Probe):
             stdout=result.stdout,
             stderr_tail=_stderr_tail(result.stderr),
         )
+
+
+@register_index_freshness_check(IndexName("gitleaks"))
+def _gitleaks_freshness(slice_: dict[str, object], _head: str) -> IndexFreshness:
+    """S6-08 — Open/Closed registration in the owning module (not B2)."""
+    return compare_versions(slice_, "gitleaks", "rule_pack_version")

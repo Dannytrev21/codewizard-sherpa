@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "Adr": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "deprecated",
+            "superseded",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "path"
+      ],
+      "title": "Adr",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/adrs/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the adrs probe. Generated from codegenie.probes.layer_d.adrs.AdrsSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "adrs": {
+      "items": {
+        "$ref": "#/$defs/Adr"
+      },
+      "title": "Adrs",
+      "type": "array"
+    },
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    },
+    "scanned_locations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Scanned Locations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "adrs",
+    "scanned_locations",
+    "per_file_errors"
+  ],
+  "title": "AdrsSlice (adrs)",
+  "type": "object"
+}

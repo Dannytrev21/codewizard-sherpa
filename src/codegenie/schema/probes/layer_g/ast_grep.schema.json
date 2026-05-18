@@ -1,0 +1,263 @@
+{
+  "$defs": {
+    "AstGrepFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "line": {
+          "title": "Line",
+          "type": "integer"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule Id"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "message",
+        "rule_id"
+      ],
+      "title": "AstGrepFinding",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "Minimal scanner-output placeholder.\n\nThe full shape evolves with the consuming probes (S5-04 / S6-06 /\nS6-07): each scanner emits its own ``metadata`` payload (semgrep\nfindings carry rule IDs + paths; gitleaks emits secret detections;\ngrype emits CVE references). The base shape here is the smallest model\nthat satisfies round-trip identity + nested-type preservation through\n``ScannerRan.findings``.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "finding",
+          "default": "finding",
+          "title": "Kind",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JSONValue"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "metadata"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "JSONValue": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JSONValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JSONValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ScannerFailed": {
+      "additionalProperties": false,
+      "description": "The scanner executed but produced an error (non-zero exit or invalid\nJSON stdout). ``stderr_tail`` is capped at construction by a\n``field_validator`` so the per-outcome envelope contribution is bounded\nregardless of upstream behavior.\n\nThe optional ``reason`` field distinguishes structurally-different\nfailure shapes inside the ``failed`` discriminator (e.g.\n``\"invalid_json\"`` for malformed stdout, ``\"sbom_artifact_missing\"``\nfor a CveProbe upstream-file gap). It defaults to ``None`` so the\nPhase-2 S5-01 baseline (``exit_code``/``stderr_tail`` only) remains\nvalid; new variants are an additive extension, not a breaking\nrename.",
+      "properties": {
+        "exit_code": {
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "failed",
+          "default": "failed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "invalid_json",
+                "sbom_artifact_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "stderr_tail": {
+          "title": "Stderr Tail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stderr_tail"
+      ],
+      "title": "ScannerFailed",
+      "type": "object"
+    },
+    "ScannerRan": {
+      "additionalProperties": false,
+      "description": "The scanner executed; ``findings`` carries the typed payload (possibly\nempty).",
+      "properties": {
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "kind": {
+          "const": "ran",
+          "default": "ran",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "ScannerRan",
+      "type": "object"
+    },
+    "ScannerSkipped": {
+      "additionalProperties": false,
+      "description": "The scanner did not execute; the typed ``reason`` is one of a closed\nset. Adding a 4th reason requires an ADR amendment to ``02-ADR-0006``\n(or a follow-up ADR) \u2014 NOT a ``metadata: dict`` escape hatch.",
+      "properties": {
+        "kind": {
+          "const": "skipped",
+          "default": "skipped",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "tool_missing",
+            "tool_unhealthy",
+            "upstream_unavailable"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "ScannerSkipped",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_g/ast_grep/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer G slice produced by the ast_grep probe. The slice carries a single required key 'ast_grep' whose value is the typed AstGrepSlice; generated from codegenie.probes.layer_g.ast_grep.AstGrepSlice by scripts/regen_subschemas.py.",
+  "properties": {
+    "ast_grep": {
+      "additionalProperties": false,
+      "properties": {
+        "findings_detail": {
+          "items": {
+            "$ref": "#/$defs/AstGrepFinding"
+          },
+          "title": "Findings Detail",
+          "type": "array"
+        },
+        "outcome": {
+          "discriminator": {
+            "mapping": {
+              "failed": "#/$defs/ScannerFailed",
+              "ran": "#/$defs/ScannerRan",
+              "skipped": "#/$defs/ScannerSkipped"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ScannerRan"
+            },
+            {
+              "$ref": "#/$defs/ScannerSkipped"
+            },
+            {
+              "$ref": "#/$defs/ScannerFailed"
+            }
+          ],
+          "title": "Outcome"
+        },
+        "rules_run": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rules Run"
+        }
+      },
+      "required": [
+        "outcome",
+        "findings_detail",
+        "rules_run"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "ast_grep"
+  ],
+  "title": "AstGrepSlice (ast_grep) \u2014 Layer G envelope wrap",
+  "type": "object"
+}

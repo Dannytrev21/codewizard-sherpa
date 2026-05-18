@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "OwnershipEntry": {
+      "additionalProperties": false,
+      "description": "One parsed CODEOWNERS line.",
+      "properties": {
+        "line_number": {
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "owners": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Owners",
+          "type": "array"
+        },
+        "pattern": {
+          "title": "Pattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "owners",
+        "line_number"
+      ],
+      "title": "OwnershipEntry",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_e/ownership/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer E slice produced by the ownership probe. Generated from codegenie.probes.layer_e.ownership.OwnershipSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/OwnershipEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "source_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Source Path"
+    }
+  },
+  "required": [
+    "source_path",
+    "entries"
+  ],
+  "title": "OwnershipSlice (ownership)",
+  "type": "object"
+}

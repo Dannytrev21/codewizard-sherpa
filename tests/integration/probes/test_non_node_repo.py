@@ -142,6 +142,9 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         "cve",
         "ownership",
         "gitleaks",  # Phase 2 S6-07 — Layer G secret scanner; universal.
+        # Phase 2 S6-08 — Layer G coverage mapping; universal (no coverage
+        # artifact → emits ScannerSkipped(reason="upstream_unavailable")).
+        "test_coverage_mapping",
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "

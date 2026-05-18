@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "ExceptionEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "approver": {
+          "title": "Approver",
+          "type": "string"
+        },
+        "expires": {
+          "format": "date",
+          "title": "Expires",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "repo_glob": {
+          "title": "Repo Glob",
+          "type": "string"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo_glob",
+        "task",
+        "reason",
+        "expires",
+        "approver"
+      ],
+      "title": "ExceptionEntry",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/exceptions/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the exceptions probe. Generated from codegenie.probes.layer_d.exceptions.ExceptionsSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "active": {
+      "items": {
+        "$ref": "#/$defs/ExceptionEntry"
+      },
+      "title": "Active",
+      "type": "array"
+    },
+    "expired": {
+      "items": {
+        "$ref": "#/$defs/ExceptionEntry"
+      },
+      "title": "Expired",
+      "type": "array"
+    },
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "active",
+    "expired",
+    "per_file_errors"
+  ],
+  "title": "ExceptionsSlice (exceptions)",
+  "type": "object"
+}

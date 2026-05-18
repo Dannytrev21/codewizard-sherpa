@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "NoteFile": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_count": {
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "headings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Headings",
+          "type": "array"
+        },
+        "last_modified": {
+          "title": "Last Modified",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "headings",
+        "byte_count",
+        "last_modified"
+      ],
+      "title": "NoteFile",
+      "type": "object"
+    }
+  },
+  "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/repo_notes/v0.1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 Layer D slice produced by the repo_notes probe. Generated from codegenie.probes.layer_d.repo_notes.RepoNotesSlice by scripts/regen_subschemas.py; the Pydantic model is the source of truth.",
+  "properties": {
+    "files": {
+      "items": {
+        "$ref": "#/$defs/NoteFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "notes_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Notes Dir"
+    },
+    "per_file_errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Per File Errors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "notes_dir",
+    "files",
+    "per_file_errors"
+  ],
+  "title": "RepoNotesSlice (repo_notes)",
+  "type": "object"
+}

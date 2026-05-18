@@ -41,8 +41,12 @@ from codegenie.errors import (
 from codegenie.errors import (
     SizeCapExceeded as SizeCapExceededError,
 )
+from codegenie.indices.freshness import IndexFreshness
+from codegenie.indices.registry import register_index_freshness_check
 from codegenie.parsers import safe_yaml
+from codegenie.probes._shared.version_freshness import compare_versions
 from codegenie.result import Err, Ok, Result
+from codegenie.types.identifiers import IndexName
 
 __all__ = [
     "CatalogFileUnreadable",
@@ -319,3 +323,9 @@ class ConventionsCatalogLoader:
             return _classify_validation_error(exc, catalog_path)
         merged_rules.extend(sub_catalog.rules)
         return None
+
+
+@register_index_freshness_check(IndexName("conventions"))
+def _conventions_freshness(slice_: dict[str, object], _head: str) -> IndexFreshness:
+    """S6-08 — Open/Closed registration in the owning module (not B2)."""
+    return compare_versions(slice_, "conventions", "catalog_version")
