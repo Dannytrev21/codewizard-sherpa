@@ -1,5 +1,7 @@
 # Context-Gathering Component Design
 
+> Historical background. This document explains the context-gathering lineage; it is not the current production roadmap authority. For current sequencing and accepted architecture, use [`roadmap.md`](roadmap.md) and [`production/design.md`](production/design.md).
+
 *The Layer 1 component for an autonomous code-change pipeline. AST + SCIP hybrid, language- and build-system-agnostic, supporting arbitrary company-specific uniqueness.*
 
 *Phase 1 target: Chainguard distroless container migration. Extensible to vulnerability remediation, language upgrades, and any other code-modification task.*

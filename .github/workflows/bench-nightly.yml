@@ -1,0 +1,67 @@
+# Nightly hosted-runner bench (S8-03 AC-10b/AC-10c — Gap 2 closer).
+#
+# The dev-laptop bench (`bench_portfolio_walltime.py`) measures wall-clock on
+# whatever-the-developer's-laptop-is. The hosted-runner bench emulates the
+# actual GitHub Actions `cpu_count() == 2` runner via the
+# `CODEGENIE_FORCE_CPU_COUNT=2` env-var threading through
+# `codegenie.coordinator._cpu_budget.effective_cpu_count()`. THIS bench
+# IS gating: regression ≥ 100 % OR p95 > 360 s = build failure.
+#
+# Cron is UTC (GitHub Actions convention): `0 4 * * *` == 04:00 UTC ==
+# 21:00 PT (prior day) == 06:00 CET. Document the timezone in the rendered
+# `Cron Schedule` log line so an operator in PT does not expect a 4:00 AM
+# PT run.
+name: bench-nightly
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: # operator-triggerable for ad-hoc re-runs
+
+permissions:
+  contents: read
+
+# Concurrency: one nightly run at a time; a manually-triggered dispatch
+# cancels any in-flight scheduled run on the same ref.
+concurrency:
+  group: bench-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hosted-runner-bench:
+    name: hosted-runner-bench
+    # ``ubuntu-24.04`` is pinned (NOT ``ubuntu-latest``) per AC-10c: a runner-
+    # image upgrade alone could cause a ≥ 100 % drift and silently red-flag
+    # the build. Pinning the image is load-bearing for the bench's stability.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # Emulate the standard hosted-runner CPU count regardless of the actual
+      # CPU count of the host this job lands on. The coordinator's
+      # ``effective_cpu_count()`` honors this on every gather() call.
+      CODEGENIE_FORCE_CPU_COUNT: "2"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Cron schedule (UTC)
+        run: |
+          echo "Nightly bench schedule: 0 4 * * * (UTC)"
+          echo "Local equivalents: 21:00 PT prior day, 06:00 CET, 04:00 UTC"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.11"
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Run hosted-runner bench - gating on regression and p95
+        # No ``continue-on-error`` — this bench gates the build on regression.
+        run: python tests/bench/bench_portfolio_walltime_hosted_runner.py
+      - name: Upload bench-results.json
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: bench-results-hosted-runner-nightly
+          path: bench-results.json
+          if-no-files-found: warn

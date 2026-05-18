@@ -1,5 +1,7 @@
 # Local Context-Gathering POC for Node.js Distroless Migration
 
+> Historical / POC context only. This document preserves the local gather contract and the original distroless-first framing; it is not the current production roadmap authority. For production sequencing, read [`roadmap.md`](roadmap.md) and [`production/design.md`](production/design.md).
+
 *A self-contained, locally-runnable POC of the context-gathering layer. Targets Node.js distroless container migration as the first task. Architected so adding new languages (Java, Scala, Python, Go) and new task types (vulnerability remediation, framework upgrades) is purely additive — new probes and skills, never rewrites.*
 
 *This is a local-dev tool. No MCP server, no service deployment, no remote infrastructure. Run it manually against a repo on disk; it produces files in that repo. Once the design is proven as a POC, it can be lifted into a service.*

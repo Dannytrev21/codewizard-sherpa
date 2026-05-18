@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-05-11
 **Tags:** task-class · sequencing · scope
-**Related:** ADR-0010, ADR-0011, ADR-0026
+**Related:** ADR-0010, ADR-0011, ADR-0026, ADR-0039
 
 ## Context
 
@@ -19,7 +19,7 @@ The original framing put Chainguard distroless migration first. After the produc
 
 ## Decision
 
-**Vulnerability remediation is introduced first** (roadmap Phase 3). **Chainguard distroless migration is introduced second** (roadmap Phase 7), and the introduction is itself the test that the probe / skill / recipe contracts extend without editing Phase 0–6 code. **Agentic recipe authoring is introduced third** (roadmap Phase 15), once enough solved examples exist to make the compounding-savings story real.
+**Vulnerability remediation is introduced first** (roadmap Phase 3). **Chainguard distroless migration is introduced second** (roadmap Phase 7), and the introduction is itself the test that existing plugins and stable behavior remain untouched while genuinely new cross-task primitives, if required, are added explicitly under ADR control. **Agentic recipe authoring is introduced third** (roadmap Phase 15), once enough solved examples exist to make the compounding-savings story real.
 
 ## Tradeoffs
 
@@ -28,12 +28,12 @@ The original framing put Chainguard distroless migration first. After the produc
 | Vuln remediation has the highest frequency in any portfolio — the system delivers value continuously instead of in big-bang migration batches | Distroless migration delivers more dramatic single-incident value; deferring it means leadership demos rely on cumulative CVE numbers rather than a "we migrated 50 services" headline |
 | Cost-per-CVE-eliminated (ADR-0026 headline ratio) becomes measurable at Phase 3, not Phase 7 — the ROI story lands earlier | The first migration PR isn't until Phase 7, so portfolio-shaped work is gated longer |
 | The contract surface is shaped by the highest-frequency case first, which is statistically the right thing to optimize for | When migration is added at Phase 7, anything in the contract that turned out to be too vuln-specific surfaces as a refactor demand |
-| Phase 7 doubles as an extension-by-addition test — if adding the second class requires edits to Phase 0–6 code, the contract was wrong and we fix it immediately, while the system is still small | One full task class worth of design lives behind a "we'll verify when we add the second class" gate |
+| Phase 7 doubles as an extension-by-addition test — if adding the second class requires edits to existing plugins or stable behavior, the contract was wrong and we fix it immediately, while the system is still small | One full task class worth of design lives behind a "we'll verify when we add the second class" gate |
 
 ## Consequences
 
 - The roadmap's Phase 3 is the first phase that ships a real transform, and it ships against vuln remediation, not migration.
-- Phase 7's exit criterion includes a non-trivial assertion: the diff for that phase touches *only* new files. No Phase 0–6 source code is modified. If that assertion fails, the contract is wrong and the fix is to refactor the contract — never to "just edit one Phase 0–6 line because it's easier."
+- Phase 7's exit criterion includes a non-trivial assertion: existing plugins and stable existing behavior remain untouched. A bounded additive core primitive is allowed only when Phase 7 reveals a genuinely new cross-task capability; that addition requires its own ADR and becomes part of the next stable contract surface. [ADR-0039](0039-extension-by-addition-allows-bounded-core-primitives.md) records the narrowed invariant.
 - Cost-per-CVE-eliminated (ADR-0026) carries the early ROI narrative; cost-per-merged-PR is meaningful from Phase 3 onward.
 - Any future task class (Python migrations, Java migrations, dependency-major upgrades) follows the same extension-by-addition pattern proven by Phase 7.
 - This ordering also implies the *third* task class — agentic recipe authoring — is something the system grows into rather than ships with. Until enough solved examples accumulate (the Stage 7 Learning loop feeds this), recipe authoring would just be writing recipes by hand under a fancier name.

@@ -41,6 +41,46 @@ LOCALV2_PATH = REPO_ROOT / "docs" / "localv2.md"
 SNAPSHOT_PATH = REPO_ROOT / "tests" / "snapshots" / "probe_contract.v1.json"
 SNAPSHOT_SCHEMA_VERSION = 1
 
+# S8-03 AC-11 — explicit allowlist for ``ProbeContext`` fields. Phase-0 base
+# ∪ Phase-1 amendments ∪ Phase-2's single allowed widening
+# (``image_digest_resolver`` per 02-ADR-0004). A third additive field raises
+# ``ValueError`` pointing at the ADR; the regen helper refuses to overwrite
+# the committed snapshot silently.
+_PROBE_CONTEXT_FIELD_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "cache_dir",
+        "output_dir",
+        "workspace",
+        "logger",
+        "config",
+        "parsed_manifest",
+        "input_snapshot",
+        "image_digest_resolver",
+    }
+)
+
+
+def _enforce_probe_context_allowlist(signature: dict[str, Any]) -> None:
+    """Raise ``ValueError`` if ``ProbeContext`` carries a field outside the allowlist.
+
+    Phase-2's ADR-0004 explicitly admitted ``image_digest_resolver`` as the one
+    widening; a third field must be motivated by an ADR amendment before the
+    contract changes. The error message names the offending field so the
+    contributor can locate the source.
+    """
+    pc = signature.get("ProbeContext")
+    if pc is None:  # ProbeContext not yet in the snapshot path (e.g. partial regen)
+        return
+    field_names = {f["name"] for f in pc.get("fields", [])}
+    unknown = field_names - _PROBE_CONTEXT_FIELD_ALLOWLIST
+    if unknown:
+        raise ValueError(
+            f"ProbeContext widening prohibited — see 02-ADR-0004; got unknown "
+            f"field(s) {sorted(unknown)}. To add a field, land an ADR amendment "
+            f"and extend _PROBE_CONTEXT_FIELD_ALLOWLIST in this script."
+        )
+
+
 _SECTION_4_HEADING = re.compile(r"^## 4\. The probe contract\s*$", re.MULTILINE)
 _NEXT_H2 = re.compile(r"^## ", re.MULTILINE)
 
@@ -219,8 +259,16 @@ def structural_signature(module: types.ModuleType) -> dict[str, Any]:
     return signature
 
 
-def main() -> int:
-    """Regenerate the on-disk snapshot. Returns POSIX exit code."""
+def _display_snapshot_path() -> str:
+    """Render SNAPSHOT_PATH relative to the repo root when possible."""
+    try:
+        return str(SNAPSHOT_PATH.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(SNAPSHOT_PATH)
+
+
+def _build_live_snapshot() -> dict[str, Any]:
+    """Materialize the live snapshot from the doc + module — pure (no IO out)."""
     src_root = REPO_ROOT / "src"
     if str(src_root) not in sys.path:
         sys.path.insert(0, str(src_root))
@@ -228,17 +276,48 @@ def main() -> int:
 
     md_text = LOCALV2_PATH.read_text(encoding="utf-8")
     body = extract_section_4_body(md_text)
-    snapshot: dict[str, Any] = {
+    signature = structural_signature(base)
+    _enforce_probe_context_allowlist(signature)
+    return {
         "snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
         "doc_fingerprint": normalize_and_hash(body),
-        "structural_signature": structural_signature(base),
+        "structural_signature": signature,
     }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Regenerate or check the on-disk snapshot. Returns POSIX exit code.
+
+    With ``--check`` (S8-03 AC-11 — the ``contract-freeze`` CI lane invokes
+    this form): builds the live snapshot but does NOT write it; instead
+    diffs against the committed JSON and returns 1 if they differ. The
+    diff is printed to stderr so a contributor can see exactly what would
+    have changed.
+    """
+    check_only = argv is not None and "--check" in argv
+    if argv is None:
+        check_only = "--check" in sys.argv[1:]
+
+    snapshot = _build_live_snapshot()
+    if check_only:
+        existing_text = SNAPSHOT_PATH.read_text(encoding="utf-8") if SNAPSHOT_PATH.exists() else ""
+        live_text = json.dumps(snapshot, indent=2, sort_keys=False) + "\n"
+        if existing_text != live_text:
+            sys.stderr.write(
+                f"probe-contract snapshot drift detected at "
+                f"{_display_snapshot_path()}.\n"
+                "Regenerate via `python scripts/regen_probe_contract_snapshot.py` "
+                "and inspect the diff before committing.\n"
+            )
+            return 1
+        sys.stdout.write(f"{_display_snapshot_path()} is up to date\n")
+        return 0
     SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
     SNAPSHOT_PATH.write_text(
         json.dumps(snapshot, indent=2, sort_keys=False) + "\n",
         encoding="utf-8",
     )
-    sys.stdout.write(f"wrote {SNAPSHOT_PATH.relative_to(REPO_ROOT)}\n")
+    sys.stdout.write(f"wrote {_display_snapshot_path()}\n")
     return 0
 
 

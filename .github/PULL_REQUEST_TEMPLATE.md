@@ -12,6 +12,10 @@
 
 <!-- e.g. ADR-0002 (LLM-in-gather fence), ADR-0007 (probe contract snapshot), ADR-0006 (pyproject extras shape) -->
 
+## Design lifecycle
+
+<!-- If this PR supersedes or makes provisional any design claim, state what changed, why the old claim no longer holds, and what evidence will promote or retire the new claim. -->
+
 ## Contract-frozen checklist
 
 The set of paths below is governed by `.github/CODEOWNERS` and reviewed
@@ -37,4 +41,5 @@ green on `main`'s HEAD before this PR is mergeable.
 
 - [ ] I have read `docs/contributing.md` and confirm this PR honors the conventions there (coverage ratchet, `[project.optional-dependencies]` extras shape, probe-version-bump rules).
 - [ ] If this PR touches any contract-frozen path above, I have either (a) filed an ADR amendment issue and linked it here, or (b) confirmed the change is mechanically derived from a runtime change documented in an existing accepted ADR.
+- [ ] If this PR supersedes an ADR or introduces a provisional decision, I added reciprocal supersession links or a concrete review trigger.
 - [ ] The CI matrix below is green: `lint`, `typecheck`, `test`, `security`, `docs`, `fence` on Python 3.11 and 3.12.

@@ -21,7 +21,19 @@ WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
 DOCS_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "docs.yml"
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 
-REQUIRED_JOBS = {"lint", "typecheck", "test", "security", "docs", "fence"}
+# Phase-0/1 jobs (legacy contract — must remain present after S8-03).
+_LEGACY_JOBS = {"lint", "typecheck", "test", "security", "docs", "fence"}
+# Phase-2 named lanes from `phase-arch-design.md §"CI gates"` (S8-03 AC-1).
+_PHASE2_JOBS = {
+    "contract-freeze",
+    "unit",
+    "integration",
+    "portfolio",
+    "adv-phase02",
+    "mypy",
+    "bench",
+}
+REQUIRED_JOBS = _LEGACY_JOBS | _PHASE2_JOBS
 ALLOWED_TRIGGERS = {"pull_request", "push", "workflow_dispatch"}
 SHA_PIN_RE = re.compile(r"^[A-Za-z0-9_./-]+@[0-9a-f]{40}$")
 
@@ -57,16 +69,17 @@ def test_ci_workflow_parses() -> None:
 
 
 def test_ci_workflow_declares_exactly_six_required_jobs() -> None:
-    # AC-1 set equality: extras AND missing both fail. If AC-12 Option B was
-    # chosen, `docs` lives in docs.yml; reflect that by allowing the relaxed
-    # five-job set against ci.yml when docs.yml exists with its own filter.
+    # S8-03 reshape: this test now asserts the *union* of the legacy six and the
+    # Phase-2 seven (minus `docs` when docs.yml owns it). The Phase-2 lanes are
+    # additive: ADR-0009 + arch §"CI gates". See tests/unit/ci/test_workflow_yaml.py
+    # for the per-lane invariants (subset / matrix / xdist veto / continue-on-error).
     jobs = set(_wf()["jobs"].keys())
     if DOCS_WORKFLOW.exists():
         # Option B: ci.yml MUST omit `docs` (docs.yml owns it).
         expected = REQUIRED_JOBS - {"docs"}
         assert jobs == expected, (
-            f"AC-1/AC-12 Option B: ci.yml jobs must be {expected} when docs.yml owns docs; "
-            f"got {jobs}"
+            f"AC-1/AC-12 Option B + S8-03 AC-1: ci.yml jobs must be {expected} "
+            f"when docs.yml owns docs; got {jobs}"
         )
     else:
         assert jobs == REQUIRED_JOBS, f"AC-1: jobs must be exactly {REQUIRED_JOBS}; got {jobs}"

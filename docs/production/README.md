@@ -18,7 +18,8 @@ Everything relevant to the production-target architecture of codewizard-sherpa l
 ## How to extend
 
 - **Adding a new architectural decision.** Write a new ADR in `adrs/`, numbered sequentially. Add an entry to [`adrs/README.md`](adrs/README.md). Reference the ADR from the relevant section of `design.md`. Do not bury new rationale inside the design doc — keep `design.md` focused on the *what*, push the *why* to ADRs.
-- **Reversing or refining an existing decision.** Create a new ADR with status `Supersedes ADR-NNNN`. Update the superseded ADR's status to `Superseded by ADR-MMMM` but keep the file — historical context matters.
+- **Reversing or refining an existing decision.** Create a new ADR with a `**Supersedes:** ADR-NNNN` line. Update the older ADR's status to `Superseded by ADR-MMMM`. Supersession is reciprocal; one-way links are incomplete history.
+- **Accepting a direction before all evidence exists.** Use `Provisional Accepted` only when the direction is already binding but a named review trigger remains. The ADR must state what changed, why the older claim no longer holds, and what evidence will promote or retire the provisional decision.
 - **Resolving a deferred decision.** When evidence arrives (e.g., post-launch metrics, spike results), update the deferred ADR's status to `Accepted`, fill in the chosen option, and record the evidence that resolved it. Add a "Resolution date" line.
 
 ## Background research (not in this folder)

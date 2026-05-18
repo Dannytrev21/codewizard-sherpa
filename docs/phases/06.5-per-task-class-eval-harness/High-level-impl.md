@@ -135,7 +135,7 @@ Sequencing follows three constraints. **Contracts before consumers** — `BenchS
 - [ ] Re-running the same task class with no source changes is a 100% cache hit (10/10 cases `cost_usd == 0.0`, wall-clock ≤ 8 s).
 - [ ] Whitespace edit to `rubric.py` invalidates all 10 cache entries; whitespace edit to one `case.toml` invalidates exactly that case.
 
-**Depends on:** Step 1–4 (the harness must run end-to-end). Phase 6's `build_vuln_loop` (the SUT) and Phase 4's cassette tree.
+**Depends on:** Step 1–4 (the harness must run end-to-end). Phase 6's stable `VulnRemediationSut` contract and Phase 4's cassette tree.
 
 **Effort:** L — 10 curated cases with cassette pins + ground-truth `expected/` artifacts is the longest-tail work in the phase; the held-out 5 require hand curation.
 

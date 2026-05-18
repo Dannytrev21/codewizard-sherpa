@@ -285,10 +285,10 @@ bench/                     # contract territory (CODEOWNERS-gated)
 
 End-to-end `codegenie eval run --task-class=vuln-remediation`:
 
-1. **CLI parse + lazy import.** `click` parses; `runner.run_eval` and `loader.load_task_class` imported on demand. Phase 6's `build_vuln_loop` is **not** imported here — only inside the `system_under_test` callable wired by the CLI.
+1. **CLI parse + lazy import.** `click` parses; `runner.run_eval` and `loader.load_task_class` imported on demand. Phase 6's concrete graph builder is **not** imported here — the CLI receives an injected `VulnRemediationSut`.
 2. **Loader.** `load_task_class("vuln-remediation")` prepends `bench/.resolve()` to `sys.path` once, then `importlib.import_module("vuln_remediation.registration")`. Decorator fires → `default_registry.register(TaskClass(...))` → `TaskClassAlreadyRegistered` on collision (loud crash). `load_cases(task_class)` walks `cases/*/case.toml`, parses with `tomllib`, validates via `BenchCase` Pydantic model. Sorted by `case_id`.
 3. **Runner.** `run_eval(...)` async; instantiates `SubprocessRubricRunner`. **For each case, in serial (concurrency=1):**
-   - `harness_output = await asyncio.wait_for(system_under_test(case), timeout=600.0)` — Phase 6's `build_vuln_loop().ainvoke(...)` with cassette replay; on `TimeoutError` or `Exception` → `BenchScore(passed=False, failure_modes=("timeout",) or ("harness_error: ...",))`.
+   - `harness_output = await asyncio.wait_for(system_under_test.run_case(case), timeout=600.0)` — Phase 6's stable `VulnRemediationSut` contract with cassette replay; on `TimeoutError` or `Exception` → `BenchScore(passed=False, failure_modes=("timeout",) or ("harness_error: ...",))`.
    - `score = await rubric_runner.run(rubric_path, case, harness_output, wall_clock_cap_seconds=60.0)` — subprocess spawn with `env={}, cwd=<tmpfs scratch>`; JSON I/O; Pydantic validates output (`extra="forbid"` + `score ∈ [0,1]`).
    - `cost_total += score.cost_usd`; if `cost_total > max_cost_usd`, cancel outstanding tasks, mark `BenchRunReport.aborted = True`, exit code 2.
    - Score logged as one JSONL line to stdout via structlog.
@@ -451,12 +451,12 @@ Per [roadmap.md §Phase 6.5](../../roadmap.md#phase-65--per-task-class-eval-harn
 | # | Criterion | Satisfied by |
 |---|---|---|
 | 1 | `src/codegenie/eval/` package exists; `@register_task_class`, `BenchScore`, harness runner, trust-tier promotion gate are unit-tested. | All Components above; `tests/unit/test_eval_*` |
-| 2 | `bench/vuln-remediation/cases/` ≥ 10 curated cases with provenance metadata; `rubric.py` scores the full set; aggregate `bench_score.mean` recorded as bronze→silver candidate (numeric value deferred to ADR-0015). | `bench/vuln-remediation/` directory contract + integration test `test_eval_end_to_end_vuln.py` |
+| 2 | `bench/vuln-remediation/cases/` ≥ 10 curated cases with provenance metadata; `rubric.py` scores the full set; aggregate `bench_score.lower_bound_95` recorded as bronze→silver candidate (numeric value deferred to ADR-0015). | `bench/vuln-remediation/` directory contract + integration test `test_eval_end_to_end_vuln.py` |
 | 3 | `bench/migration-chainguard-distroless/cases/` ≥ 3 seed cases + working `rubric.py`; Phase 7 inherits and expands. | `bench/migration-chainguard-distroless/` skeleton |
 | 4 | Fence-CI: PR adding `@register_task_class("foo")` without `bench/foo/{cases,rubric.py,registration.py}` fails with specific diagnostic. | `tests/unit/test_eval_fence.py` two-stage AST + dir-walk |
 | 5 | Trust-tier promotion gate wired but does not auto-promote. | `PromotionGate.evaluate` (read-only) + `apply()` raises unconditionally |
 | 6 | `codegenie eval run --task-class=vuln-remediation` exits 0 on backfilled bench, emits aggregate + per-case `BenchScore` to stdout (JSON) + `.codegenie/eval/runs/<utc-iso>-<short>.json`. | `cli.py` + `audit.py` + integration test |
-| 7 | Phase 7 can reference "`bench/migration-chainguard-distroless/cases/` ≥ 10 cases with `bench_score.mean ≥ tier_threshold[bronze]`" as hard precondition. | Threshold on `TaskClass.min_cases_for_promotion` + `PromotionGate` reads it |
+| 7 | Phase 7 can reference "`bench/migration-chainguard-distroless/cases/` ≥ 10 cases with `bench_score.lower_bound_95 ≥ tier_threshold[bronze]`" as hard precondition. | Threshold on `TaskClass.min_cases_for_promotion` + `PromotionGate` reads it |
 
 ## Load-bearing commitments check
 
@@ -479,7 +479,7 @@ Per [production/design.md §2](../../production/design.md):
 - Phase 0: project scaffolding (`pyproject.toml` extras), CLI `click` integration, `codegenie/audit.py` shape (Phase-0 RunRecord), import-linter contract, `codegenie/hashing.py` (BLAKE3).
 - Phase 4: cassette discipline (replay in CI; no live LLM); per-cassette identity stable enough to hash per case (the critic correctly flagged that Phase 4 must commit to per-case-addressable cassette identity — flagged as a Phase 6.5 → Phase 4 coordination requirement in §Open questions).
 - Phase 5: ADR-0014 (`extra="forbid"` introspection pattern); ADR-0003 (`@register_signal_kind` shape mirrored); ADR-0006 (Protocol-when-structural / ABC-when-default-behavior split); ADR-0016 (this design implements it); ADR-0008 (LLM-Judge deferral — this design's `bench/judgment-arbitration/` slot is reserved for the un-deferral ADR).
-- Phase 6: LangGraph SUT (`build_vuln_loop().ainvoke(...)`) is the system-under-test for vuln-remediation; per-workflow SQLite checkpointer pattern reused in `.codegenie/eval/scratch/<case_id>.sqlite3`.
+- Phase 6: `VulnRemediationSut` is the system-under-test contract for vuln-remediation; the LangGraph builder and per-workflow SQLite checkpointer remain Phase 6 internals behind that contract.
 
 **What this design establishes that later phases will need:**
 - Phase 7 inherits the registry, the `RubricRunner` Protocol, the `bench/` directory contract, the audit chain, and uses `bench/migration-chainguard-distroless/` as the second worked example. Phase 7's no-edits-to-existing-code invariant is preserved.

@@ -34,9 +34,11 @@ from codegenie.probes.layer_b import (
 )
 from codegenie.probes.layer_c import (
     certificate,  # noqa: F401 — S5-03 registration
+    cve,  # noqa: F401 — S5-04 registration
     dockerfile,  # noqa: F401 — S5-03 registration
     entrypoint,  # noqa: F401 — S5-03 registration
     runtime_trace,  # noqa: F401 — S5-02 registration
+    sbom,  # noqa: F401 — S5-04 registration
     shell_usage,  # noqa: F401 — S5-03 registration
 )
 from codegenie.probes.layer_d import (
@@ -69,6 +71,7 @@ __all__ = [
     "certificate",
     "ci",
     "conventions",
+    "cve",
     "default_registry",
     "dep_graph",
     "deployment",
@@ -90,6 +93,7 @@ __all__ = [
     "repo_notes",
     "ripgrep_curated",
     "runtime_trace",
+    "sbom",
     "scip_index",
     "semantic_index_meta",
     "semgrep",

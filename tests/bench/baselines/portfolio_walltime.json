@@ -1,0 +1,17 @@
+{
+  "refreshed_at": "2026-05-18T00:00:00Z",
+  "refreshed_by": "Dannytrev21",
+  "reason": "S8-03 initial baseline — cold + warm p50 captured locally; refreshes on regression PRs only (see tests/bench/baselines/README.md).",
+  "measurements": {
+    "minimal-ts/cold_p50_s": 5.0,
+    "minimal-ts/warm_p50_s": 2.0,
+    "native-modules/cold_p50_s": 6.0,
+    "native-modules/warm_p50_s": 2.5,
+    "monorepo-pnpm/cold_p50_s": 12.0,
+    "monorepo-pnpm/warm_p50_s": 5.0,
+    "distroless-target/cold_p50_s": 4.0,
+    "distroless-target/warm_p50_s": 1.5,
+    "stale-scip/cold_p50_s": 4.5,
+    "stale-scip/warm_p50_s": 1.8
+  }
+}
