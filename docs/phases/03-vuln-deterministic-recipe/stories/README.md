@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-40 stories across the 9 implementation steps of Phase 3. Per-step distribution: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=4, S8=4, S9=4. The dependency DAG is roughly linear across steps (Step N+1 depends on Step N's contracts landing) with intra-step fan-out: Step 1 fans out into newtypes / sum-type / fence work that Step 2's `PluginRegistry` consumes; Steps 3–5 can begin sub-stories in parallel once Step 2's kernel is in; Step 6 is the integration choke point that gates Steps 7–9. The longest dependency chain is 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). Cross-cutting work — LLM-SDK fences, newtype discipline, tagged-union exhaustiveness, capability lint — is woven into Step 1 stories and reasserted in Step 9's CI-gate stories. Gap-1 (`SubgraphNode` Protocol), Gap-2 (`LockfilePolicy` YAML), Gap-3 (per-plugin `RecipeRegistry`), Gap-4 (`BundleCacheGc`), and Gap-5 (`TrustScorer` constructor injection) are first-class stories — see S6-03, S5-04, S5-02, S3-05, and S6-02 respectively.
+43 stories across the 9 implementation steps of Phase 3 (Step 7 gained S7-05 on 2026-05-18 per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md)). Per-step distribution: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=5, S8=4, S9=4. The dependency DAG is roughly linear across steps (Step N+1 depends on Step N's contracts landing) with intra-step fan-out: Step 1 fans out into newtypes / sum-type / fence work that Step 2's `PluginRegistry` consumes; Steps 3–5 can begin sub-stories in parallel once Step 2's kernel is in; Step 6 is the integration choke point that gates Steps 7–9. The longest dependency chain is 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). Cross-cutting work — LLM-SDK fences, newtype discipline, tagged-union exhaustiveness, capability lint — is woven into Step 1 stories and reasserted in Step 9's CI-gate stories. Gap-1 (`SubgraphNode` Protocol), Gap-2 (`LockfilePolicy` YAML), Gap-3 (per-plugin `RecipeRegistry`), Gap-4 (`BundleCacheGc`), and Gap-5 (`TrustScorer` constructor injection) are first-class stories — see S6-03, S5-04, S5-02, S3-05, and S6-02 respectively. S7-05 is the Phase-3 refuse-mode precursor to Phase 7's full `vuln.provenance` primitive.
 
 ## How to use this backlog
 1. Start at a story whose dependencies are satisfied.
@@ -81,6 +81,11 @@ graph TD
   S7-01 --> S7-04
   S7-02 --> S7-04
   S7-03 --> S7-04
+  S7-01 --> S7-05
+  S5-01 --> S7-05
+  S6-03 --> S7-05
+  S6-04 --> S7-05
+  S7-05 --> S8-04
   S6-06 --> S8-01
   S7-04 --> S8-02
   S8-01 --> S8-03
@@ -178,6 +183,7 @@ Direct deps only; transitive omitted.
 | S7-02 | [Four npm recipes + four ADR-0032 npm adapters (`S7-02-npm-recipes-and-adapters`)](S7-02-npm-recipes-and-adapters.md) | L | S6-04 | `NpmLockfileSemverBumpRecipe`, `NpmPeerDepConflictRecipe`, `NpmTransitiveOverridesRecipe`, `NpmMajorBumpRefuseRecipe` registered via plugin-local `RecipeRegistry`; npm-specific implementations of `dep_graph.consumers`, `import_graph.reverse_lookup`, `scip.refs`, `test_inventory.tests_exercising`. |
 | S7-03 | [plugins/universal--*--*/ HITL fallback plugin (`S7-03-universal-hitl-fallback-plugin`)](S7-03-universal-hitl-fallback-plugin.md) | M | S6-04 | `plugin.yaml` with scope `(*,*,*)` + lowest precedence; subgraph writes sanitized markdown to `.codegenie/handoff/<workflow_id>.md` (NFKC + ANSI/bidi/zero-width strip); emits `RequiresHumanReview`; returns `RemediationOutcome.RequiresHumanReview(reason=NoConcreteMatch)`; negative test confirms universal NOT silently substituted when concrete plugin import fails (loader exits 4 first; ADR-0003). |
 | S7-04 | [Synthetic example--noop--* plugin + 3-plugin contract bake test (`S7-04-example-noop-plugin-bake-test`)](S7-04-example-noop-plugin-bake-test.md) | M | S7-01, S7-02, S7-03 | `tests/fixtures/plugins/example--noop--*/` exercising every Protocol surface (Plugin, Adapter, RecipeEngine, RecipeProtocol); `tests/integration/test_three_plugin_contract.py` loads all three; `PLUGINS.lock` mismatch test exits 4 with `PluginRejected(integrity_mismatch)`. |
+| S7-05 | [npm plugin app-layer precheck — refuse-mode for non-app-layer CVEs (`S7-05-npm-app-layer-precheck`)](S7-05-npm-app-layer-precheck.md) | S | S7-01, S6-03, S5-01, S6-04 | Per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md) Phase-3 commitment: prepend `VerifyCveInAppLayerNode` to the npm plugin's subgraph; new `NotApplicableReason.CVE_NOT_IN_APP_LAYER` + `AppLayerAbsenceEvidence` give reviewers a typed distinct outcome when the CVE is not addressable by editing `package.json`; seeds the npm half of Phase 7's future `NpmVulnProvenanceAdapter`. |
 
 ### Step 8: Fixture portfolio, golden files, determinism property, adversarial tests
 **Step goal:** The full Phase 3 fixture portfolio is on disk; the determinism property test passes over 100 Hypothesis runs; every adversarial case from §Edge cases E1–E20 has a regression test.
@@ -221,6 +227,7 @@ Direct deps only; transitive omitted.
 | Before/after lockfile + `package.json` diff assertions; test suite still passes; no semantic regression | S5-02, S8-02, S8-04 (breaking-test-suite) |
 | Four ADR-0032 language search adapters wrapping Phase 2 structural probes | S7-02 |
 | Plugin bundles its own subgraph, TCCM, npm/Node-specific probes, Skills, OpenRewrite recipes | S7-01, S7-02 |
+| Refuse-mode for non-app-layer CVEs (Phase-3 precursor to Phase 7's `vuln.provenance` primitive per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md)) | S7-05 |
 
 Every Phase 3 exit criterion from `docs/roadmap.md` Phase 3 section maps to ≥1 story.
 
@@ -238,7 +245,7 @@ From phase-arch-design.md §Open questions deferred to implementation:
 - **`vuln-index.sqlite` staleness threshold** (7 days mtime → warn, not block; `CODEGENIE_VULN_INDEX_MAX_AGE_DAYS`) — S3-02 ships the default.
 
 ## Backlog stats
-- Total stories: 40
-- Per step: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=4, S8=4, S9=4
-- Effort: 12·S + 19·M + 9·L
-- Longest dep chain: 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03)
+- Total stories: 43 (was 42; S7-05 added 2026-05-18 per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md) Phase-3 refuse-mode commitment).
+- Per step: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=5, S8=4, S9=4.
+- Effort: 13·S + 19·M + 9·L (S7-05 is S).
+- Longest dep chain: 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). S7-05's chain length (8) is shorter.

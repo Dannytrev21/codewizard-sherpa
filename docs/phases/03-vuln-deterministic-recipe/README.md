@@ -30,6 +30,6 @@ When other documents link to "the Phase 3 design," they link to [`final-design.m
 ## Next steps in the design pipeline
 
 1. ~~**`phase-architect`** — produces `phase-arch-design.md` (4+1 views), per-phase ADRs in `ADRs/`, and `High-level-impl.md`.~~ ✅ done — see [`phase-arch-design.md`](phase-arch-design.md), [`ADRs/`](ADRs/), [`High-level-impl.md`](High-level-impl.md).
-2. ~~**`phase-story-writer`** — decomposes `High-level-impl.md` into autonomous-implementer stories under `stories/`.~~ ✅ done — 42 stories under [`stories/`](stories/) (see [`stories/README.md`](stories/README.md) for the manifest).
+2. ~~**`phase-story-writer`** — decomposes `High-level-impl.md` into autonomous-implementer stories under `stories/`.~~ ✅ done — 43 stories under [`stories/`](stories/) (see [`stories/README.md`](stories/README.md) for the manifest; S7-05 added 2026-05-18 per [production ADR-0038](../../production/adrs/0038-vulnerability-provenance-attribution.md)).
 3. **`phase-story-validator`** — hardens each story before `phase-story-executor` runs it.
 4. **`phase-story-executor`** — implements each story via TDD red-green-refactor.
