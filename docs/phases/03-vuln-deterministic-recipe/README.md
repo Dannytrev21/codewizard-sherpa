@@ -1,6 +1,6 @@
 # Phase 3 — Vuln remediation: deterministic recipe path
 
-**Status:** Design pipeline complete (designer → critic → synthesizer). Ready for `phase-architect`.
+**Status:** Design pipeline complete (designer → critic → synthesizer → architect → ADR-extractor → impl-planner → story-writer). Ready for `phase-story-validator` + `phase-story-executor`.
 
 This phase ships the first end-to-end deterministic transform in the system — given a Node.js repo with a known npm CVE, produce a working patch diff on a local branch with no LLM in the loop. It also lands the **first plugin** (`plugins/vulnerability-remediation--node--npm/`) and the **universal `(*,*,*)` HITL fallback**, exercising the plugin architecture ([ADR-0031](../../production/adrs/0031-plugin-architecture.md)) for the first time.
 
@@ -29,6 +29,7 @@ When other documents link to "the Phase 3 design," they link to [`final-design.m
 
 ## Next steps in the design pipeline
 
-1. **`phase-architect`** — produces `phase-arch-design.md` (4+1 views), per-phase ADRs in `ADRs/`, and `High-level-impl.md`.
-2. **`phase-story-writer`** — decomposes `High-level-impl.md` into autonomous-implementer stories under `stories/`.
+1. ~~**`phase-architect`** — produces `phase-arch-design.md` (4+1 views), per-phase ADRs in `ADRs/`, and `High-level-impl.md`.~~ ✅ done — see [`phase-arch-design.md`](phase-arch-design.md), [`ADRs/`](ADRs/), [`High-level-impl.md`](High-level-impl.md).
+2. ~~**`phase-story-writer`** — decomposes `High-level-impl.md` into autonomous-implementer stories under `stories/`.~~ ✅ done — 42 stories under [`stories/`](stories/) (see [`stories/README.md`](stories/README.md) for the manifest).
 3. **`phase-story-validator`** — hardens each story before `phase-story-executor` runs it.
+4. **`phase-story-executor`** — implements each story via TDD red-green-refactor.
