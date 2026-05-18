@@ -38,7 +38,7 @@ from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.registry import register_probe
 from codegenie.result import Err, Ok
 from codegenie.skills.loader import LoadOutcome, SkillsLoader, SkillsLoadError
-from codegenie.skills.model import TIERS, Skill, Tier
+from codegenie.skills.model import TIERS, ShadowedSkill, Skill, Tier
 from codegenie.types.identifiers import Language, SkillId, TaskClassId
 
 __all__ = ["IndexedSkill", "SkillsIndexProbe", "SkillsIndexSlice"]
@@ -87,6 +87,9 @@ class SkillsIndexSlice(BaseModel):
     skills: tuple[IndexedSkill, ...]
     tier_counts: dict[Literal["user", "repo", "org"], int]
     per_file_errors: tuple[str, ...]
+    # S8-02: data-path mirror of the loader's ``skill_shadowed`` event.
+    # Empty when no collisions; populated by ``SkillsLoader.load_all``.
+    shadowed_skills: tuple[ShadowedSkill, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +222,7 @@ class SkillsIndexProbe(Probe):
             skills=_project_skills_sorted(outcome.skills),
             tier_counts=_count_skills_per_tier(search_paths),
             per_file_errors=per_file_errors_json,
+            shadowed_skills=outcome.shadowed_skills,
         )
         confidence = _compute_confidence(outcome.skills, outcome.per_file_errors)
         ctx.output_dir.mkdir(parents=True, exist_ok=True)

@@ -54,7 +54,7 @@ from codegenie.errors import DepthCapExceeded, MalformedYAMLError, SizeCapExceed
 from codegenie.hashing import content_hash_fd
 from codegenie.parsers import safe_yaml
 from codegenie.result import Err, Ok, Result
-from codegenie.skills.model import TIERS, EvidenceQuery, Skill, Tier
+from codegenie.skills.model import TIERS, EvidenceQuery, ShadowedSkill, Skill, Tier
 from codegenie.types.identifiers import Language, SkillId, TaskClassId
 
 __all__ = [
@@ -143,12 +143,21 @@ SkillsLoadError = Annotated[
 
 
 class LoadOutcome(BaseModel):
-    """Result-of-``load_all`` payload: loaded skills + per-file errors."""
+    """Result-of-``load_all`` payload: loaded skills + per-file errors.
+
+    ``shadowed_skills`` (S8-02) carries one :class:`ShadowedSkill` per
+    cross-tier or same-tier collision the loader resolved by
+    first-tier-wins. The structlog ``skill_shadowed`` event continues to
+    fire once per collision (unchanged from S2-01); this tuple is the
+    data-path mirror so consumers (the Phase 2 CLI summary) read
+    shadows from a typed envelope instead of intercepting events.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     skills: list[Skill]
     per_file_errors: list[SkillsLoadError]
+    shadowed_skills: tuple[ShadowedSkill, ...] = ()
 
 
 class FatalLoadError(BaseModel):
@@ -397,6 +406,7 @@ class SkillsLoader:
         # Map SkillId → (tier, path, skill) so collisions surface deterministically.
         winners: dict[SkillId, tuple[Tier, Path, Skill]] = {}
         errors: list[SkillsLoadError] = []
+        shadowed: list[ShadowedSkill] = []
         # Positional tier assignment: position 0 → user, 1 → repo, 2 → org.
         # Callers may pass fewer than three paths (e.g., tests with a single
         # tier under inspection); we truncate to the shorter list rather than
@@ -435,6 +445,15 @@ class SkillsLoader:
                             winning_path=str(prior_path),
                             shadowed_path=str(skill_md),
                         )
+                        shadowed.append(
+                            ShadowedSkill(
+                                skill_id=skill.id,
+                                shadowed_tier=tier,
+                                winning_tier=prior_tier,
+                                shadowed_path=str(skill_md),
+                                winning_path=str(prior_path),
+                            )
+                        )
                         continue  # first-tier-wins; lexicographic-first within tier
                     winners[skill.id] = (tier, skill_md, skill)
                 else:
@@ -450,6 +469,7 @@ class SkillsLoader:
             value=LoadOutcome(
                 skills=list(self._skills),
                 per_file_errors=errors,
+                shadowed_skills=tuple(shadowed),
             )
         )
 

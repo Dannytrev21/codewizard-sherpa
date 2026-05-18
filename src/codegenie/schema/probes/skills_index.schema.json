@@ -27,9 +27,26 @@
       "type": "array",
       "description": "JSON-dumps of the loader's discriminated SkillsLoadError union (SymlinkRefused | UnsafeYaml | FrontmatterUnterminated | SchemaViolation | IoFailure). Each item is a JSON string the consumer parses via json.loads.",
       "items": {"type": "string"}
+    },
+    "shadowed_skills": {
+      "type": "array",
+      "description": "S8-02 — data-path mirror of the loader's skill_shadowed structlog event. One entry per cross-tier or same-tier collision the loader resolved first-tier-wins. Empty when no collisions.",
+      "items": {"$ref": "#/$defs/ShadowedSkill"}
     }
   },
   "$defs": {
+    "ShadowedSkill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skill_id", "shadowed_tier", "winning_tier", "shadowed_path", "winning_path"],
+      "properties": {
+        "skill_id": {"type": "string", "minLength": 1},
+        "shadowed_tier": {"type": "string", "enum": ["user", "repo", "org"]},
+        "winning_tier": {"type": "string", "enum": ["user", "repo", "org"]},
+        "shadowed_path": {"type": "string"},
+        "winning_path": {"type": "string"}
+      }
+    },
     "IndexedSkill": {
       "type": "object",
       "additionalProperties": false,

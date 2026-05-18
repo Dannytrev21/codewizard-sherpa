@@ -403,6 +403,58 @@ def _seam_write_envelope(
     )
 
 
+def _emit_phase2_summary(
+    findings_count: int,
+    fingerprints: list[str],
+    skills_slice: dict[str, Any] | None,
+) -> None:
+    """Step 11.5 — print the Phase 2 three-line stdout summary block (S8-02).
+
+    The block reports:
+
+    - ``secrets_redacted_count`` — the value the caller already read off
+      :attr:`RedactedSlice.findings_count`; the same value the writer
+      emitted on ``envelope.written``.
+    - ``fingerprints`` — ASCII-lex-sorted dedup of the
+      :attr:`RedactedSlice.fingerprints` list (upstream dedup is
+      insertion-order; this step gives the determinism property AC-9
+      requires).
+    - ``skill_shadowed`` — ``<skill_id>:<shadowed_tier>`` for each row in
+      ``skills_slice["shadowed_skills"]``. ``skills_slice`` is ``None`` when
+      ``SkillsIndexProbe`` did not run for this gather (the registry can
+      filter it out by task type); we still print ``skill_shadowed=[]`` so
+      the line stays grep-able.
+
+    The function takes primitives (not :class:`RedactedSlice`) so test
+    callers can exercise the data path without constructing a
+    :class:`RedactedSlice` — the smart-constructor invariant in
+    02-ADR-0010 keeps that construction restricted to the redaction
+    pipeline. The caller in :func:`_run_gather_pipeline` reads the
+    primitives off the in-scope :class:`RedactedSlice` directly.
+
+    Per 02-ADR-0008: this function emits zero structlog events. The
+    operator surface is stdout only; the structured-log surface for
+    ``secrets_redacted_count`` is the existing ``envelope.written`` event.
+    """
+    cli_summary_mod = importlib.import_module("codegenie.cli_summary")
+    skills_model_mod = importlib.import_module("codegenie.skills.model")
+    raw_shadowed: list[Any] = []
+    if skills_slice is not None:
+        raw_shadowed = list(skills_slice.get("shadowed_skills", []))
+    shadowed = [skills_model_mod.ShadowedSkill.model_validate(r) for r in raw_shadowed]
+    block = cli_summary_mod.summary_block(
+        count=findings_count,
+        fingerprints=fingerprints,
+        shadowed=shadowed,
+    )
+    # The repo's ruff T201 + forbidden-patterns hook reserve stdlib's
+    # builtin emit-and-newline helper for tests and scripts; structured
+    # logs go through structlog and operator-facing stdout flows through
+    # ``sys.stdout.write``. Three writes, one newline each.
+    for line in block.as_lines():
+        sys.stdout.write(line + "\n")
+
+
 def _seam_audit_record(
     output_dir: Path,
     gather_result: Any,
@@ -635,6 +687,18 @@ def _run_gather_pipeline(
         sherpa_commit=git_commit,
         tool_versions=tool_versions,
         yaml_sha256=yaml_sha,
+    )
+
+    # Step 11.5 — Phase 2 stdout summary block (S8-02). Runs AFTER the
+    # audit record write so the on-disk anchor is visible before the
+    # operator sees the summary on stdout. 02-ADR-0008: no new events;
+    # 02-ADR-0005: fingerprints only, no plaintext, 8-hex.
+    skills_output = gather_result.outputs.get("skills_index")
+    skills_slice = skills_output.schema_slice if skills_output is not None else None
+    _emit_phase2_summary(
+        redacted_envelope.findings_count,
+        list(redacted_envelope.fingerprints),
+        skills_slice,
     )
     del dataclasses  # silence unused-import on the success path
 

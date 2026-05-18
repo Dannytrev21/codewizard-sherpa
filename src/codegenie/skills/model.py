@@ -29,6 +29,7 @@ from codegenie.types.identifiers import Language, SkillId, TaskClassId
 __all__ = [
     "TIERS",
     "EvidenceQuery",
+    "ShadowedSkill",
     "Skill",
     "Tier",
 ]
@@ -60,6 +61,26 @@ class Skill(BaseModel):
     body_offset: Annotated[int, Field(ge=0)]
     body_size: Annotated[int, Field(ge=0)]
     body_blake3: Annotated[str, Field(pattern=r"^blake3:[0-9a-f]{64}$")]
+
+
+class ShadowedSkill(BaseModel):
+    """Record of one three-tier-merge shadow (S8-02).
+
+    Same fields the loader's existing ``skill_shadowed`` structlog event
+    already populates: the winning + shadowed tier, the file paths that
+    collided, and the shared ``skill_id``. Surfacing this as **data** in
+    :class:`~codegenie.skills.loader.LoadOutcome` (not just as a log
+    event) lets the CLI summary read shadows from the coordinator-merged
+    envelope rather than intercepting events at the structlog layer.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    skill_id: SkillId
+    shadowed_tier: Tier
+    winning_tier: Tier
+    shadowed_path: str
+    winning_path: str
 
 
 class EvidenceQuery(BaseModel):
