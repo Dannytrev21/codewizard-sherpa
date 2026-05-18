@@ -20,9 +20,7 @@ _ENVELOPE_ALIASES = {
 def test_every_registered_probe_module_is_explicitly_imported() -> None:
     imported_modules = _imported_probe_modules()
     discovered_modules = {
-        _module_name(path)
-        for path in PROBES_DIR.rglob("*.py")
-        if _defines_register_probe(path)
+        _module_name(path) for path in PROBES_DIR.rglob("*.py") if _defines_register_probe(path)
     }
 
     assert discovered_modules <= imported_modules

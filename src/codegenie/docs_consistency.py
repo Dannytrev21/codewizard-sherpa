@@ -72,8 +72,7 @@ def collect_docs_consistency_issues(root: Path) -> list[str]:
     records = {
         record.number: record
         for record in (
-            parse_adr(path)
-            for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md"))
+            parse_adr(path) for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md"))
         )
     }
 
