@@ -1,0 +1,97 @@
+[
+  {
+    "title": "[Phase 3] Implement Plugin Loader: kernel + manifest parser + integrity loader + resolver",
+    "milestone": "Phase 3 \u2014 Vuln remediation: deterministic recipe path",
+    "body": "### Phase 2 context\n\nPhase 2 ships kernel-side scaffolding only (per `ADR-0007`): the four adapter\n`Protocol`s at `src/codegenie/adapters/protocols.py`, the `TCCMLoader`, the\n`SkillsLoader`, and the `IndexFreshness` sum type. The Plugin Loader itself,\n`plugin.yaml` parser, integrity-verified loader, and `extends:` resolver are\ndeliberately deferred to Phase 3 per `ADR-0031` \u00a7Consequences \u00a71 \u2014 the first\nplugin doubles as the proof the loader works.\n\n### Phase 3 stories\n\nThis handoff issue is a project-board mirror of the canonical Phase 3 story\nfiles (no re-prescription \u2014 implement against the story files):\n\n- [S2-01 Plugin registry kernel](docs/phases/03-vuln-deterministic-recipe/stories/S2-01-plugin-registry-kernel.md)\n- [S2-02 Plugin manifest Pydantic](docs/phases/03-vuln-deterministic-recipe/stories/S2-02-plugin-manifest-pydantic.md)\n- [S2-03 Plugin loader integrity](docs/phases/03-vuln-deterministic-recipe/stories/S2-03-plugin-loader-integrity.md)\n- [S2-04 Plugin resolver extends](docs/phases/03-vuln-deterministic-recipe/stories/S2-04-plugin-resolver-extends.md)\n\n### Acceptance\n\nEach story carries its own acceptance criteria; do not duplicate them here.\nLand the four stories in order (registry \u2192 manifest \u2192 loader \u2192 resolver). On\nlanding the four stories, verify that the four Protocols at\n`src/codegenie/adapters/protocols.py` are imported unchanged (see handoff\nissue #4 for the smoke-test trip-wire).\n",
+    "labels": [
+      "handoff:from-phase-2",
+      "loader",
+      "phase:3"
+    ],
+    "phase3_stories": [
+      "S2-01-plugin-registry-kernel",
+      "S2-02-plugin-manifest-pydantic",
+      "S2-03-plugin-loader-integrity",
+      "S2-04-plugin-resolver-extends"
+    ]
+  },
+  {
+    "title": "[Phase 3] Implement first plugin: plugins/vulnerability-remediation--node--npm + four ADR-0032 adapters",
+    "milestone": "Phase 3 \u2014 Vuln remediation: deterministic recipe path",
+    "body": "### Phase 2 context\n\nPer `ADR-0032`, Phase 2 ships the four adapter `Protocol`s at\n`src/codegenie/adapters/protocols.py` with **zero implementations**. Phase 3's\nfirst plugin (`plugins/vulnerability-remediation--node--npm/`) doubles as the\nproof the Plugin Loader works AND ships the four ADR-0032 adapter\nimplementations against Node/npm.\n\n### Phase 3 stories\n\n- [S7-01 vuln node-npm plugin scaffold](docs/phases/03-vuln-deterministic-recipe/stories/S7-01-vuln-node-npm-plugin-scaffold.md)\n- [S7-02 npm recipes and adapters](docs/phases/03-vuln-deterministic-recipe/stories/S7-02-npm-recipes-and-adapters.md)\n\nThe four adapter implementations land alongside the plugin (matched 1:1\nagainst the Phase 2 Protocols):\n\n- `dep_graph_npm.py` \u2014 implements `DepGraphAdapter` for `npm ls --json`.\n- `import_graph_node.py` \u2014 implements `ImportGraphAdapter` for Node module\n  resolution.\n- `scip_node.py` \u2014 implements `ScipAdapter` for `scip-typescript` indexes.\n- `test_inventory_node.py` \u2014 implements `TestInventoryAdapter` for\n  `package.json` scripts.\n\n### Acceptance\n\nPer the story files. Re-use the Phase 2 fixtures `monorepo-pnpm` and\n`minimal-ts` under `tests/fixtures/` for adapter-level integration tests; the\nfixtures already exercise the manifest + dep-graph shapes the adapters target.\n",
+    "labels": [
+      "handoff:from-phase-2",
+      "phase:3",
+      "plugin"
+    ],
+    "phase3_stories": [
+      "S7-01-vuln-node-npm-plugin-scaffold",
+      "S7-02-npm-recipes-and-adapters"
+    ]
+  },
+  {
+    "title": "[Phase 3] Implement universal (*, *, *) fallback plugin / HITL escalation",
+    "milestone": "Phase 3 \u2014 Vuln remediation: deterministic recipe path",
+    "body": "### Phase 2 context\n\n`production/design.md \u00a7\"Humans always merge\"` is the Phase 3 invariant the\nuniversal `(*, *, *)` fallback plugin enforces: when no concrete plugin\nmatches the `(task-class, language, package-manager)` resolution triple, the\nfallback fires and the workflow escalates to a human-in-the-loop (HITL)\nreview instead of silently doing nothing. Per `ADR-0031`, the fallback ships\nin Phase 3 alongside the first concrete plugin so the loader's resolution\nalgorithm is exercised against both a real match and a wildcard fallback.\n\n### Phase 3 stories\n\n- [S7-03 universal HITL fallback plugin](docs/phases/03-vuln-deterministic-recipe/stories/S7-03-universal-hitl-fallback-plugin.md)\n\n### Acceptance\n\nPer the story file. The fallback's job is to escalate cleanly, not to do\nwork; its acceptance criteria pin the HITL escalation surface, not any\nremediation logic.\n",
+    "labels": [
+      "fallback",
+      "handoff:from-phase-2",
+      "phase:3"
+    ],
+    "phase3_stories": [
+      "S7-03-universal-hitl-fallback-plugin"
+    ]
+  },
+  {
+    "title": "[Phase 3] Unskip test_phase3_handoff_smoke.py at Phase 3 entry-gate review",
+    "milestone": "Phase 3 \u2014 Vuln remediation: deterministic recipe path",
+    "body": "### Phase 2 context\n\nThis is the most load-bearing of the five handoff issues. Phase 2 landed\n`tests/adv/phase02/test_phase3_handoff_smoke.py` (function\n`test_phase3_adapter_handoff_smoke`) with `@pytest.mark.skip(reason=...)`\nciting `ADR-0007` + `High-level-impl.md \u00a7Step 7`. The test asserts the four\nadapter `Protocol`s at `src/codegenie/adapters/protocols.py` are imported\n**unchanged** by Phase 3. Per `phase-arch-design.md \u00a7\"Gap 1\"`, this is the\ncontract trip-wire: without unskipping it at the Phase 3 entry-gate review,\nPhase 3 can silently drift the Protocol shapes and Phase 2's typing guarantee\nevaporates.\n\nAny Protocol drift requires an explicit ADR amendment to 02-ADR-0006 / 02-ADR-0007 \u2014 not a silent Protocol edit.\n\n### Phase 3 stories\n\nThis issue does NOT map to a single Phase 3 story file \u2014 it is an action\nrequired at Phase 3's **entry-gate review**, before the loader stories\n(S2-01..S2-04) merge.\n\n### Acceptance at Phase 3 entry-gate\n\n1. Unskip `tests/adv/phase02/test_phase3_handoff_smoke.py` \u2014\n   delete the `@pytest.mark.skip(...)` decorator on\n   `test_phase3_adapter_handoff_smoke` and confirm the test passes against\n   the as-of-Phase-2 Protocols (no drift).\n2. Verify the four Protocols at `src/codegenie/adapters/protocols.py` are\n   imported unchanged. The test asserts the signatures byte-for-byte against\n   a frozen-at-Phase-2 baseline.\n3. If a signature change is required (e.g., `consumers(self, pkg: PackageId,\n   *, transitively: bool = False)`), file an ADR amendment to 02-ADR-0006 or\n   02-ADR-0007 **before** editing the Protocol. Any Protocol drift requires\n   an explicit ADR amendment to 02-ADR-0006 / 02-ADR-0007 \u2014 not a silent\n   edit.\n",
+    "labels": [
+      "handoff:from-phase-2",
+      "phase:3",
+      "smoke"
+    ],
+    "phase3_stories": []
+  },
+  {
+    "title": "[Phase 3] Extend ALLOWED_BINARIES for npm + jq via ADR amendment",
+    "milestone": "Phase 3 \u2014 Vuln remediation: deterministic recipe path",
+    "body": "### Phase 2 context\n\nPhase 3's first plugin (Node/npm) shells out to `npm` (dependency graph,\naudit) and `jq` (JSON post-processing). Neither is in Phase 2's\n`ALLOWED_BINARIES: frozenset[str]` at `src/codegenie/exec/__init__.py:96` \u2014\nthe `exec` package's module-init carries the frozenset, the structural\nguard at the subprocess chokepoint. Documenting the discipline here is not\na substitute for the frozenset edit.\n\nPrecedent: `02-ADR-0001` is the omnibus Phase 2 amendment that landed the\nten Layer B/C/G binaries; Phase 3 follows the same pattern \u2014 one ADR\namendment, two new entries.\n\n### Phase 3 stories\n\nThis is a Phase 3 mechanical change wrapped in an ADR amendment; no\ndedicated story file. The amendment lands alongside S7-02 (the story that\nfirst invokes `npm`).\n\n### Acceptance\n\n1. File an ADR amendment to 02-ADR-0001 (or a new Phase-3 ADR if cleaner)\n   adding **exactly two binaries**: `npm` and `jq`. No \"while we're at it\"\n   additions (no `yarn`, no `pnpm`, no `node`, no `jq`-adjacent tools).\n   \"While we're at it\" binaries are forbidden by this issue's scope.\n2. Update `src/codegenie/exec/__init__.py`'s `ALLOWED_BINARIES` frozenset\n   with the two entries.\n3. Confirm the `pyproject-fence` CI job stays green \u2014 `subprocess` invocations\n   for `npm` and `jq` must route through `run_allowlisted` or\n   `run_external_cli`, not direct `subprocess.run`.\n",
+    "labels": [
+      "allowlist",
+      "handoff:from-phase-2",
+      "phase:3"
+    ],
+    "phase3_stories": []
+  },
+  {
+    "title": "[Backlog] Full-repo mypy --warn-unreachable rollout",
+    "milestone": "Backlog",
+    "body": "### Context\n\nPer `docs/phases/02-context-gather-layers-b-g/stories/README.md \u00a7\"Open\nimplementation questions\"` #2, Phase 2 enables `mypy --warn-unreachable` at\nthe global level (`pyproject.toml:172` \u2014 `warn_unreachable = true`) but\nrelies on per-module overrides for a handful of named modules where\nunreachable code is intentional (e.g., `tests/*` runs under relaxed typing).\n\n### Why deferred\n\nA full-repo audit of every per-module `[[tool.mypy.overrides]]` block \u2014 to\nconfirm none accidentally silence `warn_unreachable` on production code \u2014 is\nmechanical but tedious; it is not on the Phase 3 critical path. Phase 2's\nS1-11 closed the load-bearing modules (`confidence_section.py` and the\n`IndexFreshness` consumer surface).\n\n### Acceptance\n\n1. Enumerate every `[[tool.mypy.overrides]]` block in `pyproject.toml`.\n2. Confirm none silences `warn_unreachable` on `src/codegenie/**`.\n3. If any does, file a follow-up ticket to either narrow the override or\n   land an inline `# type: ignore[unreachable]` with a comment justifying.\n",
+    "labels": [
+      "backlog",
+      "mypy"
+    ],
+    "phase3_stories": []
+  },
+  {
+    "title": "[Backlog] ExternalDocsProbe host-allowlist config schema",
+    "milestone": "Backlog",
+    "body": "### Context\n\nPer `docs/phases/02-context-gather-layers-b-g/stories/README.md \u00a7\"Open\nimplementation questions\"` #4, the `ExternalDocsProbe` (Layer G6) ships in\nPhase 2 with `enabled_by_default = False` and a skip-cleanly path; the\nhost-allowlist config schema (what hosts are permitted, who maintains the\nallowlist, how an org adds an entry) is deferred until a real user opts in.\n\n### Why deferred\n\nThe schema's shape is unknowable without a real opt-in workload; designing\nit speculatively risks designing it wrong. Phase-4-or-later is the right\nhorizon \u2014 when the first user enables `ExternalDocsProbe`, file a schema\nbased on the actual hosts they need.\n\n### Acceptance\n\n1. First real opt-in: capture the host list they need.\n2. Draft a host-allowlist config schema (likely YAML under\n   `.codegenie/config/external-docs-hosts.yaml`).\n3. Validate against the user's host list; iterate.\n",
+    "labels": [
+      "backlog",
+      "external-docs"
+    ],
+    "phase3_stories": []
+  },
+  {
+    "title": "[Backlog] SkillsLoader per-tier signing (Sigstore-style)",
+    "milestone": "Backlog",
+    "body": "### Context\n\nPer `docs/phases/02-context-gather-layers-b-g/stories/README.md \u00a7\"Open\nimplementation questions\"` #5, the `SkillsLoader` ships in Phase 2 with the\nthree-tier merge contract (first-tier-wins + loud `skill_shadowed` warning).\nPer-tier signing (Sigstore-style) is a Phase 14 multi-tenant concern \u2014 when\nan org-shared tier is consumed by other orgs, the consumers need\ncryptographic provenance over the tier contents.\n\n### Why deferred\n\nPhase 2/3/4 are single-tenant or single-org; per-tier signing is\ninfrastructure overhead with no consumer until Phase 14's multi-tenant\nagentic recipe authoring lands. Filed here so the seam (tier-level signing\nverification slot in `SkillsLoader`) is visible at Phase 14 design time.\n\n### Acceptance\n\n1. At Phase 14 design time, revisit `SkillsLoader` to slot in a tier-level\n   signature-verification step (Sigstore-style \u2014 cosign verify against a\n   trusted-keys policy).\n2. Document the signing policy (key custody, rotation cadence) per tier.\n3. Add a CI gate that refuses to load an unsigned org-shared tier when the\n   multi-tenant mode is enabled.\n",
+    "labels": [
+      "backlog",
+      "skills"
+    ],
+    "phase3_stories": []
+  }
+]

@@ -156,6 +156,10 @@ select = ["E", "F", "I", "B", "UP", "T201"]
 # `cache_key` method (B027) — both deliberate by the doc and not editable
 # code-side. Adding a third entry here requires updating ADR-0007.
 "src/codegenie/probes/base.py" = ["E501", "B027"]
+# S8-04 — Phase-3 handoff issue bodies are markdown text embedded as string
+# literals; wrapping at 100 cols would break the assertion-by-substring tests
+# in `tests/unit/docs/test_phase3_handoff_issues.py` and obscure the prose.
+"scripts/_phase3_handoff_issues.py" = ["E501"]
 
 [tool.ruff.format]
 # `codegenie.probes.base` is excluded from ruff format because the doc

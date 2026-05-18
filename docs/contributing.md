@@ -121,6 +121,63 @@ Cache keys include the probe version. **Never** silently re-use the same
 version after changing the output shape — stale `repo-context.yaml` files
 in the wild will mis-merge.
 
+### Adding a Layer B/C/D/E/G probe (Phase 2 additions)
+
+Phase 2 (Layers B–G) introduces five additions on top of the Phase 0/1 recipe
+above; the seven-step recipe still applies — these are *additions*, not
+replacements. Use the named Phase 2 probes as canonical examples to copy.
+
+1. **Heaviness annotation.** Pass `heaviness=` and `runs_last=` to
+   `@register_probe(...)` (see Phase 2 ADR-0003). The coordinator sorts the
+   non-prelude wave by heaviness; `runs_last=True` is for probes that must
+   observe a fully-prepared workspace. Example: `IndexHealthProbe` (Layer B2,
+   `src/codegenie/probes/layer_b/index_health.py`).
+
+2. **`run_external_cli` vs `run_allowlisted`.** Layer B/G probes that shell
+   out to an external CLI route through `codegenie.exec.run_external_cli` —
+   the Layer B/G wrapper that adds timing + structured-event emission on top
+   of Phase 0's `run_allowlisted`. Layer C probes (e.g. `RuntimeTraceProbe`,
+   `src/codegenie/probes/layer_c/runtime_trace.py`) call `run_allowlisted`
+   directly because they pass explicit hardening flags (capability drops,
+   read-only roots) the wrapper does not model. Adding a binary to either
+   path requires an ADR amendment to 02-ADR-0001. Example wrapped:
+   `SemgrepProbe` (Layer G, `src/codegenie/probes/layer_g/semgrep.py`).
+
+3. **`@register_index_freshness_check` Open/Closed seam.** If your probe
+   answers "is this index fresh?", register a check at
+   `codegenie.indices.freshness` via the decorator (02-ADR-0006). The
+   `IndexHealthProbe` enumerates every registered check via the registry —
+   no central edit needed. Example: `SkillsIndexProbe` registers a freshness
+   check for `SkillsIndex` (Layer D,
+   `src/codegenie/probes/layer_d/skills_index.py`).
+
+4. **Typed `ProbeOutput.schema_slice` via Pydantic.** Output schemas under
+   `src/codegenie/schema/probes/<probe>.py` are Pydantic v2 models with
+   `model_config = ConfigDict(frozen=True, extra="forbid")`. **Do not call
+   `model_construct`** anywhere under `src/codegenie/output/` — the
+   `forbidden-patterns` pre-commit hook bans it; validation must always run
+   at the writer chokepoint (02-ADR-0010). Example: `ConventionsProbe`
+   (Layer D, `src/codegenie/probes/layer_d/conventions.py`).
+
+5. **`declared_inputs` cache keys.** Globs cover most cases; special tokens
+   (e.g. `image-digest:` per 02-ADR-0004) ride alongside file globs and are
+   resolved by the coordinator's snapshot system. Cache keys derive
+   deterministically from `declared_inputs` + probe version. Example with
+   special token: `RuntimeTraceProbe`.
+
+6. **Confidence is a fact, not a judgment.** Every `ProbeOutput.confidence`
+   is `"high" | "medium" | "low"` based on observed evidence — never an
+   editorialized recommendation. The Planner consumes confidence; probes
+   never editorialize. `IndexHealthProbe` derives confidence from the
+   `IndexFreshness` sum-type variant (Fresh → `"high"`, Stale → `"low"`).
+
+7. **Canonical probe examples (copy these).** `IndexHealthProbe` (Layer B2,
+   the load-bearing probe), `RuntimeTraceProbe` (Layer C, sandboxed
+   subprocess + `image_digest_resolver`), `SemgrepProbe` (Layer G, external
+   CLI via `run_external_cli`), `SkillsIndexProbe` (Layer D, registers a
+   freshness check), `ConventionsProbe` (Layer D, typed slice + Open/Closed
+   loader). Each lives under `src/codegenie/probes/layer_<letter>/`.
+
 ## Project conventions
 
 ### Coverage ratchet (resolves open question Q5)

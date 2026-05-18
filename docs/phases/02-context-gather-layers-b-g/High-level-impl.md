@@ -304,9 +304,9 @@ The ordering principle is **types first → kernel scaffolds second → security
 - [ ] All eight CI jobs green on `main` on Python 3.11 *and* 3.12 with the full Phase 2 test surface.
 - [ ] `adv-phase02` job is the load-bearing gate — `test_stale_scip_fixture.py` failing turns the build red.
 - [ ] All three bench canaries run and post advisory PR comments; never block merge.
-- [ ] All five Phase-3 handoff issues exist on the GitHub Project board with milestones aligned to `roadmap.md` §"Phase 3".
-- [ ] `docs/contributing.md` builds in `mkdocs build --strict` and remains in curated nav.
-- [ ] `docs/phases/02-context-gather-layers-b-g/README.md` checklist marked complete and committed.
+- [x] All five Phase-3 handoff issues exist on the GitHub Project board with milestones aligned to `roadmap.md` §"Phase 3". (S8-04)
+- [x] `docs/contributing.md` builds in `mkdocs build --strict` and remains in curated nav. (S8-04)
+- [x] `docs/phases/02-context-gather-layers-b-g/README.md` checklist marked complete and committed. (S8-04)
 
 **Depends on:** Steps 1–7 complete and merged.
 
