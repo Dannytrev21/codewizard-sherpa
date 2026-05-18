@@ -49,6 +49,11 @@ from codegenie.probes.layer_d import (
     repo_notes,  # noqa: F401 — S6-03 registration
     skills_index,  # noqa: F401 — S6-01 registration
 )
+from codegenie.probes.layer_e import (
+    ownership,  # noqa: F401 — S6-05 registration
+    service_topology_stub,  # noqa: F401 — S6-05 registration
+    slo_stub,  # noqa: F401 — S6-05 registration
+)
 
 __all__ = [
     "adrs",
@@ -69,6 +74,7 @@ __all__ = [
     "node_build_system",
     "node_manifest",
     "node_reflection",
+    "ownership",
     "policy",
     "registry",
     "repo_config",
@@ -76,8 +82,10 @@ __all__ = [
     "runtime_trace",
     "scip_index",
     "semantic_index_meta",
+    "service_topology_stub",
     "shell_usage",
     "skills_index",
+    "slo_stub",
     "test_inventory",
     "tree_sitter_import_graph",
 ]

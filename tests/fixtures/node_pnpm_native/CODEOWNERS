@@ -1,0 +1,2 @@
+# pnpm-native test fixture — present so OwnershipProbe (S6-05) caches deterministically.
+* @platform-team

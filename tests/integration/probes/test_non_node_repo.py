@@ -123,7 +123,12 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
     # ``confidence=unavailable`` slice when the marker / sibling slice is
     # absent. Phase 2 S5-04 added ``sbom`` + ``cve`` which are likewise
     # universal — on a non-Node repo with no upstream runtime-trace slice
-    # they emit ``ScannerSkipped(reason="upstream_unavailable")``.
+    # they emit ``ScannerSkipped(reason="upstream_unavailable")``. Phase 2
+    # S6-05 added ``ownership`` (Layer E CODEOWNERS parser) — universal,
+    # emits ``OwnershipSlice(source_path=None, entries=())`` with
+    # ``errors=["codeowners_absent"]`` when no CODEOWNERS file is present;
+    # the schema slice still lands in the envelope (a Planner-actionable
+    # low-information observation, not a probe crash).
     expected = {
         "language_detection",
         "ci",
@@ -135,6 +140,7 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         "certificate",
         "sbom",
         "cve",
+        "ownership",
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "
