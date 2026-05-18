@@ -170,7 +170,12 @@ def _classify_gitleaks_outcome(
                     None,
                 )
             redacted = _redact_raw_bytes(stdout, findings, cleartexts)
-            return ScannerRan(findings=[]), list(findings), redacted
+            # Stable sort on slice-side findings — gitleaks emits in FS
+            # traversal order, which differs across CI containers and trips
+            # the two-cold-gathers byte-identity adversarial. Redaction is
+            # finding-order-independent so this only re-orders the slice.
+            ordered = sorted(findings, key=lambda f: (f.file, f.line, f.rule_id))
+            return ScannerRan(findings=[]), list(ordered), redacted
 
 
 def _write_files(
