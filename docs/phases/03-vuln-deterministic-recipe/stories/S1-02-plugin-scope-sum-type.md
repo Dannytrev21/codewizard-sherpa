@@ -1,7 +1,7 @@
 # Story S1-02 — PluginScope sum type + parser
 
 **Step:** Step 1 — Scaffold packages, domain primitives, sum types, and structural CI fences
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S1-02.md`](_attempts/S1-02.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S1-01 (`ParseError` at `src/codegenie/types/errors.py`; `Result`/`Ok`/`Err` re-exported from `codegenie.result`; `parse_*` smart-constructor + keyword-instantiation convention)
 **ADRs honored:** ADR-0010 (make-illegal-states-unrepresentable for `ScopeDim`; smart constructor for `PluginScope.parse`), ADR-0003 (plugin resolution semantics — `specificity` total order drives resolver ordering)
