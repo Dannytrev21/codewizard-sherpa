@@ -104,6 +104,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Exit criteria.** A breaking-change vuln (e.g., a major-version-bump CVE) is solved end-to-end with the LLM fallback and recorded into the solved-example store. Re-running the same case hits RAG, not LLM, and produces an equivalent fix at lower cost.
 
+**Verification signal — first `typecheck.*` `SignalKind` lands here.** Phase 4's call-site-rewriting failure modes (signature drift after a major-version bump, missing import after a refactor, type-shape change that compiles but breaks downstream) are exactly the cases the existing build + tests gates catch *late* and expensively. Per [ADR-0037](production/adrs/0037-layered-analysis-funnel-scip-typechecker-lsp.md), Phase 4 introduces the first `typecheck.<language>` TrustSignal (`tsc --noEmit` for the npm/Node plugin) registered through the Phase-3 `@register_signal_kind` open registry — a one-shot subprocess inside `SubprocessJail`, feeding the TrustScorer strict-AND alongside `build`/`install`/`tests`/`lockfile_policy`/`cve_delta`. **LSP is explicitly not introduced here**; the cheap signal is on the menu, the expensive one stays deferred until Phase 15.
+
 ---
 
 ## Phase 5 — Sandbox + Trust-Aware gates
@@ -269,6 +271,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 
 **Exit criteria.** A new CVE published to NVD triggers a portfolio reassessment within 10 minutes. MCP servers run as separate processes with versioned, tested contracts.
 
+**Conditional fifth MCP server.** Per [ADR-0037](production/adrs/0037-layered-analysis-funnel-scip-typechecker-lsp.md), a **Language MCP server** (warm-pool LSP by language) may join the Context/Skills/KG/Policy quartet *only if* Phases 4 and 15 produce evidence that warm-pool LSP economics beat the per-workflow one-shot type-checker baseline at portfolio scale. Until that evidence exists, this phase does not introduce LSP infrastructure. The conditionality is the load-bearing part — admission is not automatic, and [ADR-0023](production/adrs/0023-mcp-server-topology.md) (MCP server topology) is the place where the un-deferral, if it happens, is recorded.
+
 ---
 
 ## Phase 15 — **Agentic recipe authoring (deterministic → agentic)** *(third task class — recipe creation itself)*
@@ -280,6 +284,8 @@ The two notable value milestones: **Phase 3** is the first time a real transform
 **Testing.** End-to-end test: feed 10 recorded LLM-fallback solutions for the same problem shape, assert the system proposes a deterministic recipe that solves all 10. Property tests on the proposed recipes themselves — they must be deterministic, idempotent, and refuse to apply outside their declared preconditions.
 
 **Exit criteria.** At least one recipe authored by the system has been merged after human review, and that recipe handles a new vuln case end-to-end without any LLM invocation. The knowledge-graph reuse rate ([ADR-0026](production/adrs/0026-roi-kpi-model.md) supporting metric) ticks up after this phase ships.
+
+**First admission of per-workflow LSP-in-jail.** Per [ADR-0037](production/adrs/0037-layered-analysis-funnel-scip-typechecker-lsp.md), the recipe-authoring tight edit-verify inner loop is the first place where LSP earns its keep over the one-shot type-checker baseline — the warmup tax amortizes across many per-workflow edits in a single agent loop. Phase 15 introduces LSP as a per-workflow ephemeral substrate inside `SubprocessJail` (the same Port Phase 5+ ships), with `ALLOWED_BINARIES` amendments per language server and a `NetworkPolicy = RegistryAllowlist` carve-out for dep resolution. **LSP is still not admitted to the gather pipeline** — Phase 15's use is scoped to the agent's authoring loop only.
 
 ---
 
