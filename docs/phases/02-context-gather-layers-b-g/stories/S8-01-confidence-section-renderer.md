@@ -1,7 +1,7 @@
 # Story S8-01 — `ConfidenceSection` renderer with exhaustive `match` + `assert_never` enforcement
 
 **Step:** Step 8 — Confidence section renderer + CI ratchet + advisory benches + Phase-3 handoff
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S8-01.md`](_attempts/S8-01.md) for the per-AC evidence table + AC-3 ritual mypy stderr captures). AC-2's literal "single match statement" was relaxed to the codebase's nested-match convention (`Fresh|Stale` outer, `StaleReason` inner) because mypy does not fully narrow Pydantic *nested* discriminated unions in a single flat match; the producer (`codegenie.probes.layer_b.index_health._derive_confidence`) already uses the nested form for the same reason. Nested form gives strictly stronger `assert_never` enforcement (both levels). Conflict surfaced in the attempt log per CLAUDE.md Rule 7.
 **Effort:** M
 **Depends on:** S7-04 (`tests/adv/phase02/test_phase3_handoff_smoke.py` lands skipped + the in-memory secret-leak boundary test), S7-05 (portfolio integration sweep wired)
 **ADRs honored:** 02-ADR-0006 (`IndexFreshness` sum-type location at `codegenie.indices.freshness`); 02-ADR-0009 (no `pytest-xdist` — serial); 02-ADR-0005 (no plaintext secret persistence — extends to renderer-constructed strings); 02-ADR-0010 (RedactedSlice smart constructor at writer boundary — renderer reads `RedactedSlice.slice` only); production ADR-0033 §3–4 (make illegal states unrepresentable; `assert_never` is the type-level enforcement)

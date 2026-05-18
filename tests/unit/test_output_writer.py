@@ -85,7 +85,9 @@ def test_writer_fsync_called_before_replace(tmp_path: Path) -> None:
     assert names.index("fsync") < names.index("replace")
 
 
-# AC-17 — raws replaced before yaml
+# AC-17 — raws replaced before yaml. S8-01 adds a follow-on CONTEXT_REPORT.md
+# write *after* yaml; raws-before-yaml stays load-bearing (the envelope is
+# the canonical artifact), and yaml-before-companion is the new invariant.
 def test_writer_replaces_raws_before_yaml(tmp_path: Path) -> None:
     seen: list[str] = []
     real_replace = os.replace
@@ -100,10 +102,16 @@ def test_writer_replaces_raws_before_yaml(tmp_path: Path) -> None:
             raw_artifacts=[("a.json", b"{}"), ("b.json", b"{}")],
             output_dir=tmp_path,
         )
-    assert seen[-1] == "repo-context.yaml"
-    assert all(n != "repo-context.yaml" for n in seen[:-1])
-    assert "a.json" in seen
-    assert "b.json" in seen
+    yaml_idx = seen.index("repo-context.yaml")
+    # Every raw artifact appears before the canonical yaml.
+    assert all(n != "repo-context.yaml" for n in seen[:yaml_idx])
+    assert "a.json" in seen[:yaml_idx]
+    assert "b.json" in seen[:yaml_idx]
+    # CONTEXT_REPORT.md is the human-readable companion (S8-01) and lands
+    # after yaml so a renderer failure can never compromise the canonical
+    # artifact's integrity (writer.py §_publish_context_report).
+    assert "CONTEXT_REPORT.md" in seen
+    assert seen.index("CONTEXT_REPORT.md") > yaml_idx
 
 
 # AC-18 — partial-raw failure leaves envelope absent

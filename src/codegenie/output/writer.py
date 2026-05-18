@@ -36,6 +36,15 @@ Single chokepoint for YAML serialization in the entire package. The writer:
   emits the field explicitly so ``grep secrets_redacted_count: <log>``
   remains an auditor's clean-run signal. Failure paths are silent on
   ``envelope.written`` per 02-ADR-0008's single-event discipline.
+- After ``repo-context.yaml`` is published, the writer invokes
+  ``codegenie.report.render_confidence_section`` on the in-memory
+  envelope and persists ``CONTEXT_REPORT.md`` via the same ``.tmp →
+  fsync → os.replace`` atomic pattern (S8-01). The canonical artifact is
+  ``repo-context.yaml``; ``CONTEXT_REPORT.md`` is the human-readable
+  companion. A renderer failure (defense-in-depth — the renderer
+  promises never to raise) logs ``report.confidence_section.render_failed``
+  and is otherwise non-fatal so ``repo-context.yaml`` integrity is never
+  compromised by the companion artifact.
 """
 
 from __future__ import annotations
@@ -126,6 +135,27 @@ def _atomic_write_bytes(dest: Path, payload: bytes) -> None:
     os.replace(str(tmp), str(dest))
 
 
+def _publish_context_report(envelope_slice: dict[str, Any], output_dir: Path) -> None:
+    """Render and atomically publish ``CONTEXT_REPORT.md`` (S8-01).
+
+    Imports the renderer lazily so a Phase-2 writer that ships before
+    the consumer (or a future caller that monkey-patches the module)
+    sees no module-import surprise. Renderer failures are best-effort
+    and structurally-logged — the canonical ``repo-context.yaml`` is
+    already on disk by the time we reach here.
+    """
+    try:
+        from codegenie.report import render_confidence_section
+
+        body = render_confidence_section(envelope_slice).encode("utf-8")
+        _atomic_write_bytes(output_dir / "CONTEXT_REPORT.md", body)
+    except Exception as exc:  # noqa: BLE001 — defense-in-depth, never fatal
+        _log.warning(
+            "report.confidence_section.render_failed",
+            error_type=type(exc).__name__,
+        )
+
+
 def _fix_modes_recursively(root: Path) -> None:
     """Apply ``0o700`` to every dir and ``0o600`` to every file under ``root``.
 
@@ -199,6 +229,14 @@ class Writer:
         dumper = _select_dumper()
         body = yaml.dump(envelope.slice, Dumper=dumper, sort_keys=False).encode("utf-8")
         _atomic_write_bytes(output_dir / "repo-context.yaml", body)
+
+        # 5.5. Render and publish the human-readable Confidence section
+        #      companion (S8-01). The renderer is the type-level enforcement
+        #      of B2's "honest confidence" commitment — every IndexFreshness
+        #      variant is exhaustively pattern-matched. A renderer failure
+        #      (defense-in-depth — the renderer is documented as
+        #      never-raising) does NOT compromise repo-context.yaml.
+        _publish_context_report(envelope.slice, output_dir)
 
         # 6. Re-apply modes recursively (ADR-0011 edge case #6).
         _fix_modes_recursively(output_dir)
