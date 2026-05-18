@@ -6,7 +6,7 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 
 | Section | What it captures |
 |---|---|
-| **Status** | Proposed · Accepted · Deferred · Superseded |
+| **Status** | Proposed · Accepted · **Provisional Accepted** · Deferred · Superseded |
 | **Context** | The situation, forces, and constraints that triggered the decision |
 | **Options considered** | The alternatives evaluated, briefly |
 | **Decision** | What we chose, stated unambiguously |
@@ -20,6 +20,8 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 - **Filenames** are `NNNN-kebab-case-title.md` with zero-padded four-digit numbers. Numbers are assigned at write-time and never reused, even if an ADR is superseded.
 - **Numbers are sequential and immutable.** A superseded ADR keeps its number; the new ADR gets the next number and links back.
 - **Status transitions are append-only.** When you supersede an ADR, edit both the old and new ADRs to cross-link, but don't delete history.
+- **`Provisional Accepted` is for accepted direction with named future evidence still outstanding.** Every provisional ADR MUST include a `**Review trigger:**` line naming the evidence, phase, or date that will either promote it to `Accepted`, keep it provisional with new evidence, or retire it.
+- **Supersession is reciprocal.** The old ADR says `**Status:** Superseded by ADR-NNNN`; the successor says `**Supersedes:** ADR-MMMM`. One-way links are incomplete history, not valid lifecycle metadata.
 - **Each ADR is self-contained.** A reader should be able to understand the decision from the ADR alone, without reading the main `design.md`.
 
 ---
@@ -57,6 +59,10 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0036](0036-plugin-task-enablement-dual-source-policy.md) | Plugin/task enablement — dual-source policy (operator Postgres + repo `codegenie.yaml`), OR resolution, fail-closed, stage-aware | policy · kill-switch · config-as-code · audit · phase-13.5 |
 | [0037](0037-layered-analysis-funnel-scip-typechecker-lsp.md) | Layered analysis funnel — SCIP for gather, type-checkers for verification, LSP reserved for interactive loops | gather · verification · scip · type-checker · lsp · cost · phase-boundaries |
 | [0038](0038-vulnerability-provenance-attribution.md) | Vulnerability provenance attribution — `vuln.provenance` as a query-time join over gather-time SBOMs | vuln · provenance · sbom · routing · query-primitive · adapter · gather · assessment · phase-7 · phase-10 |
+| [0039](0039-extension-by-addition-allows-bounded-core-primitives.md) | Extension by addition allows bounded additive core primitives | architecture · extension-by-addition · contracts · phase-7 |
+| [0040](0040-data-lifecycle-retention-and-classification.md) | Data lifecycle, retention, and classification | data · governance · retention |
+| [0041](0041-model-and-prompt-release-qualification.md) | Model and prompt release qualification | llm · release · reproducibility · capability · content-addressed-digest |
+| [0042](0042-multi-plugin-coordination-for-both-workflows.md) | Multi-plugin coordination for `Both` workflows | orchestration · coordination · planning |
 
 ## Index — Deferred decisions
 
@@ -90,10 +96,12 @@ These are committed to the architecture as questions; the decision itself awaits
 ```markdown
 # ADR-NNNN: <Decision title>
 
-**Status:** Proposed | Accepted | Deferred | Superseded by ADR-XXXX
+**Status:** Proposed | Accepted | Provisional Accepted | Deferred | Superseded by ADR-XXXX
 **Date:** YYYY-MM-DD
 **Tags:** tag · tag · tag
 **Related:** ADR-NNNN, ADR-NNNN
+**Review trigger:** Required only when status is `Provisional Accepted`
+**Supersedes:** Required only when this ADR replaces an older ADR
 
 ## Context
 

@@ -151,6 +151,14 @@ code, never by editing the spec**. If you must widen the contract:
 3. Open a PR using the repo's PR template at `templates/adr-amendment.md`.
 4. Regenerate the snapshot using `scripts/regen_probe_contract_snapshot.py`.
 
+### ADR lifecycle
+
+Production ADR statuses are `Proposed`, `Accepted`, `Provisional Accepted`, `Deferred`, and `Superseded`.
+
+- Use **`Provisional Accepted`** only when the direction is binding now but a named future evidence point remains. The ADR must include `**Review trigger:**` and say what evidence will promote or retire it.
+- When a decision replaces an older one, use reciprocal links: the older ADR becomes `Superseded by ADR-NNNN`, and the successor includes `**Supersedes:** ADR-MMMM`.
+- In the issue and PR, state what changed, why the older claim no longer holds, and what evidence supports the new posture.
+
 ### Pre-commit hooks
 
 `.pre-commit-config.yaml` runs `ruff`, `ruff format`, and `mypy` on

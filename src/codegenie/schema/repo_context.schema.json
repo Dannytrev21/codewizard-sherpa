@@ -86,6 +86,12 @@
         "certificate": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/certificate/v0.1.0.json"
         },
+        "sbom": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/sbom/v0.1.0.json"
+        },
+        "cve": {
+          "$ref": "https://codewizard-sherpa.dev/schemas/probes/cve/v0.1.0.json"
+        },
         "skills_index": {
           "$ref": "https://codewizard-sherpa.dev/schemas/probes/layer_d/skills_index/v0.1.0.json"
         },

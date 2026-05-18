@@ -1,5 +1,7 @@
 # Autonomous Distroless Migration Service — Research & Design
 
+> Historical research input. Useful for provenance, but not a canonical roadmap or ADR authority. Current production decisions live in [`production/design.md`](production/design.md) and [`production/adrs/`](production/adrs/README.md).
+
 A shift from developer-invoked CLI to a **service**: a scheduled pipeline that discovers candidate repos, classifies them, analyzes them in detail, plans migration steps, and then hands off to either a human or an autonomous executor to apply and validate the steps. This document researches the closest prior art, maps it to your requirements, and proposes a concrete architecture.
 
 ---

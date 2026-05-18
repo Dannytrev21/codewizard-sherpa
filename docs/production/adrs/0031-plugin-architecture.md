@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-05-12
 **Tags:** architecture · plugins · extension-by-addition · task-class
-**Related:** ADR-0007, ADR-0010, ADR-0028, ADR-0029, ADR-0030
+**Related:** ADR-0007, ADR-0010, ADR-0028, ADR-0029, ADR-0030, ADR-0039
 
 ## Context
 
@@ -159,7 +159,7 @@ The plugin registry MUST include a universal `(*, *, *)` fallback plugin that ma
 | Gain | Cost |
 |---|---|
 | Real granularity matches real-world differences — Yarn Berry IS substantively different from npm; Maven IS substantively different from Gradle | Plugin registry needs a matcher with wildcard fallback and precedence rules — more complexity in dispatch |
-| New language or new build tool = add a plugin; existing plugins untouched (extension-by-addition preserved per ADR-0028) | Plugin authoring is more involved than authoring just a TCCM or a probe — onboarding cost for plugin authors |
+| New language or new build tool = add a plugin; existing plugins untouched (extension-by-addition preserved per ADR-0028 / ADR-0039) | Plugin authoring is more involved than authoring just a TCCM or a probe — onboarding cost for plugin authors |
 | Plugins are self-contained and team-ownable — Java team authors Java plugins independently of Node team | Cross-plugin coordination is needed for shared concerns (e.g., a new task class introduced across N language/build-tool combinations is N plugins, not 1) |
 | Codebase scales sub-linearly with matrix size — inheritance avoids duplication of shared distroless / vuln-remediation patterns | Inheritance introduces resolution complexity; debugging "why did this plugin behave this way" requires walking the `extends` chain |
 | Stage 7 Learning telemetry now keyed by `(task, language, build-tool)` — per-tuple ROI becomes measurable | Telemetry surface grows; cost-attribution model (ADR-0027) needs an `(language, build_tool)` partition |
@@ -172,7 +172,7 @@ The plugin registry MUST include a universal `(*, *, *)` fallback plugin that ma
 - **ADR-0029 (TCCMs) lives inside plugins.** A TCCM is one of a plugin's contributions, not a top-level concept. The `task-class-contexts/` location described in ADR-0029's initial draft becomes `plugins/{plugin-id}/tccm.yaml` — moved into the plugin bundle for cohesion.
 - **The Supervisor's dispatch (`design.md §4.1`) is now plugin-aware.** The `conditional_edge` after the routing decision drops the payload into the resolved plugin's subgraph, with the inherited+composed TCCM already built into a Context Bundle.
 - **Phase 3 of the roadmap (first vuln remediation, deterministic recipe path) becomes "author `vulnerability-remediation--node--npm`."** The first plugin doubles as the proof that the plugin loader works.
-- **Phase 7 (first distroless migration, extension-by-addition test) becomes "author `distroless-migration--node--npm`."** The test of extension-by-addition is now concrete: adding this plugin requires zero edits to any file outside `plugins/distroless-migration--node--npm/`.
+- **Phase 7 (first distroless migration, extension-by-addition test) becomes "author `distroless-migration--node--npm`."** The test of extension-by-addition is now concrete: adding this plugin requires zero edits to existing plugins or stable existing behavior. If a genuinely new cross-task capability first appears here, a bounded additive core primitive may land under its own ADR and then becomes part of the next stable contract surface ([ADR-0039](0039-extension-by-addition-allows-bounded-core-primitives.md)).
 - **Plugin versions are recorded in the cost ledger and the workflow audit log.** A workflow records which plugin (and which version) handled it, so reproducibility survives across plugin updates.
 - **The probe-contract change is purely additive.** ADR-0007 says the probe contract is preserved POC→service; plugins consume that contract without changing it. The `applies_to_build_systems` axis lives in plugin manifests, not in probe declarations.
 - **Out-of-tree pip-installable plugins are a v2 direction, not v1.** All plugins ship in-tree under `plugins/` at adoption. Out-of-tree distribution (via Python entry-points, with semver-range `extends` resolution and multi-version coexistence) becomes relevant once the matrix passes ~15 plugins authored by ≥2 teams, or once customer-driven third-party plugin demand emerges. Until either trigger fires, in-tree-only keeps versioning, discovery, and review trivial.

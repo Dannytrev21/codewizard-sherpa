@@ -8,7 +8,7 @@ labels: ["adr", "design"]
 
 - **ADR number + title:** (e.g. `ADR-0007 — Probe contract frozen snapshot`)
 - **ADR file path:** (e.g. `docs/production/adrs/0007-...` OR `docs/phases/<phase>/ADRs/0007-...`)
-- **Current status:** Accepted / Superseded / Deprecated
+- **Current status:** Proposed / Accepted / Provisional Accepted / Deferred / Superseded
 
 ## What changed (and why now)
 
@@ -17,6 +17,7 @@ Describe the new evidence, requirement, or constraint that motivates the amendme
 - The PR or runtime change that surfaced the need
 - The probe contract snapshot diff (if any) — see `tests/snapshots/probe_contract.v1.json`
 - The `docs/localv2.md §4` paragraph(s) affected (if any)
+- Why the older claim no longer holds
 
 Per ADR-0007, **drift in the probe contract is resolved by changing code, never by editing the spec**. If the runtime drifted from the snapshot, the runtime is what regenerates the snapshot — but only after the amendment is approved.
 
@@ -25,6 +26,7 @@ Per ADR-0007, **drift in the probe contract is resolved by changing code, never 
 - **New decision text:** (replacement paragraph or diff)
 - **New consequences:** (what new constraints land; what older constraints relax)
 - **Status transition:** (Accepted → Superseded? → Deprecated?)
+- **Review trigger:** (required if the new status is `Provisional Accepted`; name the evidence that will promote or retire it)
 - **Successor ADR (if any):** (file path)
 
 ## Workflow
@@ -34,6 +36,7 @@ Per ADR-0007, **drift in the probe contract is resolved by changing code, never 
    - Edits the ADR file in place (preserving the Nygard order: Context → Decision → Status → Consequences)
    - Regenerates `tests/snapshots/probe_contract.v1.json` via the documented regen script (if the contract changes)
    - Cross-links this issue
+   - Adds reciprocal supersession links when replacing an older ADR
 3. Reviewers from `.github/CODEOWNERS` are auto-requested.
 
 ## References

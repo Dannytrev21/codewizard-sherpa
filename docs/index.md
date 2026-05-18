@@ -26,7 +26,7 @@ Deterministic where it can be. Probabilistic only where it must. Humans always m
 
     ---
 
-    17 phases from local bullet tracer to multi-tenant production. Phases 0–2 are shipping; phases 3–7 are designed.
+    17 phases from local bullet tracer to multi-tenant production. Phases 0–5 and 6.5 have complete design packages; Phase 6 has been redesigned against the plugin architecture.
 
     [→ Roadmap](roadmap.md)
 
@@ -59,9 +59,11 @@ LLMs appear only at the **leaves**, called via the Agents SDK for narrow judgmen
 | What | Status |
 |---|---|
 | Phase 0 — Bullet tracer foundations | ✅ Shipped |
-| Phase 1 — Layer A (Node) context gathering | 🚧 In progress |
-| Phase 2 — Layers B–G context gathering | 🚧 In progress |
-| Phases 3–7 — Designed; implementation pending plugin-architecture redesign | 📐 Designs complete |
+| Phase 1 — Layer A (Node) context gathering | ✅ Shipped |
+| Phase 2 — Layers B–G context gathering | 🚧 Most stories shipped; closeout in flight |
+| Phases 3–5, 6.5 — Designed | 📐 Designs complete |
+| Phase 6 — Plugin-aware redesign | 📐 Designs complete |
+| Phase 7 — Awaiting Phase 7 redesign | 📋 Planned |
 | Phases 8–16 — Roadmap stubs awaiting design | 📋 Planned |
 
 The implementation focus today is the **local CLI POC** (`codegenie gather`). The probe contract it implements is the same one the production service will use ([ADR-0007](production/adrs/0007-probe-contract-preserved-poc-to-service.md)) — drift here would propagate everywhere.

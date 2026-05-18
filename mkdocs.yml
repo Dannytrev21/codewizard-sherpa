@@ -3,7 +3,7 @@
 # Curated nav exposes the public-facing surface (overview, get-started,
 # architecture, roadmap, per-phase final-designs, ADRs, contributing).
 # Internal artifacts (stories, _attempts/, _validation/, per-lens design
-# drafts, critiques) remain on disk but stay out of nav. The five
+# drafts, critiques, review memos) remain on disk but stay out of nav. The five
 # superseded design docs (local.md, localv2.md, auto-agent-design.md,
 # gemini-auto-agent-design.md, context.md) are also intentionally omitted
 # from nav. Rationale: phase 0 final-design §2.2 / §5 — phase 1 cleanup
@@ -124,6 +124,11 @@ nav:
           - Final design: phases/05-sandbox-trust-gates/final-design.md
           - Architecture: phases/05-sandbox-trust-gates/phase-arch-design.md
           - High-level impl: phases/05-sandbox-trust-gates/High-level-impl.md
+      - Phase 6 — SHERPA vuln loop:
+          - Overview: phases/06-sherpa-vuln-loop/README.md
+          - Final design: phases/06-sherpa-vuln-loop/final-design.md
+          - Architecture: phases/06-sherpa-vuln-loop/phase-arch-design.md
+          - High-level impl: phases/06-sherpa-vuln-loop/High-level-impl.md
       - Phase 6.5 — Per-task-class eval harness:
           - Overview: phases/06.5-per-task-class-eval-harness/README.md
           - Final design: phases/06.5-per-task-class-eval-harness/final-design.md

@@ -218,3 +218,280 @@ jobs:
         # installs ``pytest`` STANDALONE (no [dev]) per ADR-0006 so the
         # gather-pipeline closure measurement stays uncontaminated.
         run: pytest -q -o "addopts=" tests/unit/test_pyproject_fence.py
+
+  # ---------------------------------------------------------------------------
+  # Phase-2 named CI lanes (S8-03). The eight names from
+  # `phase-arch-design.md §"CI gates"` (fence, contract-freeze, unit,
+  # integration, portfolio, adv-phase02, mypy, bench) are a *required subset*
+  # of the workflow's job names — the legacy `lint`, `typecheck`, `test`,
+  # `security` jobs above stay as-is (no rename, no delete). The new lanes
+  # below are additive.
+  #
+  # All Phase-2 lanes ``needs: [fence]`` so a closure-fence violation short-
+  # circuits the whole workflow (no point burning lane minutes if anthropic
+  # snuck into the runtime).
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # Job 6: contract-freeze — promotes ``tests/unit/test_probe_contract.py``
+  # to its own top-level lane with a per-PR diff surface. The regen helper
+  # is invoked with ``--check`` so the live ProbeContext field set is diffed
+  # against the committed ``probe_contract.v1.json``. A third additive field
+  # (anything outside the Phase-0 base ∪ ``image_digest_resolver``) fails
+  # with an ADR-0004 pointer (S8-03 AC-11).
+  # ---------------------------------------------------------------------------
+  contract-freeze:
+    name: contract-freeze
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 3
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Run probe-contract freeze test
+        run: pytest tests/unit/test_probe_contract.py -q --no-cov
+      - name: Verify ProbeContext field allowlist (ADR-0004)
+        run: python scripts/regen_probe_contract_snapshot.py --check
+
+  # ---------------------------------------------------------------------------
+  # Job 7: unit — fast unit-only subset of pytest. Serial (no xdist per
+  # ADR-0009). ``--no-cov`` so the global 85% coverage floor stays anchored
+  # in the legacy ``test`` job (which still runs the full suite + carve-outs).
+  # ---------------------------------------------------------------------------
+  unit:
+    name: unit
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Materialize stale-scip fixture
+        # ``tests/unit/probes/layer_b/test_index_health_empty_registry_adversarial.py``
+        # and ``tests/unit/fixtures/test_stale_scip_gitignore_policy.py`` expect
+        # the fixture's runtime state (``.git/`` + ``.codegenie/context/raw/scip.json``)
+        # to be present. The session-scoped autouse fixture that regenerates
+        # this state lives in ``tests/adv/phase02/conftest.py`` — outside the
+        # ``unit`` lane's pytest scope. Regenerate it manually here so the
+        # unit lane's discovery scope is self-contained.
+        run: |
+          set -euo pipefail
+          bash tests/fixtures/portfolio/stale-scip/regenerate.sh
+      - name: Run unit lane (serial; no xdist; no coverage)
+        run: pytest tests/unit/ -q --no-cov
+
+  # ---------------------------------------------------------------------------
+  # Job 8: integration — real third-party tool invocations.
+  # Tool-presence preflight prints the missing-tool list as the first
+  # stdout line so an operator scanning CI logs sees gaps at a glance.
+  # Per-test ``@requires_tool`` skips fire with a ``SKIPPED LOUD`` reason
+  # (S8-03 AC-3) when a binary isn't on PATH.
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Tool-presence preflight (loud)
+        run: |
+          set -uo pipefail
+          for tool in semgrep syft grype gitleaks tree-sitter docker strace scip-typescript; do
+            command -v "$tool" >/dev/null || echo "MISSING: $tool"
+          done
+      - name: Run integration lane (serial; no xdist; no coverage)
+        # The ``portfolio`` lane owns ``tests/integration/portfolio/``; we
+        # ignore that subdir here so the two lanes don't run the sweep twice.
+        run: pytest tests/integration/ --ignore=tests/integration/portfolio -q --no-cov
+
+  # ---------------------------------------------------------------------------
+  # Job 9: portfolio — five-fixture sweep + golden diff. ADR-0009: serial,
+  # no xdist. 7-min step cap = 6-min budget + 1-min headroom
+  # (``phase-arch-design.md §"CI lane"``). Golden-diff failure is a hard
+  # fail; ``continue-on-error`` is intentionally absent.
+  # ---------------------------------------------------------------------------
+  portfolio:
+    name: portfolio
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 7
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Install gitleaks (gitleaks probe is golden-tested in portfolio)
+        # The portfolio sweep includes gitleaks-probe golden files. Without
+        # gitleaks on PATH the probe returns ``outcome={"kind":"skipped"}``
+        # and the committed goldens (recorded with gitleaks present) diverge.
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xzC /usr/local/bin gitleaks
+          gitleaks version
+      - name: Materialize stale-scip fixture
+        # ``regen_golden.py`` (invoked by ``test_portfolio_sweep`` AC-28) runs
+        # against the canonical fixtures. ``stale-scip``'s runtime state is
+        # gitignored (S4-02 seed-vs-runtime split); the session-scoped fixture
+        # in ``tests/adv/phase02/conftest.py`` doesn't apply to this lane.
+        # Regenerate explicitly so the gather sweep matches the committed
+        # goldens (which were recorded with the runtime state present).
+        run: |
+          set -euo pipefail
+          bash tests/fixtures/portfolio/stale-scip/regenerate.sh
+      - name: Run portfolio lane (serial; no xdist; no coverage)
+        run: pytest tests/integration/portfolio/ -q --no-cov --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Job 10: adv-phase02 — LOAD-BEARING (S8-03 AC-5). Every Phase-2
+  # adversarial test from S4-02 / S5-05 / S5-06 / S6-07 / S7-04 plus the
+  # Phase-3 handoff smoke. Any failure here fails the build red — no
+  # ``continue-on-error: true``. This is the roadmap exit gate for Phase 2.
+  # ---------------------------------------------------------------------------
+  adv-phase02:
+    name: adv-phase02
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Install gitleaks (S6-07 dependency)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xzC /usr/local/bin gitleaks
+          gitleaks version
+      - name: Run adversarial Phase-2 lane (LOAD-BEARING)
+        run: pytest tests/adv/phase02/ -q --no-cov --tb=long
+
+  # ---------------------------------------------------------------------------
+  # Job 11: mypy — alias job promoting `typecheck` to its Phase-2-canonical
+  # name. The legacy `typecheck` job above still runs; `mypy` re-invokes
+  # `make typecheck` so the Phase-2-named subset assertion in
+  # `phase-arch-design.md §"CI gates"` is satisfied. `warn_unreachable=true`
+  # is enforced via the global `[tool.mypy]` block in `pyproject.toml`
+  # (S1-11 / S8-01 confirmed).
+  # ---------------------------------------------------------------------------
+  mypy:
+    name: mypy
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    needs: [fence]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: mypy --strict (global warn_unreachable on)
+        run: make typecheck
+
+  # ---------------------------------------------------------------------------
+  # Job 12: bench — advisory PR-level bench lane (S8-03 AC-7). Runs the
+  # two NEW (non-`-m bench`-marker) bench scripts; never blocks merge.
+  # ``continue-on-error: true`` is load-bearing — bench variance on shared
+  # runners would otherwise red-flag honest PRs. The hosted-runner bench
+  # (``bench_portfolio_walltime_hosted_runner.py``) is nightly-only via
+  # ``bench-nightly.yml`` and IS gating on its thresholds.
+  #
+  # ``pull-requests: write`` is granted to this job ONLY so ``gh pr comment``
+  # can post regression summaries; ``contents: read`` (workflow-level
+  # default) is preserved.
+  # ---------------------------------------------------------------------------
+  bench:
+    name: bench
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    needs: [fence]
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        os: ["ubuntu-24.04"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev extras
+        run: python -m pip install -e ".[dev]"
+      - name: Run new bench scripts (advisory)
+        continue-on-error: true
+        if: ${{ github.event.pull_request.head.repo.fork == false || github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          python tests/bench/bench_portfolio_walltime.py || true
+          python tests/bench/bench_index_health_overhead.py || true
+      - name: Fork-PR bench notice (measurement only)
+        if: ${{ github.event.pull_request.head.repo.fork == true }}
+        run: |
+          echo "::warning::Fork PR detected; bench comment skipped; measurement artifact only"
+          python tests/bench/bench_portfolio_walltime.py || true
+          python tests/bench/bench_index_health_overhead.py || true
+      - name: Upload bench-results.json
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: bench-results-phase2
+          path: bench-results.json
+          if-no-files-found: warn

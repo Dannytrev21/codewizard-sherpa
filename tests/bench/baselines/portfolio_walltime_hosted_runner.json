@@ -1,0 +1,17 @@
+{
+  "refreshed_at": "2026-05-18T00:00:00Z",
+  "refreshed_by": "Dannytrev21",
+  "reason": "S8-03 initial hosted-runner baseline — projected from dev-laptop p50 × 2× (cpu_count=2 emulation). Real hosted-runner baseline will land after the nightly bench-nightly.yml lands its first measurement.",
+  "measurements": {
+    "minimal-ts/cold_p50_s": 12.0,
+    "minimal-ts/warm_p50_s": 5.0,
+    "native-modules/cold_p50_s": 14.0,
+    "native-modules/warm_p50_s": 6.0,
+    "monorepo-pnpm/cold_p50_s": 28.0,
+    "monorepo-pnpm/warm_p50_s": 12.0,
+    "distroless-target/cold_p50_s": 10.0,
+    "distroless-target/warm_p50_s": 4.0,
+    "stale-scip/cold_p50_s": 11.0,
+    "stale-scip/warm_p50_s": 4.5
+  }
+}

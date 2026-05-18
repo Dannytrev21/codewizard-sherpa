@@ -55,7 +55,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import os
 import secrets
 import sys
 import time
@@ -67,6 +66,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from codegenie.cache.store import CacheStore
+from codegenie.coordinator._cpu_budget import effective_cpu_count
 from codegenie.coordinator.budget import (
     DEFAULT_RESOURCE_BUDGET,
     BudgetingContext,
@@ -486,7 +486,7 @@ async def gather(
         # frozenset({"package.json"}); Phase 2 widens by construction.
         memo = ParsedManifestMemo()
 
-        cpu = os.cpu_count() or 1
+        cpu = effective_cpu_count()
         bound = min(cpu, config.max_concurrent_probes, 8)
         sem = asyncio.Semaphore(bound)
 

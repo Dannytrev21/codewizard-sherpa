@@ -60,7 +60,7 @@ flowchart LR
     P0["Phase 0\nBLAKE3 audit chain\nimport-linter\n@register_probe"]
     P4["Phase 4\nCassettes\nCanary.mint(seed=...)\nRAG promoted/ corpus"]
     P5["Phase 5\nSandbox seam\n@register_signal_kind\nSandboxCostEntry"]
-    P6["Phase 6\nbuild_vuln_loop()\nVulnLedger\nAuditedSqliteSaver"]
+    P6["Phase 6\nVulnRemediationSut\nVulnLedger\nAuditedSqliteSaver"]
   end
 
   subgraph "Phase 6.5 (this phase)"
@@ -79,7 +79,7 @@ flowchart LR
   P0 -->|chain_append/verify| EVAL
   P4 -->|cassettes + Canary seed kwarg| EVAL
   P5 -->|SandboxCostEntry + bench_invocation| EVAL
-  P6 -->|SUT = build_vuln_loop| EVAL
+  P6 -->|SUT = VulnRemediationSut| EVAL
   EVAL --> OUT
   BENCH --> EVAL
   EVAL -->|"bench/X dir contract\n@register_task_class"| P7
@@ -207,7 +207,7 @@ The **central abstractions** are `Rubric` (Protocol — per Phase 5 [ADR-0006](.
 
 ### Process view
 
-One eval run is an asyncio fan-out over a bounded worker pool with a single rolling aggregator and a single audit appender. The SUT (Phase 6's `build_vuln_loop().ainvoke(...)`) and the rubric subprocess are the two heavy stages per case; everything else is plumbing.
+One eval run is an asyncio fan-out over a bounded worker pool with a single rolling aggregator and a single audit appender. The SUT (Phase 6's `VulnRemediationSut.run_case(...)`) and the rubric subprocess are the two heavy stages per case; everything else is plumbing.
 
 ```mermaid
 sequenceDiagram
@@ -217,7 +217,7 @@ sequenceDiagram
   participant Cache as "cache.py"
   participant Sem as "asyncio.Semaphore(N=4)"
   participant W as "Worker (per case)"
-  participant SUT as "SUT: build_vuln_loop().ainvoke"
+  participant SUT as "SUT: VulnRemediationSut.run_case"
   participant Rub as "subprocess: python rubric.py"
   participant Agg as "Aggregator (single asyncio.Task)"
   participant Aud as "audit.write_run_record"
@@ -388,7 +388,7 @@ sequenceDiagram
   participant CI as "GH Actions cron"
   participant CLI as "codegenie eval run"
   participant Run as "Runner"
-  participant SUT as "build_vuln_loop"
+  participant SUT as "VulnRemediationSut"
   participant Rub as "rubric.py subprocess"
   participant Aud as "audit.write_run_record"
   participant Git as "git push (operator review)"
@@ -873,7 +873,7 @@ Trace export is **deferred to Phase 13** (the harness emits structured logs that
 | `registry`, `models`, `loader`, `cache`, `audit`, `promotion`, `cli`, `canary`, `cost_tag` | **Deterministic** | Inputs identical → outputs identical, byte-for-byte. |
 | `runner` aggregator | Deterministic | Welford stats over a deterministic input set; bootstrap uses a deterministic seed (`int(run_id[:8], 16)`); 1000 resamples → stable `lower_bound_95`. |
 | `runner` scheduling | Deterministic-in-outputs, non-deterministic-in-completion-order | Worker completion order varies; the aggregator consumes from a queue and orders by `case_id` at report time, restoring determinism. |
-| Per-case SUT (`build_vuln_loop`) | Deterministic given cassettes + canary pin | Phase 6 + Phase 4 contract; this is what makes byte-identical reruns possible. |
+| Per-case SUT (`VulnRemediationSut`) | Deterministic given cassettes + canary pin | Phase 6 + Phase 4 contract; this is what makes byte-identical reruns possible. |
 | Per-case rubric | Deterministic (by convention) | Bench-authors must write deterministic rubrics; the unit test in `bench/{tc}/tests/test_rubric_unit.py` is the structural enforcement. |
 
 **The probabilistic surface is exactly one place: the bootstrap.** It is leafed and seeded.
@@ -917,7 +917,7 @@ The rubric subprocess is the load-bearing isolation surface. Specifications:
 
 ### Prompt template structure
 
-N/A for Phase 6.5. The harness has no prompts. The SUT (Phase 6's `build_vuln_loop`) does; Phase 4 owns its template discipline.
+N/A for Phase 6.5. The harness has no prompts. The SUT behind Phase 6's `VulnRemediationSut` does; Phase 4 owns its template discipline.
 
 ### Confidence handling
 
