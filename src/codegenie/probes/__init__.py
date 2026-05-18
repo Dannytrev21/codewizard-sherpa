@@ -54,9 +54,15 @@ from codegenie.probes.layer_e import (
     service_topology_stub,  # noqa: F401 — S6-05 registration
     slo_stub,  # noqa: F401 — S6-05 registration
 )
+from codegenie.probes.layer_g import (
+    ast_grep,  # noqa: F401 — S6-06 registration
+    ripgrep_curated,  # noqa: F401 — S6-06 registration
+    semgrep,  # noqa: F401 — S6-06 registration
+)
 
 __all__ = [
     "adrs",
+    "ast_grep",
     "base",
     "certificate",
     "ci",
@@ -79,9 +85,11 @@ __all__ = [
     "registry",
     "repo_config",
     "repo_notes",
+    "ripgrep_curated",
     "runtime_trace",
     "scip_index",
     "semantic_index_meta",
+    "semgrep",
     "service_topology_stub",
     "shell_usage",
     "skills_index",

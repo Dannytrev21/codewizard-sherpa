@@ -1,7 +1,7 @@
 # Story S6-06 — `Semgrep` + `AstGrep` + `RipgrepCurated` Layer G scanners
 
 **Step:** Step 6 — Ship Layer D + E + G probes (skills, conventions, ADRs, ownership, scanners)
-**Status:** HARDENED (validated 2026-05-17)
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S6-06.md`](_attempts/S6-06.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-07 (`run_external_cli` wrapper — async, `probe_name: ProbeId` first-positional, `cwd=`/`timeout_s=` kwargs, 64 MB tail-truncation, env strip, optional bwrap), S3-03 (writer signature + sanitizer composition — scanner findings flow through `SecretRedactor` at the writer chokepoint), S5-01 (`ScannerOutcome = ScannerRan | ScannerSkipped | ScannerFailed` shared sum type; **closed set** — `reason` enums are NOT extensible without ADR-amendment), S1-08 (`@register_probe(heaviness=..., runs_last=...)` decorator — kernel kwargs are `heaviness`+`runs_last` ONLY), S5-04 (`SbomProbe` / `CveProbe` precedent: dual-form identity `_PROBE_ID: Final[ProbeId]` + `name: str`, pure-total `_classify_*_outcome` classifier, `_envelope` helper, two-file write split, `monkeypatch.setattr(mod, "run_external_cli", _spy)` test pattern)
 **ADRs honored:** 02-ADR-0001 (`semgrep`, `ast-grep`, `ripgrep` added to `ALLOWED_BINARIES`), 02-ADR-0005 (no plaintext persistence — findings flow through `SecretRedactor`), 02-ADR-0006 (**`ScannerOutcome` variants AND each variant's `reason` enum are closed sets**; "output truncation" is NOT a new `reason` value — see AC-13 reframing), 02-ADR-0010 (`RedactedSlice` smart constructor at writer boundary — the four scanners' outputs reach the writer via that single typed door)
