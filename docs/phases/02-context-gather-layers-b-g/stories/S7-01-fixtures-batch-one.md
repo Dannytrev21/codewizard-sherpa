@@ -1,7 +1,7 @@
 # Story S7-01 — Fixtures batch 1: `minimal-ts` + `native-modules` + `distroless-target`
 
 **Step:** Step 7 — Plant five-repo fixture portfolio + per-probe golden files + remaining adversarial corpus
-**Status:** HARDENED (validated 2026-05-17)
+**Status:** GREEN (shipped 2026-05-18) — see `_attempts/S7-01.md`
 **Effort:** M
 **Depends on:** S4-07 (Layer B sub-schemas — goldens-to-come reference them), S6-08 (Layer D/E/G sub-schemas + freshness registrations — `minimal-ts` smokes every probe)
 **ADRs honored:** ADR-0001 (allowlisted binaries — `regenerate.sh` invokes only allowlisted tools), ADR-0003 (heaviness sort — `distroless-target` exercises a heavy probe path), ADR-0004 (image-digest declared-input token — `distroless-target`'s `Dockerfile` produces a real digest the regen script resolves), ADR-0005 (no plaintext persisted — fixture trees commit zero `.codegenie/cache/` blobs), ADR-0007 (no plugin loader — no fixture seeds `plugins/`), ADR-0009 (pytest-xdist veto — closed-set fixture trees so parallelism never tempts).

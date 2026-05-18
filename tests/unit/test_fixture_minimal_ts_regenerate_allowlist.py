@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from codegenie.exec import ALLOWED_BINARIES
-
 from tests.unit._fixture_regen_allowlist import (
     _SHELL_COREUTILS_ALLOWLIST,
     _SHELL_FORBIDDEN,
@@ -37,6 +36,4 @@ def test_regenerate_does_not_invoke_forbidden() -> None:
     script_bytes = (_FIXTURE / "regenerate.sh").read_bytes()
     invoked = tokenize_invoked_binaries(script_bytes)
     bad = invoked & _SHELL_FORBIDDEN
-    assert not bad, (
-        f"minimal-ts/regenerate.sh invokes forbidden tokens: {sorted(bad)}"
-    )
+    assert not bad, f"minimal-ts/regenerate.sh invokes forbidden tokens: {sorted(bad)}"

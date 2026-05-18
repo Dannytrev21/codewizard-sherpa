@@ -77,9 +77,7 @@ class _FileSpec(NamedTuple):
 
 # --- AC-21b: final-stage digest pin regex -------------------------------------
 
-_DIGEST_PIN_RE: Final[re.Pattern[str]] = re.compile(
-    r"^FROM\s+\S+@sha256:[0-9a-f]{64}\b"
-)
+_DIGEST_PIN_RE: Final[re.Pattern[str]] = re.compile(r"^FROM\s+\S+@sha256:[0-9a-f]{64}\b")
 
 
 # --- Pure content predicates --------------------------------------------------
@@ -100,7 +98,9 @@ def _pkg_minimal_node_app(pkg: dict[str, Any]) -> None:
 def _index_js_minimal(raw_bytes: bytes) -> None:
     """AC-20 — 5 lines: shebang + comment + console.log + process.exit."""
     text = raw_bytes.decode("utf-8")
-    assert text.startswith("#!/usr/bin/env node"), "index.js must start with a #!/usr/bin/env node shebang"
+    assert text.startswith("#!/usr/bin/env node"), (
+        "index.js must start with a #!/usr/bin/env node shebang"
+    )
     assert 'console.log("ok")' in text
     assert "process.exit(0)" in text
     # Cap line count to keep the fixture minimal.
@@ -115,9 +115,7 @@ def _dockerfile_two_stages_distroless(raw_bytes: bytes) -> None:
     assert len(from_lines) == 2, (
         f"distroless-target/Dockerfile must have exactly two stages; got FROM lines {from_lines}"
     )
-    assert "FROM node:20-slim AS build" in text, (
-        "First stage must be `FROM node:20-slim AS build`"
-    )
+    assert "FROM node:20-slim AS build" in text, "First stage must be `FROM node:20-slim AS build`"
     # Final stage must mention a known distroless base. Two acceptable
     # roots per S7-01 AC-21; the regex predicate below handles the
     # digest-pin invariant.
@@ -296,9 +294,8 @@ def _enumerate_tracked_via_git(fixture: Path) -> set[str]:
         )
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"git ls-files failed (rc={result.returncode}): {result.stderr.decode('utf-8', 'replace')}"
-        )
+        stderr = result.stderr.decode("utf-8", "replace")
+        raise RuntimeError(f"git ls-files failed (rc={result.returncode}): {stderr}")
     out: set[str] = set()
     for entry in result.stdout.split(b"\x00"):
         if not entry:
@@ -348,6 +345,4 @@ def test_probe_name_literal_matches_phase_2_registry() -> None:
     registered = {p.name for p in (cls() for cls in default_registry.all_probes())}
     literal_members = set(get_args(_ProbeName))
     missing = registered - literal_members
-    assert not missing, (
-        f"registered probe names not in _ProbeName Literal: {sorted(missing)}"
-    )
+    assert not missing, f"registered probe names not in _ProbeName Literal: {sorted(missing)}"

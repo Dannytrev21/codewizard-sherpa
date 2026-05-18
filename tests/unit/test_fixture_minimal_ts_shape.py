@@ -351,9 +351,8 @@ def _enumerate_tracked_via_git(fixture: Path) -> set[str]:
         )
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"git ls-files failed (rc={result.returncode}): {result.stderr.decode('utf-8', 'replace')}"
-        )
+        stderr = result.stderr.decode("utf-8", "replace")
+        raise RuntimeError(f"git ls-files failed (rc={result.returncode}): {stderr}")
     out: set[str] = set()
     for entry in result.stdout.split(b"\x00"):
         if not entry:

@@ -30,7 +30,9 @@ def _should_skip() -> bool:
     return not _DIGEST_FILE.is_file()
 
 
-@pytest.mark.skipif(_should_skip(), reason="built-image.digest not present and CODEGENIE_REGEN_FIXTURES != 1")
+@pytest.mark.skipif(
+    _should_skip(), reason="built-image.digest not present and CODEGENIE_REGEN_FIXTURES != 1"
+)
 def test_built_image_digest_shape() -> None:
     """AC-38 — exactly one line matching ``^sha256:[0-9a-f]{64}\\n$``."""
     raw = _DIGEST_FILE.read_bytes()

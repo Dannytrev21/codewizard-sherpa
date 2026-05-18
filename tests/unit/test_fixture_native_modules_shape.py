@@ -110,8 +110,7 @@ def _binding_gyp_strict_json_bytes(raw_bytes: bytes) -> None:
     for lineno, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         assert not stripped.startswith("#"), (
-            f"binding.gyp line {lineno}: # comments are forbidden — "
-            f"pure RFC-8259 JSON only"
+            f"binding.gyp line {lineno}: # comments are forbidden — pure RFC-8259 JSON only"
         )
     # No trailing commas: ``,]`` or ``,}`` after whitespace.
     import re as _re
@@ -284,9 +283,8 @@ def _enumerate_tracked_via_git(fixture: Path) -> set[str]:
         )
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"git ls-files failed (rc={result.returncode}): {result.stderr.decode('utf-8', 'replace')}"
-        )
+        stderr = result.stderr.decode("utf-8", "replace")
+        raise RuntimeError(f"git ls-files failed (rc={result.returncode}): {stderr}")
     out: set[str] = set()
     for entry in result.stdout.split(b"\x00"):
         if not entry:
@@ -331,6 +329,4 @@ def test_probe_name_literal_matches_phase_2_registry() -> None:
     registered = {p.name for p in (cls() for cls in default_registry.all_probes())}
     literal_members = set(get_args(_ProbeName))
     missing = registered - literal_members
-    assert not missing, (
-        f"registered probe names not in _ProbeName Literal: {sorted(missing)}"
-    )
+    assert not missing, f"registered probe names not in _ProbeName Literal: {sorted(missing)}"
