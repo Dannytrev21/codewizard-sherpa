@@ -1,7 +1,7 @@
 # Story S7-05 — Property tests + portfolio integration sweep
 
 **Step:** Step 7 — Plant five-repo fixture portfolio + per-probe golden files + remaining adversarial corpus
-**Status:** HARDENED (validated 2026-05-18)
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S7-05.md`](_attempts/S7-05.md) for the per-AC evidence table + gate log). AC-25/28 use `subprocess.run([sys.executable, "-m", "codegenie", ...])` (the `run_allowlisted` path was unsatisfiable — `python` is not in `ALLOWED_BINARIES`). AC-26 implements a structured-JSON-log check (the project's stderr format) instead of a prefix-allowlist. AC-20 "iff `len(results)==0`" was softened to match `_derive_trace_coverage_confidence` semantics ("unavailable" iff no completed entries). All adaptations documented in the attempt log.
 **Effort:** M
 **Depends on:** S7-03 (~70 goldens exist; the portfolio sweep diffs against them; the regen script proves canonical-JSON discipline holds)
 **ADRs honored:** ADR-0006 (`IndexFreshness` location — property test asserts round-trip identity over every `StaleReason` variant), ADR-0007 (no plugin loader — `dep_graph` strategy registry has zero strategies in Phase 2; property test asserts the dispatch is total over the closed `PackageManager` enum), ADR-0009 (pytest-xdist veto — property tests run serially under the same `--max-examples=200` budget), ADR-0010 (`RedactedSlice` smart constructor — property tests against `ScannerOutcome` round-trip exercise the `RedactedSlice` JSON shape without re-constructing it outside the sanitizer).

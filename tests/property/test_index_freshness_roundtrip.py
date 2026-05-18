@@ -2,13 +2,16 @@
 
 AC-11 of story 02 S1-01. Required deliverable per 02-ADR-0006 §Consequences:
 "any ``IndexFreshness`` round-trips identity-equal."
+
+S7-05 extension: AC-4 / AC-35 — ``@settings(max_examples=200,
+deadline=None, database=None)`` for CI determinism + variant coverage.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import TypeAdapter
 
@@ -61,6 +64,7 @@ _adapter: TypeAdapter[IndexFreshness] = TypeAdapter(IndexFreshness)
 
 
 @given(value=_freshness)
+@settings(max_examples=200, deadline=None, database=None)  # S7-05 AC-4, AC-35
 def test_index_freshness_roundtrips_identity(value: IndexFreshness) -> None:
     decoded = _adapter.validate_json(_adapter.dump_json(value))
     # Top-level: identity-equal and concrete type preserved.

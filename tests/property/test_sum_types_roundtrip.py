@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import TypeAdapter
 
@@ -155,6 +155,7 @@ _scenario_adapter: TypeAdapter[ScenarioResult] = TypeAdapter(ScenarioResult)
 
 
 @given(value=_scanner_outcomes)
+@settings(max_examples=200, deadline=None, database=None)  # S7-05 AC-11, AC-35
 def test_scanner_outcome_roundtrips_identity(value: ScannerOutcome) -> None:
     decoded = _scanner_adapter.validate_json(_scanner_adapter.dump_json(value))
     assert decoded == value
@@ -165,6 +166,7 @@ def test_scanner_outcome_roundtrips_identity(value: ScannerOutcome) -> None:
 
 
 @given(value=_scenario_results)
+@settings(max_examples=200, deadline=None, database=None)  # S7-05 AC-11, AC-35
 def test_scenario_result_roundtrips_identity(value: ScenarioResult) -> None:
     decoded = _scenario_adapter.validate_json(_scenario_adapter.dump_json(value))
     assert decoded == value
