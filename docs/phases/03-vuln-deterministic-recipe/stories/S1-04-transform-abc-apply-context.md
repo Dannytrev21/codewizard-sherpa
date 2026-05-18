@@ -1,7 +1,7 @@
 # Story S1-04 — Transform ABC + ApplyContext + provenance
 
 **Step:** Step 1 — Scaffold packages, domain primitives, sum types, and structural CI fences
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S1-04.md`](_attempts/S1-04.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S1-01 (`TransformId`, `WorkflowId`, `AttemptNumber`, `SignalKind`, `PluginId`, `RecipeId`, `TransformKind`, `EventId` newtypes)
 **ADRs honored:** ADR-0001 (Phase-5 contract surface — `Transform` ABC, `ApplyContext`, `prior_attempts: list = []` shipped Phase-3-time; contract snapshot test S6-06 freezes it), ADR-0010 (`frozen=True` + `extra="forbid"` everywhere; primitives-only `details`; "make illegal states unrepresentable"), ADR-0011 (`SandboxedPath` framing — `Transform.files_changed: list[SandboxedPath]` is in-jail-at-construction; `Capability` audit-trail anchored via `TransformProvenance.capability_use_id`)
