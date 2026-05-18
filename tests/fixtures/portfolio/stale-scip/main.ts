@@ -1,1 +1,3 @@
-export const x = 1;
+import { entry } from "./src/e";
+
+console.log(entry(1));

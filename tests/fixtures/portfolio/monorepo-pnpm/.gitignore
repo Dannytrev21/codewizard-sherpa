@@ -1,0 +1,8 @@
+# Fixture-local gitignore (defense-in-depth; repo-wide .gitignore already
+# excludes .codegenie/). node_modules/ is never installed at regen time
+# (pnpm is NOT in ALLOWED_BINARIES per ADR-0001), but pinning intent at
+# the fixture boundary catches accidental `pnpm install` runs by an
+# operator.
+node_modules/
+.codegenie/
+dist/

@@ -1,6 +1,7 @@
 {
-  "name": "stale-scip-fixture",
+  "name": "monorepo-pnpm-fixture",
   "private": true,
+  "workspaces": ["packages/*"],
   "devDependencies": {
     "typescript": "^5.3.0"
   }

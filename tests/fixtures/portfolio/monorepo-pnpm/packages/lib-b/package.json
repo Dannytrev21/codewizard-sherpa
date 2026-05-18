@@ -1,0 +1,9 @@
+{
+  "name": "@monorepo-pnpm/lib-b",
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "private": true,
+  "dependencies": {
+    "@monorepo-pnpm/lib-a": "workspace:*"
+  }
+}

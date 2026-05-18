@@ -1,45 +1,39 @@
-"""Shape test for ``tests/fixtures/node_typescript_helm/`` — the Phase-1 canonical fixture.
+"""Shape test for ``tests/fixtures/node_typescript_helm/`` — Phase-1 canonical fixture.
 
-``_FILE_SPECS`` is the single source of truth for which files the fixture
-contains, which probes consume each, and which content invariants each file
-must satisfy. Adding a fixture file: one :class:`_FileSpec` entry insertion
-+ zero edits to the parametrized test bodies. The same ``Literal[...]``
-``_ProbeName`` closed set is enforced both at ``mypy --strict``
-(typo-resistance) AND at runtime (AC-18).
+Migrated to consume the shared shape-test kernel at
+``tests/fixtures/_shape_test_kernel.py`` (S7-02 AC-24 + AC-25). The
+kernel owns ``_FileSpec`` / ``_ProbeName`` / parametrize-machinery /
+``git ls-files`` port; this consumer declares only ``_FIXTURE`` +
+``_FILE_SPECS`` + pure content predicates.
 
-This file implements the AC battery from
+Phase-1 AC-18 (`_ProbeName` strict-equals the Phase-1 closed set) is
+intentionally LIFTED to AC-26's subset semantics (`registered ⊆
+Literal members`) so that adding Phase-2+ probe names to the shared
+Literal does not retroactively break Phase-1's fixture. The subset
+check lives in ``tests/unit/test_shape_test_kernel.py``. Every other
+Phase-1 AC (1–17, 19–23, 37, 38) is preserved.
+
+Implements the AC battery from
 ``docs/phases/01-context-gather-layer-a-node/stories/S2-03-fixture-node-typescript-helm.md``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, get_args
+from typing import Any
 
 import pytest
 
-from codegenie.parsers import jsonc, safe_json, safe_yaml
+from tests.fixtures._shape_test_kernel import (
+    _FileSpec,
+    assert_file_content_invariants,
+    assert_file_exists,
+    assert_file_line_endings,
+    assert_file_parses,
+    assert_readme_references_every_spec,
+)
 
 _FIXTURE = Path(__file__).parent.parent / "fixtures" / "node_typescript_helm"
-
-_ProbeName = Literal[
-    "language_detection",
-    "node_build_system",
-    "node_manifest",
-    "ci",
-    "deployment",
-    "test_inventory",
-]
-
-_ParserKind = Literal["safe_json", "safe_yaml", "jsonc", "text"]
-
-
-class _FileSpec(NamedTuple):
-    relpath: str
-    consumers: tuple[_ProbeName, ...]
-    parser: _ParserKind | None
-    content_checks: tuple[Callable[[Any], None], ...]
 
 
 # --- Pure content predicates (each independently unit-testable) -----------------
@@ -80,7 +74,6 @@ def _tsconfig_shape(ts: dict[str, Any]) -> None:
 
 
 def _tsconfig_has_both_comment_styles(raw_bytes: bytes) -> None:
-    # AC-4b — exercises jsonc.py's state machine on the warm path.
     text = raw_bytes.decode("utf-8")
     assert "//" in text, "tsconfig.json must contain at least one // line comment"
     assert "/*" in text and "*/" in text, (
@@ -175,60 +168,35 @@ _FILE_SPECS: tuple[_FileSpec, ...] = (
         "safe_yaml",
         (_values_prod_image_override,),
     ),
-    # README is documented by AC-17's separate test; consumers tuple is
-    # intentionally empty because the README documents the others.
     _FileSpec("README.md", (), "text", ()),
 )
 
 
-# --- Tests parametrized over _FILE_SPECS ----------------------------------------
+# --- Parametrize wrappers (delegate to kernel helpers) ----------------------------
 
 
 @pytest.mark.parametrize("spec", _FILE_SPECS, ids=lambda s: s.relpath)
 def test_fixture_file_exists(spec: _FileSpec) -> None:
     """AC-1, AC-16(a) — every spec'd file is present."""
-    assert (_FIXTURE / spec.relpath).is_file(), f"missing: {spec.relpath}"
+    assert_file_exists(_FIXTURE, spec)
 
 
 @pytest.mark.parametrize("spec", _FILE_SPECS, ids=lambda s: s.relpath)
 def test_fixture_file_parses(spec: _FileSpec) -> None:
     """AC-2b/AC-3/AC-4c/AC-7/AC-8/AC-9/AC-10, AC-16(b) — parses cleanly."""
-    if spec.parser is None or spec.parser == "text":
-        return
-    path = _FIXTURE / spec.relpath
-    if spec.parser == "safe_json":
-        safe_json.load(path, max_bytes=50 * 1024 * 1024)
-    elif spec.parser == "safe_yaml":
-        safe_yaml.load(path, max_bytes=50 * 1024 * 1024)
-    elif spec.parser == "jsonc":
-        jsonc.load(path, max_bytes=10 * 1024 * 1024)
+    assert_file_parses(_FIXTURE, spec)
 
 
 @pytest.mark.parametrize("spec", _FILE_SPECS, ids=lambda s: s.relpath)
 def test_fixture_file_content_invariants(spec: _FileSpec) -> None:
     """AC-2a/AC-4a/AC-5/AC-6/AC-7/AC-8/AC-9/AC-10, AC-16(c) — content_checks pass."""
-    if not spec.content_checks:
-        return
-    path = _FIXTURE / spec.relpath
-    payload: Any
-    if spec.parser == "text" or spec.parser is None:
-        payload = path.read_bytes()
-    elif spec.parser == "safe_json":
-        payload = safe_json.load(path, max_bytes=50 * 1024 * 1024)
-    elif spec.parser == "safe_yaml":
-        payload = safe_yaml.load(path, max_bytes=50 * 1024 * 1024)
-    elif spec.parser == "jsonc":
-        payload = jsonc.load(path, max_bytes=10 * 1024 * 1024)
-    for check in spec.content_checks:
-        check(payload)
+    assert_file_content_invariants(_FIXTURE, spec)
 
 
 @pytest.mark.parametrize("spec", _FILE_SPECS, ids=lambda s: s.relpath)
 def test_fixture_file_line_endings(spec: _FileSpec) -> None:
     """AC-19 — LF endings, no CRLF, trailing newline on text-like files."""
-    raw = (_FIXTURE / spec.relpath).read_bytes()
-    assert b"\r" not in raw, f"{spec.relpath} contains CR — must be LF-only"
-    assert raw.endswith(b"\n"), f"{spec.relpath} must end with LF"
+    assert_file_line_endings(_FIXTURE, spec)
 
 
 # --- AC-4b: tsconfig.json has both comment styles --------------------------------
@@ -257,7 +225,13 @@ def test_no_forbidden_subpaths(forbidden: str) -> None:
 _FIXTURE_NOISE_NAMES = frozenset({"__pycache__", ".pytest_cache", ".DS_Store"})
 
 
-def _enumerate_tracked(root: Path) -> set[str]:
+def _enumerate_via_rglob(root: Path) -> set[str]:
+    """Phase-1 closed-set kept rglob-based (not yet on `git ls-files`).
+
+    Phase-1's S2-03 used rglob-minus-noise; the S7-02 attempt log
+    documents this as a follow-up for a future unification with the
+    `git ls-files` port. Not in S7-02's scope.
+    """
     out: set[str] = set()
     for p in root.rglob("*"):
         if p.is_dir():
@@ -273,7 +247,7 @@ def test_fixture_tree_is_closed_set() -> None:
     """AC-14 — REQUIRED_FILES is exhaustive. A stray file fails before it can
     dirty the S6-01 golden silently."""
     expected = {spec.relpath for spec in _FILE_SPECS}
-    actual = _enumerate_tracked(_FIXTURE)
+    actual = _enumerate_via_rglob(_FIXTURE)
     extra = actual - expected
     missing = expected - actual
     assert not extra and not missing, (
@@ -285,29 +259,7 @@ def test_fixture_tree_is_closed_set() -> None:
 
 
 def test_readme_references_every_spec() -> None:
-    readme_text = (_FIXTURE / "README.md").read_text(encoding="utf-8")
-    for spec in _FILE_SPECS:
-        if spec.relpath == "README.md":
-            continue
-        assert spec.relpath in readme_text, f"README missing reference to {spec.relpath}"
-        for consumer in spec.consumers:
-            assert consumer in readme_text, (
-                f"README missing consumer {consumer!r} for {spec.relpath}"
-            )
-
-
-# --- AC-18: _ProbeName Literal is the Phase-1 closed set -------------------------
-
-
-def test_probe_name_literal_matches_phase_1_closed_set() -> None:
-    assert set(get_args(_ProbeName)) == {
-        "language_detection",
-        "node_build_system",
-        "node_manifest",
-        "ci",
-        "deployment",
-        "test_inventory",
-    }
+    assert_readme_references_every_spec(_FIXTURE, _FILE_SPECS)
 
 
 # --- AC-12: no fixture file byte-identical to a production source -----------------

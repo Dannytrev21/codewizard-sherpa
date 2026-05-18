@@ -1,7 +1,7 @@
 # Story S7-02 — Fixtures batch 2: `monorepo-pnpm` + **load-bearing** `stale-scip` full materialization
 
 **Step:** Step 7 — Plant five-repo fixture portfolio + per-probe golden files + remaining adversarial corpus
-**Status:** HARDENED (validated 2026-05-18)
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S7-02.md`](_attempts/S7-02.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S7-01 HARDENED (fixtures batch 1 — patterns + shape-test conventions + the shared `tests/unit/_fixture_regen_allowlist.py` module transfer wholesale; the "hand-author the lockfile; do NOT run `pnpm install` at regen" pattern is the explicit S7-01 precedent for `monorepo-pnpm`), S4-02 (`stale-scip` STUB at `tests/fixtures/portfolio/stale-scip/` + `test_stale_scip_fixture.py` CI-gating adversarial — this story is the FULL materialization of the `_seed/scip-index.scip.placeholder` binary, NOT a wholesale stub replacement).
 **ADRs honored:** ADR-0001 (allowlisted binaries — `regenerate.sh` for both fixtures invokes only binaries in `ALLOWED_BINARIES ∪ _SHELL_COREUTILS_ALLOWLIST`; `scip-typescript` is in the allowlist but is invoked ONLY out-of-band by the contributor producing the seed binary, NOT inside `regenerate.sh`; `pnpm`/`npm`/`node-gyp` are NOT allowlisted), ADR-0006 (`IndexFreshness` location — `CommitsBehind` is the structural assertion the fixture's adversarial test reads), ADR-0007 (no plugin loader — neither fixture seeds `plugins/`), ADR-0009 (pytest-xdist veto — closed-set fixture trees, regen-script-only mutation surface).

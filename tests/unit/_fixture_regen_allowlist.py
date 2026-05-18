@@ -164,13 +164,66 @@ def _is_variable_assignment(token: str) -> bool:
     return all(c.isalnum() or c == "_" for c in name)
 
 
+def _extract_subshell_commands(line: str) -> tuple[str, list[str]]:
+    """Strip ``$(...)`` subshell substitutions; return cleaned line + commands.
+
+    For a line like ``PARENT=$(git rev-parse HEAD)``:
+    - Returns ``("PARENT=", ["git"])``.
+
+    The first token inside each ``$(...)`` block is the invoked binary;
+    the rest are its args (NOT invoked binaries themselves). The outer
+    line is left with the subshell replaced by an empty string so the
+    rest of the tokenizer (variable-assignment, builtin detection) sees
+    a sensible residue.
+
+    Nested ``$(...)`` blocks are handled by depth tracking; backslash-
+    escaped quotes inside subshells are NOT modeled (review-as-code
+    regen scripts don't need that).
+    """
+    cleaned: list[str] = []
+    commands: list[str] = []
+    i = 0
+    depth = 0
+    inner_start = 0
+    inner: list[str] = []
+    while i < len(line):
+        ch = line[i]
+        if depth == 0 and ch == "$" and i + 1 < len(line) and line[i + 1] == "(":
+            depth = 1
+            inner_start = i + 2
+            i += 2
+            continue
+        if depth > 0:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    inner_text = line[inner_start:i].strip()
+                    inner.append(inner_text)
+                    i += 1
+                    continue
+            i += 1
+            continue
+        cleaned.append(ch)
+        i += 1
+    for inner_text in inner:
+        tokens = inner_text.split()
+        if tokens:
+            commands.append(tokens[0])
+    return "".join(cleaned), commands
+
+
 def tokenize_invoked_binaries(script_bytes: bytes) -> frozenset[str]:
     """Return the set of binary tokens invoked by *script_bytes*.
 
     The parser is deliberately conservative: each non-blank,
     non-``#``-only line is scanned for its first non-builtin,
-    non-assignment token. The result is the set of all such tokens
-    across the whole script.
+    non-assignment token. ``$(...)`` subshell substitutions are
+    handled by extracting the inner command token (not its args) and
+    treating the surrounding line as if the substitution were empty,
+    so ``PARENT=$(git rev-parse HEAD)`` contributes ``git`` to the
+    invoked set and nothing else.
 
     Lines that start with a shebang (``#!/...``) are skipped.
 
@@ -186,22 +239,36 @@ def tokenize_invoked_binaries(script_bytes: bytes) -> frozenset[str]:
     """
     text = script_bytes.decode("utf-8")
     invoked: set[str] = set()
+    continuation = False
     for raw_line in text.splitlines():
-        line = _strip_inline_comment(raw_line).strip()
+        line = _strip_inline_comment(raw_line)
+        # Backslash-continuation: a line ending in ``\`` continues onto
+        # the next. We treat the following physical line as a
+        # continuation (not a fresh command-line) and skip its first-
+        # token analysis.
+        ends_with_backslash = line.rstrip().endswith("\\")
+        line = line.strip()
+        if continuation:
+            continuation = ends_with_backslash
+            continue
+        continuation = ends_with_backslash
         if not line:
             continue
         if line.startswith("#"):
             continue
+        cleaned, sub_commands = _extract_subshell_commands(line)
+        invoked.update(sub_commands)
+        cleaned_line = cleaned.strip()
+        if not cleaned_line:
+            continue
         # Drop leading variable-assignment prefixes like ``FOO=bar BAZ=qux cmd ...``
         # to expose the actual command token.
-        tokens = line.split()
+        tokens = cleaned_line.split()
         while tokens and _is_variable_assignment(tokens[0]):
             tokens = tokens[1:]
         if not tokens:
             continue
         first = tokens[0]
-        # Strip optional leading pipe/redirection-only tokens (none expected
-        # at line-start in review-as-code scripts, but be defensive).
         if first in _SHELL_BUILTINS:
             continue
         if _is_variable_assignment(first):

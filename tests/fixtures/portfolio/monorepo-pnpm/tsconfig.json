@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "composite": true,
+    "declaration": true,
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "packages/lib-a" },
+    { "path": "packages/lib-b" },
+    { "path": "packages/app" }
+  ],
+  "files": []
+}
