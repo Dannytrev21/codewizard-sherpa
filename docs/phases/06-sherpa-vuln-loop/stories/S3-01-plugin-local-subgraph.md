@@ -1,6 +1,6 @@
 # S3-01 — Plugin-local subgraph
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Wire the vuln remediation graph under the plugin directory and compose existing Phase 3–5 ports.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: import-boundary test.  
-Green: add graph builder and node wiring.  
+Red: import-boundary test.
+Green: add graph builder and node wiring.
 Refactor: extract pure reducers.

@@ -1,7 +1,7 @@
 # ADR-0001: Stable `VulnRemediationSut` contract for harness consumers
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
+**Status:** Accepted
+**Date:** 2026-05-18
 **Tags:** contract · eval · phase-boundary
 
 ## Context

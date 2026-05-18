@@ -1,6 +1,6 @@
 # S2-02 — Replay verification
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Verify checkpoint integrity before resume.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: tamper and partial-write tests.  
-Green: chain verification before hydrate.  
+Red: tamper and partial-write tests.
+Green: chain verification before hydrate.
 Refactor: isolate replay helpers.

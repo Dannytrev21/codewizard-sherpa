@@ -1,8 +1,8 @@
 # ADR-0040: Data lifecycle, retention, and classification
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
-**Tags:** data · governance · retention  
+**Status:** Accepted
+**Date:** 2026-05-18
+**Tags:** data · governance · retention
 **Related:** ADR-0008, ADR-0024, ADR-0034
 
 ## Context

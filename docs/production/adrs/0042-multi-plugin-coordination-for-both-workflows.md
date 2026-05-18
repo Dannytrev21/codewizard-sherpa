@@ -1,8 +1,8 @@
 # ADR-0042: Multi-plugin coordination for `Both` workflows
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
-**Tags:** orchestration · coordination · planning  
+**Status:** Accepted
+**Date:** 2026-05-18
+**Tags:** orchestration · coordination · planning
 **Related:** ADR-0011, ADR-0031, ADR-0038, ADR-0039
 
 ## Context

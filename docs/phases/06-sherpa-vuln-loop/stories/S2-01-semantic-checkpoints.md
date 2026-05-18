@@ -1,6 +1,6 @@
 # S2-01 — Semantic checkpoints
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Persist workflow checkpoints only at the semantic boundaries named in ADR-0003.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: golden checkpoint-order test.  
-Green: append logic.  
+Red: golden checkpoint-order test.
+Green: append logic.
 Refactor: share canonical serialization helpers.

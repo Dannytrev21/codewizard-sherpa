@@ -4,6 +4,8 @@ This folder holds the design artifacts for **Phase 4** of the codewizard-sherpa 
 
 This phase was **re-designed** to absorb the plugin framing introduced by [ADR-0029](../../production/adrs/0029-task-class-context-manifests.md) (TCCMs), [ADR-0030](../../production/adrs/0030-graph-aware-context-queries.md) (graph-aware queries), [ADR-0031](../../production/adrs/0031-plugin-architecture.md) (plugin architecture), and [ADR-0032](../../production/adrs/0032-language-search-adapters.md) (language search adapters). All Phase 4 work lands inside `plugins/vulnerability-remediation--node--npm/` (extension by addition). It also lands the first `typecheck.*` `SignalKind` per [ADR-0037](../../production/adrs/0037-layered-analysis-funnel-scip-typechecker-lsp.md) and inherits the provenance refuse-mode shipped in Phase 3 per [ADR-0038](../../production/adrs/0038-vulnerability-provenance-attribution.md).
 
+**Upgrade policy.** Model and prompt releases — including how the pinned `(model_id, prompt_template_digest, retrieval_config_digest)` tuple is qualified, promoted, and rolled back — are governed by [production ADR-0041](../../production/adrs/0041-model-and-prompt-release-qualification.md). Phase 4 ships the runtime substrate (the `LeafLlm` Port, `LlmInvocationGuard`, cassette discipline); ADR-0041 is the cross-phase policy that wraps it.
+
 ## Reading order
 
 1. **[final-design.md](final-design.md)** — the **design of record**. Synthesized from three competing lens designs + a devil's-advocate critique. This is what implementers read.

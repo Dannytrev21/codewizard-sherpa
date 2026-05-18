@@ -1,7 +1,7 @@
 # Phase 6 — SHERPA-style state machine for the vuln loop: Final design
 
-**Status:** Design of record  
-**Date:** 2026-05-18  
+**Status:** Design of record
+**Date:** 2026-05-18
 **Roadmap source:** [`../../roadmap.md`](../../roadmap.md) §"Phase 6"
 
 ## Executive summary

@@ -1,6 +1,6 @@
 # S6-01 — E2E kill/resume closeout
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Prove the Phase 6 exit criteria end to end and publish the downstream handoff.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: failing integration fixtures and docs assertions.  
-Green: finish workflow wiring.  
+Red: failing integration fixtures and docs assertions.
+Green: finish workflow wiring.
 Refactor: close duplicated fixture setup.

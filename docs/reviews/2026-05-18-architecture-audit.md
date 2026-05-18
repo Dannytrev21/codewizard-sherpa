@@ -1,7 +1,7 @@
 # Architecture audit — 2026-05-18
 
-**Status:** Review memo, non-canonical  
-**Scope:** Production design, roadmap, phase packages, ADR lifecycle, and live gather-pipeline closeout fences  
+**Status:** Review memo, non-canonical
+**Scope:** Production design, roadmap, phase packages, ADR lifecycle, and live gather-pipeline closeout fences
 **Disposition:** Record the full criticism ledger here; only Tier 1 items are in the current implementation scope.
 
 ## Four kinds of broken promise

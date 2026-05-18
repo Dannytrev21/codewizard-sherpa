@@ -1,8 +1,8 @@
 # Phase 06 — SHERPA-style state machine for the vuln loop: High-level implementation plan
 
-**Status:** Implementation plan  
-**Date:** 2026-05-18  
-**Architecture reference:** [phase-arch-design.md](phase-arch-design.md)  
+**Status:** Implementation plan
+**Date:** 2026-05-18
+**Architecture reference:** [phase-arch-design.md](phase-arch-design.md)
 **ADRs:** [ADRs/](ADRs/)
 
 ## Executive summary

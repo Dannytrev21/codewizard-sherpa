@@ -1,6 +1,6 @@
 # Phase 06 — SHERPA-style state machine for the vuln loop: Stories manifest
 
-**Status:** Backlog ready  
+**Status:** Backlog ready
 **Date:** 2026-05-18
 
 | Step | Stories |

@@ -1,7 +1,7 @@
 # ADR-0002: Plugin-local subgraph topology with shared ports
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
+**Status:** Accepted
+**Date:** 2026-05-18
 **Tags:** plugins · orchestration
 
 ## Context

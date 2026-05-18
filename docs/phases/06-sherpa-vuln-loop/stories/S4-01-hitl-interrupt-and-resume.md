@@ -1,6 +1,6 @@
 # S4-01 — HITL interrupt and resume
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Emit typed HITL interrupts and validate resume input before continuation.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: stale approval and resume tests.  
-Green: interrupt payload + validator.  
+Red: stale approval and resume tests.
+Green: interrupt payload + validator.
 Refactor: share timestamp and evidence validation.

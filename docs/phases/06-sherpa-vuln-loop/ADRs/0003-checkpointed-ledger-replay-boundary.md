@@ -1,7 +1,7 @@
 # ADR-0003: Semantic checkpoints with replay verification before resume
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
+**Status:** Accepted
+**Date:** 2026-05-18
 **Tags:** durability · replay · safety
 
 ## Context

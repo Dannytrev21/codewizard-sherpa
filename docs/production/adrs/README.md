@@ -61,7 +61,7 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0038](0038-vulnerability-provenance-attribution.md) | Vulnerability provenance attribution — `vuln.provenance` as a query-time join over gather-time SBOMs | vuln · provenance · sbom · routing · query-primitive · adapter · gather · assessment · phase-7 · phase-10 |
 | [0039](0039-extension-by-addition-allows-bounded-core-primitives.md) | Extension by addition allows bounded additive core primitives | architecture · extension-by-addition · contracts · phase-7 |
 | [0040](0040-data-lifecycle-retention-and-classification.md) | Data lifecycle, retention, and classification | data · governance · retention |
-| [0041](0041-model-and-prompt-release-qualification.md) | Model and prompt release qualification | llm · release · reproducibility |
+| [0041](0041-model-and-prompt-release-qualification.md) | Model and prompt release qualification | llm · release · reproducibility · capability · content-addressed-digest |
 | [0042](0042-multi-plugin-coordination-for-both-workflows.md) | Multi-plugin coordination for `Both` workflows | orchestration · coordination · planning |
 
 ## Index — Deferred decisions

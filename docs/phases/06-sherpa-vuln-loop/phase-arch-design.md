@@ -1,7 +1,7 @@
 # Phase 6 — SHERPA-style state machine for the vuln loop: Architecture
 
-**Status:** Architecture specification  
-**Date:** 2026-05-18  
+**Status:** Architecture specification
+**Date:** 2026-05-18
 **Source design:** [final-design.md](final-design.md)
 
 ## Goals

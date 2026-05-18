@@ -1,6 +1,6 @@
 # S3-02 — Transition table tests
 
-**Status:** Ready  
+**Status:** Ready
 **Goal:** Pin every conditional edge and forbid direct node-to-node calls.
 
 ## Acceptance criteria
@@ -11,6 +11,6 @@
 
 ## TDD plan
 
-Red: missing-edge and direct-call tests.  
-Green: implement transition router.  
+Red: missing-edge and direct-call tests.
+Green: implement transition router.
 Refactor: table-drive the routing rules.

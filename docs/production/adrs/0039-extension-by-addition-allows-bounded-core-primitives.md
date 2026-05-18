@@ -1,8 +1,8 @@
 # ADR-0039: Extension by addition allows bounded additive core primitives
 
-**Status:** Accepted  
-**Date:** 2026-05-18  
-**Tags:** architecture · extension-by-addition · contracts · phase-7  
+**Status:** Accepted
+**Date:** 2026-05-18
+**Tags:** architecture · extension-by-addition · contracts · phase-7
 **Related:** ADR-0007, ADR-0028, ADR-0031, ADR-0038
 
 ## Context
