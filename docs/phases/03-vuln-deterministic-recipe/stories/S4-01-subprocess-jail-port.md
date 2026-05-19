@@ -1,7 +1,7 @@
 # Story S4-01 — `SubprocessJail` Port + `JailedSubprocessResult` tagged union + typed env/network sums
 
 **Step:** Step 4 — SubprocessJail Port + Bwrap + sandbox-exec + ALLOWED_BINARIES amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S4-01.md`](_attempts/S4-01.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-03 (tagged-union outcomes — `RecipeOutcome`, `RemediationOutcome`, `NodeTransition`, `AdapterConfidence`, `Applicability` discriminated unions already exist; this story reuses the same Pydantic `Discriminator("kind")` pattern); S1-04 (`codegenie.transforms._forward` `SandboxedPath` `TypeAlias = pathlib.Path` is the established Phase-3-Step-1 forward-reference; this story consumes that alias and does NOT reach into `codegenie.plugins.*`).
 **ADRs honored:** 03-ADR-0006 (Hexagonal `SubprocessJail` Port + Bwrap/sandbox-exec adapters), 03-ADR-0007 (run `npm install`/`npm test` in the jail — consumer of this Port), 03-ADR-0010 (sum-type + smart-constructor discipline — `RegistryUrl` strict-`https://`, frozen + extra="forbid", non-negative observable counters), 03-ADR-0011 (honest framing — `SandboxedPath` is in-jail-at-construction, NOT runtime-unforgeable; `--ignore-scripts` is *audit + structural* not runtime-prevented inside npm), production ADR-0012 (microVM substitution at Phase 5 — substitutes via the same Port), production ADR-0033 (sum types over booleans — every failure mode a typed variant).

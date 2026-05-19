@@ -1,0 +1,322 @@
+{
+  "result": {
+    "$defs": {
+      "Completed": {
+        "additionalProperties": false,
+        "description": "Process exited cleanly (or with a non-zero exit code that is still a\nwell-formed exit). Carries byte *sizes*, not byte contents \u2014 the\nadapter redirects full content to a ``SandboxedPath``-rooted log file\noutside this envelope to avoid leaking secrets through ``RepoContext``.",
+        "properties": {
+          "exit_code": {
+            "title": "Exit Code",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "completed",
+            "default": "completed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "stderr_bytes": {
+            "minimum": 0,
+            "title": "Stderr Bytes",
+            "type": "integer"
+          },
+          "stdout_bytes": {
+            "minimum": 0,
+            "title": "Stdout Bytes",
+            "type": "integer"
+          },
+          "wall_time_s": {
+            "minimum": 0,
+            "title": "Wall Time S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "exit_code",
+          "stdout_bytes",
+          "stderr_bytes",
+          "wall_time_s"
+        ],
+        "title": "Completed",
+        "type": "object"
+      },
+      "DiskQuotaExceeded": {
+        "additionalProperties": false,
+        "description": "Adapter aborted the process for writing more bytes than the jail's\ntmpfs / quota permits.",
+        "properties": {
+          "bytes_written": {
+            "minimum": 0,
+            "title": "Bytes Written",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "disk_quota_exceeded",
+            "default": "disk_quota_exceeded",
+            "title": "Kind",
+            "type": "string"
+          },
+          "quota_bytes": {
+            "minimum": 0,
+            "title": "Quota Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quota_bytes",
+          "bytes_written"
+        ],
+        "title": "DiskQuotaExceeded",
+        "type": "object"
+      },
+      "NetworkDenied": {
+        "additionalProperties": false,
+        "description": "Adapter blocked egress to a non-allowlisted host. ``host`` is\nobservable per ADR-0006 \u00a7Decision so the operator can debug a\n``.npmrc`` redirect (Edge case E7).",
+        "properties": {
+          "host": {
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "kind": {
+            "const": "network_denied",
+            "default": "network_denied",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "NetworkDenied",
+        "type": "object"
+      },
+      "OomKilled": {
+        "additionalProperties": false,
+        "description": "Kernel / cgroup killed the process for exceeding ``memory_mib``.",
+        "properties": {
+          "kind": {
+            "const": "oom_killed",
+            "default": "oom_killed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "peak_rss_mib": {
+            "minimum": 0,
+            "title": "Peak Rss Mib",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "peak_rss_mib"
+        ],
+        "title": "OomKilled",
+        "type": "object"
+      },
+      "TimedOut": {
+        "additionalProperties": false,
+        "description": "Adapter killed the process after ``budget_s`` elapsed.",
+        "properties": {
+          "budget_s": {
+            "exclusiveMinimum": 0,
+            "title": "Budget S",
+            "type": "number"
+          },
+          "elapsed_s": {
+            "exclusiveMinimum": 0,
+            "title": "Elapsed S",
+            "type": "number"
+          },
+          "kind": {
+            "const": "timed_out",
+            "default": "timed_out",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "budget_s",
+          "elapsed_s"
+        ],
+        "title": "TimedOut",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "completed": "#/$defs/Completed",
+        "disk_quota_exceeded": "#/$defs/DiskQuotaExceeded",
+        "network_denied": "#/$defs/NetworkDenied",
+        "oom_killed": "#/$defs/OomKilled",
+        "timed_out": "#/$defs/TimedOut"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/Completed"
+      },
+      {
+        "$ref": "#/$defs/TimedOut"
+      },
+      {
+        "$ref": "#/$defs/OomKilled"
+      },
+      {
+        "$ref": "#/$defs/NetworkDenied"
+      },
+      {
+        "$ref": "#/$defs/DiskQuotaExceeded"
+      }
+    ]
+  },
+  "spec": {
+    "$defs": {
+      "DenyAll": {
+        "additionalProperties": false,
+        "description": "No egress permitted. Default-deny baseline for ``npm test`` /\ndeterministic recipes that should not need any network.",
+        "properties": {
+          "kind": {
+            "const": "deny_all",
+            "default": "deny_all",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "DenyAll",
+        "type": "object"
+      },
+      "GitEnv": {
+        "additionalProperties": false,
+        "description": "Typed env for git invocations inside the jail (ADR-0006 cross-ref to\nS6-04 ``LocalGitOps``). Disables terminal prompts + askpass leakage.",
+        "properties": {
+          "kind": {
+            "const": "git",
+            "default": "git",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "GitEnv",
+        "type": "object"
+      },
+      "NpmEnv": {
+        "additionalProperties": false,
+        "description": "Typed env for npm invocations inside the jail (ADR-0006 \u00a7Decision).\n\n``to_env_mapping`` ALWAYS emits ``npm_config_ignore_scripts=\"true\"`` \u2014\nthe env half of the ``--ignore-scripts`` split defence. The CLI half\n(``--ignore-scripts`` in ``cmd``) lives at the consumer; S4-05's\ncapability-fence test ties them together.",
+        "properties": {
+          "kind": {
+            "const": "npm",
+            "default": "npm",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "NpmEnv",
+        "type": "object"
+      },
+      "RegistryAllowlist": {
+        "additionalProperties": false,
+        "description": "Egress permitted only to the listed hosts. Each host must be a strict\n``https://`` URL; empty allowlists are rejected (use :class:`DenyAll`\ninstead \u2014 the empty allowlist is meaningless and a likely bug).",
+        "properties": {
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hosts",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "kind": {
+            "const": "registry_allowlist",
+            "default": "registry_allowlist",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hosts"
+        ],
+        "title": "RegistryAllowlist",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Frozen value type describing a single jailed subprocess invocation.\n\nEvery field carries a smart-constructor bound at the type level. The\nspec is *immutable* \u2014 adapters cannot mutate the spec they were handed,\neliminating a class of \"log says X, sandbox ran Y\" forensic failures.",
+    "properties": {
+      "cmd": {
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "title": "Cmd",
+        "type": "array"
+      },
+      "cwd": {
+        "format": "path",
+        "title": "Cwd",
+        "type": "string"
+      },
+      "env": {
+        "discriminator": {
+          "mapping": {
+            "git": "#/$defs/GitEnv",
+            "npm": "#/$defs/NpmEnv"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/NpmEnv"
+          },
+          {
+            "$ref": "#/$defs/GitEnv"
+          }
+        ],
+        "title": "Env"
+      },
+      "memory_mib": {
+        "minimum": 1,
+        "title": "Memory Mib",
+        "type": "integer"
+      },
+      "network": {
+        "discriminator": {
+          "mapping": {
+            "deny_all": "#/$defs/DenyAll",
+            "registry_allowlist": "#/$defs/RegistryAllowlist"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/DenyAll"
+          },
+          {
+            "$ref": "#/$defs/RegistryAllowlist"
+          }
+        ],
+        "title": "Network"
+      },
+      "pids_max": {
+        "minimum": 1,
+        "title": "Pids Max",
+        "type": "integer"
+      },
+      "time_budget_s": {
+        "exclusiveMinimum": 0,
+        "title": "Time Budget S",
+        "type": "number"
+      }
+    },
+    "required": [
+      "cmd",
+      "cwd",
+      "env",
+      "network",
+      "time_budget_s",
+      "memory_mib",
+      "pids_max"
+    ],
+    "title": "JailedSubprocessSpec",
+    "type": "object"
+  }
+}
