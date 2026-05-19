@@ -145,6 +145,33 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         # Phase 2 S6-08 — Layer G coverage mapping; universal (no coverage
         # artifact → emits ScannerSkipped(reason="upstream_unavailable")).
         "test_coverage_mapping",
+        # Universal probes that read ``ctx.output_dir`` to land a raw
+        # sidecar / stub artifact. Pre-BudgetingContext-parity fix, these
+        # crashed with ``AttributeError: 'BudgetingContext' object has no
+        # attribute 'output_dir'`` and silently dropped out of the
+        # envelope. Now that the runtime ctx exposes the full
+        # ``ProbeContext`` surface (ADR-0007), they correctly contribute
+        # their universal-but-empty slices on a non-Node repo.
+        "adrs",
+        "external_docs",
+        "repo_notes",
+        "scip_index",
+        "service_topology",
+        "slo",
+        # Universal probes that read ``ctx.config`` for tier-path
+        # resolution (``skills.user_path``, ``policy.user_home``, …) or
+        # for static-analyzer attempt-path resolution (``ast_grep``,
+        # ``semgrep``). Pre-fix these crashed on
+        # ``'BudgetingContext' has no attribute 'config'``; post-fix
+        # they read an empty config dict, fall back to defaults, and
+        # emit their universal Layer-D / Layer-G slices.
+        "ast_grep",
+        "conventions",
+        "exceptions",
+        "policy",
+        "repo_config",
+        "semgrep",
+        "skills_index",
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "

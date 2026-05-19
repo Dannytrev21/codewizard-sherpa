@@ -28,7 +28,7 @@
         "kind": "stale",
         "reason": {
           "kind": "indexer_error",
-          "message": "upstream_scip_unavailable"
+          "message": "indexer_reported_1_errors"
         }
       }
     },

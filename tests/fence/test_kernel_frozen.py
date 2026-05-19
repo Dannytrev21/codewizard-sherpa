@@ -97,6 +97,30 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # ``VulnIndexMigrationNotApplied``) extending the typed-exception
         # taxonomy. adr: same as ``cli.py`` above.
         Path("src/codegenie/errors.py"),
+        # Fix BudgetingContext missing output_dir (spawned task name) —
+        # close the ProbeContext / BudgetingContext structural drift
+        # surfaced 2026-05-19: ``scip_index``, ``tree_sitter_import_graph``
+        # and ``slo`` AttributeError'd on ``ctx.output_dir`` because
+        # ``BudgetingContext`` omitted five attributes the frozen
+        # ``ProbeContext`` (ADR-0007) declares. This edit adds the
+        # missing ``output_dir`` / ``cache_dir`` / ``logger`` / ``config``
+        # / ``image_digest_resolver`` fields with defaults so the runtime
+        # ctx structurally satisfies the contract. Behaviour pinned by
+        # ``tests/fence/test_probe_context_conformance.py`` and
+        # ``tests/smoke/test_cli_end_to_end.py::test_no_probe_errors_in_smoke_run_record``;
+        # the contract itself (``probes/base.py``) is unchanged.
+        # adr: docs/production/adrs/0007-frozen-probe-contract.md
+        Path("src/codegenie/coordinator/budget.py"),
+        # Companion regen for the same fix: ``BudgetingContext`` parity
+        # unblocks ``skills_index`` from its prior config-read crash, and
+        # the envelope's per-probe sub-schema needs ``shadowed_skills``
+        # (already on the Pydantic model and the top-level
+        # ``skills_index.schema.json``; only the envelope-referenced
+        # sub-schema at ``layer_d/`` was out of sync). Produced by
+        # ``scripts/regen_subschemas.py --update``; the Pydantic model is
+        # the source of truth, this file is generated.
+        # adr: docs/production/adrs/0007-frozen-probe-contract.md
+        Path("src/codegenie/schema/probes/layer_d/skills_index.schema.json"),
     }
 )
 

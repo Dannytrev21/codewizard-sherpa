@@ -31,8 +31,6 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-import pytest
-
 from codegenie.coordinator.coordinator import _make_probe_context
 from codegenie.probes.base import ProbeContext
 
@@ -44,15 +42,6 @@ def _probe_context_attribute_names() -> frozenset[str]:
     return frozenset(f.name for f in dataclasses.fields(ProbeContext))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Known drift: BudgetingContext omits output_dir/cache_dir/logger/config/"
-        "image_digest_resolver. Spawned task 'Fix BudgetingContext missing output_dir' "
-        "owns the fix; when it lands, this xfail flips to XPASS and strict=True fails "
-        "CI until the marker is removed."
-    ),
-)
 def test_coordinator_ctx_satisfies_probe_context_attribute_surface(tmp_path: Path) -> None:
     """Every attribute on ``ProbeContext`` is readable on the coordinator-built ctx.
 

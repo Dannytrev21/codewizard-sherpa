@@ -381,8 +381,22 @@ def test_catalog_edit_invalidates_only_node_manifest(
     #     and a catalog yaml-bytes edit is a legitimate cache-key change for
     #     it. A surgical-flush mutant that touched a non-yaml-consuming
     #     probe (e.g., ``adrs`` / ``conventions``) still fails this.
+    #
+    # ``scip_index`` and ``semantic_index_meta`` declare ``tsconfig.json``
+    # in their inputs; ``scip-typescript --infer-tsconfig`` (see
+    # ``scip_index.py:136``) generates that file on the cold pass when
+    # absent, so its presence on the warm pass legitimately changes their
+    # cache keys. This side effect only became reachable once
+    # ``BudgetingContext.output_dir`` landed and ``scip_index`` stopped
+    # crashing pre-subprocess — the test's pre-drift expectation
+    # implicitly relied on the bug.
     misses = {p for p, s in warm_state.items() if s == "miss"}
-    _expected_subset = {"node_manifest", "gitleaks"}
+    _expected_subset = {
+        "node_manifest",
+        "gitleaks",
+        "scip_index",
+        "semantic_index_meta",
+    }
     assert "node_manifest" in misses, (
         f"S3-06 AC-7 — catalog edit must invalidate node_manifest; "
         f"got misses={misses}, warm_state={warm_state}"

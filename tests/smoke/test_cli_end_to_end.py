@@ -405,13 +405,18 @@ def test_audit_verify_smoke_run(tmp_path: Path) -> None:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Today, three probes (scip_index, tree_sitter_import_graph, slo) AttributeError "
-        "on `ctx.output_dir` because BudgetingContext drifted from ProbeContext. The "
-        "coordinator's failure-isolation translates them to exit_status='error' silently. "
-        "Spawned task 'Fix BudgetingContext missing output_dir' owns the fix; once it "
-        "lands this xfail flips to XPASS and strict=True fails CI until the marker is "
-        "removed. NOTE: this xfail may pass today if the polyglot fixture doesn't "
-        "exercise the failing probes — that's a separate fixture-coverage follow-up."
+        "Original ``ctx.output_dir`` drift (scip_index, tree_sitter_import_graph, "
+        "slo) is fixed by the BudgetingContext parity change; the smoke run on "
+        "the polyglot fixture now surfaces TWO unrelated pre-existing probe "
+        "errors that this fence was originally designed to catch: "
+        "(a) ``ripgrep_curated`` invokes ``rg`` directly but ``ALLOWED_BINARIES`` "
+        "carries the package name ``ripgrep`` — DisallowedSubprocessError on every "
+        "smoke run; (b) ``ownership`` returns ``errors=['codeowners_absent']`` on "
+        "fixtures that lack a CODEOWNERS file — a typed low-information "
+        "observation, but ``errors != []`` lands the probe as ``exit_status='error'`` "
+        "in the audit record. Both are separate fixture/probe issues; this xfail "
+        "stays until they land their own fixes. Once they do, this xfail flips to "
+        "XPASS and strict=True fails CI until the marker is removed."
     ),
 )
 def test_no_probe_errors_in_smoke_run_record(tmp_path: Path) -> None:

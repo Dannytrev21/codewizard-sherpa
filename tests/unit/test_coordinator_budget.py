@@ -86,11 +86,14 @@ def test_resource_budget_invariant_truncate_le_hard_ceiling() -> None:
 
 
 def test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields() -> None:
-    """AC-15 — five-field shape pinned in order, both new fields default None.
+    """AC-15 — full ProbeContext-parity field set pinned in order.
 
     The BudgetingContext field tuple is the *runtime ctx contract* every
-    probe accessing ``ctx.parsed_manifest`` / ``ctx.input_snapshot`` reads
-    against; reordering or renaming would break S2-04 / S1-08 downstream.
+    probe reads against. ``tests/fence/test_probe_context_conformance.py``
+    pins the structural invariant that every ``ProbeContext`` attribute
+    is also readable on ``BudgetingContext``; this trip-wire pins the
+    *order* and *defaults* of those attributes so a future addition to
+    ``ProbeContext`` is mirrored here in lockstep.
     """
     names = tuple(f.name for f in dataclasses.fields(BudgetingContext))
     assert names == (
@@ -99,10 +102,23 @@ def test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields() -> No
         "bytes_written",
         "parsed_manifest",
         "input_snapshot",
+        "output_dir",
+        "cache_dir",
+        "logger",
+        "config",
+        "image_digest_resolver",
     )
     bc = BudgetingContext(workspace=Path("/tmp"), raw_artifact_mb=10)
     assert bc.parsed_manifest is None
     assert bc.input_snapshot is None
+    # output_dir / cache_dir default to the canonical ``.codegenie/``
+    # layout via __post_init__ so probes can read them without
+    # AttributeError when the caller omits them.
+    assert bc.output_dir == Path("/tmp") / ".codegenie" / "context"
+    assert bc.cache_dir == Path("/tmp") / ".codegenie" / "cache"
+    assert bc.config == {}
+    assert bc.image_digest_resolver is None
+    assert bc.logger is not None  # default ``codegenie.probe`` logger
 
 
 # ─────────────── Coordinator-level enforcement ─────────────────────────────

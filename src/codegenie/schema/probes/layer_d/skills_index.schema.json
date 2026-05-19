@@ -48,6 +48,51 @@
       ],
       "title": "IndexedSkill",
       "type": "object"
+    },
+    "ShadowedSkill": {
+      "additionalProperties": false,
+      "description": "Record of one three-tier-merge shadow (S8-02).\n\nSame fields the loader's existing ``skill_shadowed`` structlog event\nalready populates: the winning + shadowed tier, the file paths that\ncollided, and the shared ``skill_id``. Surfacing this as **data** in\n:class:`~codegenie.skills.loader.LoadOutcome` (not just as a log\nevent) lets the CLI summary read shadows from the coordinator-merged\nenvelope rather than intercepting events at the structlog layer.",
+      "properties": {
+        "shadowed_path": {
+          "title": "Shadowed Path",
+          "type": "string"
+        },
+        "shadowed_tier": {
+          "enum": [
+            "user",
+            "repo",
+            "org"
+          ],
+          "title": "Shadowed Tier",
+          "type": "string"
+        },
+        "skill_id": {
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "winning_path": {
+          "title": "Winning Path",
+          "type": "string"
+        },
+        "winning_tier": {
+          "enum": [
+            "user",
+            "repo",
+            "org"
+          ],
+          "title": "Winning Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "shadowed_tier",
+        "winning_tier",
+        "shadowed_path",
+        "winning_path"
+      ],
+      "title": "ShadowedSkill",
+      "type": "object"
     }
   },
   "$id": "https://codewizard-sherpa.dev/schemas/probes/layer_d/skills_index/v0.1.0.json",
@@ -60,6 +105,14 @@
         "type": "string"
       },
       "title": "Per File Errors",
+      "type": "array"
+    },
+    "shadowed_skills": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ShadowedSkill"
+      },
+      "title": "Shadowed Skills",
       "type": "array"
     },
     "skills": {

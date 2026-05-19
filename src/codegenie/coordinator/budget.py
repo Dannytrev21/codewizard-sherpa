@@ -51,12 +51,17 @@ because the hard ceiling fires first.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from logging import Logger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from codegenie.errors import ProbeBudgetExceeded
+from codegenie.output.paths import context_dir
+
+_DEFAULT_LOGGER: Logger = logging.getLogger("codegenie.probe")
 
 if TYPE_CHECKING:
     from codegenie.probes.base import InputFingerprint
@@ -123,6 +128,42 @@ class BudgetingContext:
     # S1-06 :class:`codegenie.probes.base.ProbeContext` extension.
     parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
     input_snapshot: frozenset[InputFingerprint] | None = None
+    # Structural parity with :class:`codegenie.probes.base.ProbeContext`
+    # (ADR-0007 frozen contract). The contract says the runtime ctx is a
+    # :class:`ProbeContext`; in practice the coordinator hands the probe a
+    # :class:`BudgetingContext`. The five-attribute drift (``output_dir`` /
+    # ``cache_dir`` / ``logger`` / ``config`` / ``image_digest_resolver``)
+    # surfaced as ``scip_index``, ``tree_sitter_import_graph``, and ``slo``
+    # silently ``AttributeError``-ing at runtime; the coordinator's
+    # failure-isolation translated the crash into ``probe.failure`` with
+    # empty ``schema_slice``. ``tests/fence/test_probe_context_conformance.py``
+    # is the structural fence that catches this class of drift on every CI
+    # run going forward.
+    #
+    # Defaults are wired so existing direct callers of
+    # ``BudgetingContext(workspace=, raw_artifact_mb=)`` keep working
+    # without modification: ``output_dir`` resolves to
+    # ``workspace / .codegenie / context`` via :meth:`__post_init__`,
+    # ``cache_dir`` to ``workspace / .codegenie / cache``, and the others
+    # carry inert defaults that match a probe doing
+    # ``ctx.config.get(...)`` or ``if ctx.image_digest_resolver is None``.
+    output_dir: Path | None = None
+    cache_dir: Path | None = None
+    logger: Logger = field(default=_DEFAULT_LOGGER)
+    config: dict[str, Any] = field(default_factory=dict)
+    image_digest_resolver: Callable[[Path], str | None] | None = None
+
+    def __post_init__(self) -> None:
+        # ``ProbeContext.output_dir`` and ``ProbeContext.cache_dir`` are
+        # non-Optional in the frozen spec; resolve the defaults so probes
+        # can always do ``ctx.output_dir / X`` and ``ctx.cache_dir / X``
+        # without an AttributeError. The on-disk layout matches the CLI
+        # writer (``output.paths.context_dir``) and the CLI's
+        # ``CacheStore`` construction at ``cli.py:536``.
+        if self.output_dir is None:
+            self.output_dir = context_dir(self.workspace)
+        if self.cache_dir is None:
+            self.cache_dir = self.workspace / ".codegenie" / "cache"
 
     def report_bytes(self, n: int) -> None:
         """Account ``n`` newly written bytes and raise if the budget is exceeded.
