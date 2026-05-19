@@ -23,7 +23,7 @@ The architecture spec resolves it: ship the `OpenRewriteRecipeEngine` as a **sca
 
 ## Decision
 
-Adopt **Option C.** Ship `RecipeEngine(Protocol)` in `src/codegenie/plugins/protocols.py` with method `async def apply(self, repo, plan, capability) -> RecipeOutcome`. Ship two implementations:
+Adopt **Option C.** Ship `RecipeEngine(Protocol)` in `src/codegenie/transforms/recipe_engine.py` with method `async def apply(self, repo, plan, capability) -> RecipeOutcome`. (**Amendment 2026-05-19, S5-01:** canonical home moved from `src/codegenie/plugins/protocols.py` to `src/codegenie/transforms/recipe_engine.py` per `High-level-impl.md §Step 5` L136; `plugins/protocols.py` now re-exports the canonical class for backwards-compatibility with S2-01 fixtures. Identity is enforced by `tests/unit/transforms/test_recipe_engine_protocol.py::test_plugins_protocols_re_export_is_identical`.) Ship two implementations:
 
 - **`NpmLockfileRecipeEngine`** (`plugins/vulnerability-remediation--node--npm/recipes/`) — pure Python. Parses `package.json` (`orjson`, size cap 1 MiB), edits affected dep version in-mem (key order preserved), writes back via `SandboxedPath` with `O_NOFOLLOW`, runs `SubprocessJail.run(npm install --package-lock-only --ignore-scripts --no-audit --prefer-offline)`, parses the new lockfile (size cap 32 MiB, depth cap 24), returns `RecipeOutcome.Applied(NpmLockfileTransform(...))`.
 - **`OpenRewriteRecipeEngine`** (`src/codegenie/transforms/openrewrite_engine.py`) — scaffolded. Protocol-conformant. JVM subprocess invoked via `SubprocessJail`. Ships one fixture (`tests/fixtures/openrewrite/dockerfile-base-image-swap/`) + a `@pytest.mark.phase_7_preview` test. **Not invoked by any Phase-3 npm workflow.**
@@ -44,7 +44,9 @@ Implements **Strategy pattern** (toolkit §Behavioral patterns) with the explici
 
 ## Consequences
 
-- `src/codegenie/plugins/protocols.py` exports `RecipeEngine(Protocol)`.
+- `src/codegenie/transforms/recipe_engine.py` declares the canonical `RecipeEngine(Protocol)` (S5-01); `src/codegenie/plugins/protocols.py` re-exports it (class-identical — verified by an identity test).
+- `src/codegenie/plugins/recipe_registry.py` ships the per-plugin `RecipeRegistry` + `@register_recipe(plugin_id, *, registry=None)` decorator + `default_recipe_registry` singleton (S5-01; mirrors S2-01 `PluginRegistry`).
+- `src/codegenie/transforms/recipe_engine.py` also ships `RecipeProtocol`, `MatchedRecipe`, and the `match_recipes(registry, plugin_id, cve, bundle) -> MatchedRecipe | RecipeNotApplicable` walker (first-`Applies`-wins; deterministic `(-precedence, name)` sort).
 - `OpenRewriteRecipeEngine` ships in `src/codegenie/transforms/` (not under `plugins/`) because it's a kernel-level recipe engine consumable by any plugin.
 - Phase 7's `plugins/distroless-migration--node--npm/recipes/` will instantiate `OpenRewriteRecipeEngine` with its own Dockerfile-rewrite recipes — zero kernel edits.
 - The JVM subprocess inside `OpenRewriteRecipeEngine` is jailed via `SubprocessJail` (per ADR-0006); the JVM SecurityManager rejection (per `critique.md §Security — Issue 4`) is honored — `SubprocessJail` is the real defense.

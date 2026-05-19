@@ -1,7 +1,7 @@
 # Story S5-01 — `RecipeEngine` Protocol + per-plugin `RecipeRegistry` + `@register_recipe` decorator (Gap 3 fix)
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S5-01.md`](_attempts/S5-01.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-03 (`Applicability` / `RecipeOutcome` / `ApplicationPlan` already shipped in `transforms/outcomes.py`), S1-04 (`Transform` ABC re-export discipline), S2-01 (`PluginRegistry` shape this story mirrors; `RecipeEngine` stub deferred to Step 5), S4-02 (`SubprocessJail` Port for engines that follow), and S4-05 (`NpmInstallCapability` — `HARDENED`; this story forward-refs it under `TYPE_CHECKING` if it lands after S5-01).
 **ADRs honored:** ADR-0009, ADR-0010 (+ Amendment 2026-05-18 on canonical outcome home), ADR-0002, ADR-0001 (contract snapshot re-bake — see Validation notes).

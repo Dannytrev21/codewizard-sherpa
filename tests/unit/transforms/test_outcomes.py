@@ -318,6 +318,8 @@ def test_reason_literal_sets_pinned():
         "OVERRIDES_AMBIGUOUS",
         "RECIPE_CATALOG_MISS",
         "ALL_RECIPES_NOT_APPLICABLE",
+        # S5-01 additive — registry walker's "zero recipes" dispatch case.
+        "NO_RECIPES_REGISTERED",
     }
     assert members(SkipReason) == {"plugin_disabled", "registry_skipped"}
     assert members(EscalationReason) == {

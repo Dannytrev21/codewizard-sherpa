@@ -23,6 +23,10 @@ from collections.abc import Generator
 
 import pytest
 
+from codegenie.plugins.recipe_registry import (
+    RecipeRegistry,
+    default_recipe_registry,
+)
 from codegenie.plugins.registry import PluginRegistry, default_registry
 
 
@@ -68,4 +72,57 @@ def _default_registry_session_guard() -> Generator[None, None, None]:
     end = default_registry.all()
     assert end == snapshot, (
         f"default_registry mutated across the test session; start={snapshot!r} end={end!r}"
+    )
+
+
+# --- S5-01: per-plugin RecipeRegistry isolation (mirrors PluginRegistry) ---
+
+
+@pytest.fixture
+def fresh_recipe_registry() -> RecipeRegistry:
+    """Return a fresh :class:`RecipeRegistry` for one test.
+
+    Tests pass this instance through ``register_recipe(..., registry=...)``
+    so the module-level :data:`default_recipe_registry` stays untouched.
+    S5-01 mirrors S2-01's :func:`plugin_registry` fixture.
+    """
+    return RecipeRegistry()
+
+
+@pytest.fixture(autouse=True)
+def restore_default_recipe_registry() -> Generator[None, None, None]:
+    """Snapshot :data:`default_recipe_registry`; restore on teardown.
+
+    Mirrors :func:`restore_default_registry`. Any test that writes into the
+    default singleton (typically none — fresh ``RecipeRegistry()`` is the
+    canonical path) is rolled back here.
+    """
+    snapshot_recipes = dict(default_recipe_registry._recipes)
+    snapshot_by_plugin = {k: list(v) for k, v in default_recipe_registry._by_plugin.items()}
+    snapshot_names = {k: set(v) for k, v in default_recipe_registry._names_by_plugin.items()}
+    snapshot_origins = dict(default_recipe_registry._origins)
+    try:
+        yield
+    finally:
+        default_recipe_registry._recipes.clear()
+        default_recipe_registry._recipes.update(snapshot_recipes)
+        default_recipe_registry._by_plugin.clear()
+        default_recipe_registry._by_plugin.update(snapshot_by_plugin)
+        default_recipe_registry._names_by_plugin.clear()
+        default_recipe_registry._names_by_plugin.update(snapshot_names)
+        default_recipe_registry._origins.clear()
+        default_recipe_registry._origins.update(snapshot_origins)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _default_recipe_registry_session_guard() -> Generator[None, None, None]:
+    """ADR-0002 lineage — assert :data:`default_recipe_registry.all() == ()`
+    at session start and end. Catches any test that escaped its
+    function-scoped restore.
+    """
+    snapshot = default_recipe_registry.all()
+    yield
+    end = default_recipe_registry.all()
+    assert end == snapshot, (
+        f"default_recipe_registry mutated across the test session; start={snapshot!r} end={end!r}"
     )

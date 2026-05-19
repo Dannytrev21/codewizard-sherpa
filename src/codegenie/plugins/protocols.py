@@ -32,6 +32,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+# S5-01: ``RecipeEngine`` Protocol canonical home is
+# :mod:`codegenie.transforms.recipe_engine`. This module re-exports the
+# class so any S2-01 fixture (e.g. ``_FakePlugin.transforms`` returning a
+# ``dict[..., RecipeEngine]``) keeps round-tripping. The re-export is
+# class-identical — see ``tests/unit/transforms/test_recipe_engine_protocol.py``.
+from codegenie.transforms.recipe_engine import RecipeEngine
+
 if TYPE_CHECKING:
     from codegenie.plugins.manifest import PluginManifest as PluginManifest
     from codegenie.plugins.registry import PluginRegistry
@@ -39,26 +46,6 @@ if TYPE_CHECKING:
 
     # S2-04 ships the resolver and the PluginSubgraph node-graph type.
     class PluginSubgraph:  # pragma: no cover - forward-ref stub
-        ...
-
-    # S3-01/S3-02 ship the CveRecord + Bundle types consumed by recipes.
-    class CveRecord:  # pragma: no cover - forward-ref stub
-        ...
-
-    class Bundle:  # pragma: no cover - forward-ref stub
-        ...
-
-    class Applicability:  # pragma: no cover - forward-ref stub
-        ...
-
-    # S5 ships the recipe-time types.
-    class RecipePlan:  # pragma: no cover - forward-ref stub
-        ...
-
-    class ApplyContext:  # pragma: no cover - forward-ref stub
-        ...
-
-    class RecipeOutcome:  # pragma: no cover - forward-ref stub
         ...
 
 
@@ -75,27 +62,6 @@ class Adapter(Protocol):
     """
 
     primitive: PrimitiveName
-
-
-@runtime_checkable
-class RecipeEngine(Protocol):
-    """Recipe-engine Protocol — minimum surface Step 5 consumers need.
-
-    The ``applies`` / ``apply`` signatures ship here so the S5 ``Plugin``
-    field-type annotation resolves at story time. The surface is **not**
-    fence-frozen in S2-01 — Step 5 owns the freeze.
-    """
-
-    kind: TransformKind
-
-    def applies(self, cve: CveRecord, bundle: Bundle) -> Applicability:
-        """Cheap predicate: does this engine think it can fix ``cve``
-        inside ``bundle``?"""
-        ...
-
-    async def apply(self, plan: RecipePlan, ctx: ApplyContext) -> RecipeOutcome:
-        """Run the engine; produce a structured outcome."""
-        ...
 
 
 # AC-8 — runtime_checkable; see test_runtime_checkable_protocols_match_fakes.

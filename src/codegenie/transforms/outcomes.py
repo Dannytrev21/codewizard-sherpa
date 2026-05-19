@@ -87,6 +87,7 @@ NotApplicableReason = Literal[
     "OVERRIDES_AMBIGUOUS",
     "RECIPE_CATALOG_MISS",
     "ALL_RECIPES_NOT_APPLICABLE",
+    "NO_RECIPES_REGISTERED",
 ]
 
 SkipReason = Literal["plugin_disabled", "registry_skipped"]
@@ -212,11 +213,20 @@ class Skipped(BaseModel):
 class RecipeNotApplicable(BaseModel):
     """``RecipeNotApplicable`` — recipe ``applies()`` returned ``NotApplies``;
     no transform can be produced. ``reason`` is the same Literal alias as
-    :class:`RemediationNotApplicable.reason` (single source of truth)."""
+    :class:`RemediationNotApplicable.reason` (single source of truth).
+
+    ``considered`` (S5-01 additive) carries the per-recipe ``NotApplies``
+    trace produced by the :func:`codegenie.transforms.recipe_engine.match_recipes`
+    walker when every recipe declines. Phase-4's prompt builder reads this
+    structured trace; Phase-5 callers reading only ``.reason`` continue to
+    work via the empty-list default. ADR-0001 §Consequences row 6 names the
+    Phase-5 contract-snapshot regeneration triggered by this widening.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["not_applicable"] = "not_applicable"
     reason: NotApplicableReason
+    considered: list[NotApplies] = Field(default_factory=list)
 
 
 class RecipeFailed(BaseModel):

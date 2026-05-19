@@ -53,6 +53,12 @@ from codegenie.transforms.outcomes import (
     Unavailable,
     Validated,
 )
+from codegenie.transforms.recipe_engine import (
+    MatchedRecipe,
+    RecipeEngine,
+    RecipeProtocol,
+    match_recipes,
+)
 from codegenie.transforms.transform import Transform, TransformProvenance
 
 __all__ = [
@@ -70,13 +76,16 @@ __all__ = [
     "Escalate",
     "EscalationReason",
     "HumanReviewReason",
+    "MatchedRecipe",
     "NodeTransition",
     "NotApplicableReason",
     "NotApplies",
+    "RecipeEngine",
     "RecipeError",
     "RecipeFailed",
     "RecipeNotApplicable",
     "RecipeOutcome",
+    "RecipeProtocol",
     "RemediationError",
     "RemediationFailed",
     "RemediationNotApplicable",
@@ -92,4 +101,5 @@ __all__ = [
     "Unavailable",
     "UnavailabilityReason",
     "Validated",
+    "match_recipes",
 ]

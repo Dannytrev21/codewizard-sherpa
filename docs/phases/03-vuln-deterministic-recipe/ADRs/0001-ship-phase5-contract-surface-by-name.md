@@ -45,6 +45,8 @@ Implements **Dependency inversion** (toolkit §Composition / coupling patterns):
 - The `remediation-report.yaml` schema lives in `src/codegenie/transforms/report.py` and ships with golden-file tests under `tests/golden/remediation-reports/`.
 - New invariant: any change to the six named symbols requires a Phase-3 ADR amendment + Phase-5 ADR-update referencing the new shape.
 
+**Amendment 2026-05-19 (S5-01):** `NotApplicableReason` Literal widened additively with `"NO_RECIPES_REGISTERED"`; `RecipeNotApplicable` widened with `considered: list[NotApplies] = Field(default_factory=list)`. Both changes are additive — Phase-5 callers reading only `.reason` continue to work (`considered=[]` default; pre-existing five Literal members preserved). Phase-4's prompt builder is the sole consumer of `considered`. The S6-06 Phase-5 contract snapshot (still pending implementation as of this amendment) will be baked with the new shape; ADR-0009 amendment of the same date moves the canonical `RecipeEngine` Protocol home to `src/codegenie/transforms/recipe_engine.py` (re-exported from `plugins/protocols.py`).
+
 ## Reversibility
 
 **Low.** Once Phase 4, Phase 5, and Phase 6 land against these symbols, renaming or restructuring requires multi-phase coordination — every consumer of `RemediationOutcome`, `Transform`, or `ApplyContext` would need to migrate. The contract-snapshot test makes the cost visible at every PR; that's a feature, not a bug. A reversal would mean re-architecting the Stage 3–6 substrate.
