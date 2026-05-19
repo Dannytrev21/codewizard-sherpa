@@ -22,6 +22,7 @@ Architecture Decision Records for Phase 3, in Nygard format. Each ADR captures o
 | [0010](0010-domain-modeling-discipline-scope-sum-type-and-newtypes.md) | Domain-modeling discipline — `PluginScope` as `Concrete \| Wildcard` sum type; newtype every domain identifier; tagged-union outcomes everywhere | typing · domain-modeling · sum-type · newtype · illegal-states-unrepresentable |
 | [0011](0011-honest-framing-capability-sandboxedpath-pluginslock.md) | Honest framing — `Capability` is audit + lint (NOT runtime-unforgeable); `SandboxedPath` is in-jail-at-construction; `PLUGINS.lock` is integrity check (NOT cryptographic signature) | threat-model · honest-framing · capability · phase-11-precursor |
 | [0012](0012-amend-allowed-binaries-npm-bwrap-sandbox-exec-jq.md) | Amend `ALLOWED_BINARIES` with `npm`, `bwrap`, `sandbox-exec`, `jq` (amends Phase 2 ADR-0001) | subprocess-discipline · allowed-binaries · amendment · supply-chain |
+| [0013](0013-lazy-package-manager-reexport-breaks-types-probes-cycle.md) | Lazy `PackageManager` re-export breaks the `types` ↔ `probes` cold-start cycle (documents commit `0ffbd07`) | typed-identifiers · circular-import · module-layering · lazy-resolution |
 
 ## Conventions
 
