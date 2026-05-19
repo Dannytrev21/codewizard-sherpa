@@ -137,7 +137,7 @@ Severity legend: **block** (story should not go to executor without fix) · **ha
 - **Fix applied:** New TDD plan uses `InMemorySink()`. Notes-for-implementer documents the convention (in-memory for tests; disk for production).
 
 #### DP-F4 (nit → not flagged) — `TrustScorer` depends on concrete `EventLog`, not Protocol
-- **Considered:** Should `TrustScorer.__init__` take an `EventLogReader` Protocol (`replay()` + `workflow_id`)? 
+- **Considered:** Should `TrustScorer.__init__` take an `EventLogReader` Protocol (`replay()` + `workflow_id`)?
 - **Resolution:** Not flagged. S6-04 (orchestrator) will use the same concrete `EventLog` in tests; the in-memory-sink test seam already gives clean fakes. Introducing a Protocol is YAGNI per Rule 2 unless a third consumer arrives. No action.
 
 ### Lessons reusable across the family
