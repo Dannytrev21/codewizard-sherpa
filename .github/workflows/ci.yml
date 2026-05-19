@@ -276,7 +276,10 @@ jobs:
   unit:
     name: unit
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    # 7-min budget: the suite grew past the original 5-min ceiling on 3.12
+    # (4881 unit tests in ~4m40s wall + ~30s setup + checkout/teardown).
+    # Bumping 5 → 7 gives ~1m headroom rather than rebalancing the lane.
+    timeout-minutes: 7
     needs: [fence]
     strategy:
       fail-fast: false
