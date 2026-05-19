@@ -1,7 +1,7 @@
 # Story S2-02 — `PluginManifest` Pydantic model + YAML loader returning `Result`
 
 **Step:** Step 2 — Plugin Registry kernel, manifest schema, loader, resolver
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S2-02.md`](_attempts/S2-02.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S1-01 (newtypes + free-function smart constructors), S2-01 (`src/codegenie/plugins/__init__.py`, `tests/unit/plugins/__init__.py`, `tests/unit/plugins/conftest.py`, `tests/fixtures/plugins/__init__.py`)
 **ADRs honored:** ADR-0002, ADR-0004, ADR-0010, ADR-0011, production ADR-0031, Phase-1 ADR-0009 (single safe-yaml chokepoint)
@@ -61,37 +61,37 @@ Ship a `PluginManifest` Pydantic model (frozen, `extra="forbid"`) covering every
 
 ### Schema surface
 
-- [ ] **AC-1** — `src/codegenie/plugins/manifest.py` exports `PluginManifest`, `ManifestScope`, `ManifestContributes`, `ManifestRequirements`, and the four `ManifestError` variants (`SizeCapExceeded`, `MalformedYaml`, `SchemaViolation`, `IoError`) plus the `ManifestError` discriminated-union alias. Every Pydantic model uses `model_config = ConfigDict(frozen=True, extra="forbid")`.
-- [ ] **AC-2** — `PluginManifest` covers exactly: `name: PluginId`, `version: Annotated[str, StringConstraints(min_length=1)]` (non-empty; semantic PEP-440 validation deferred to Phase 11), `scope: ManifestScope`, `extends: tuple[PluginId, ...] = ()`, `precedence: int = 50` (matches production ADR-0031 default), `contributes: ManifestContributes`, `requirements: ManifestRequirements = ManifestRequirements()`. **No `signature` field** (per ADR-0011 the integrity check is `plugins/PLUGINS.lock`, S2-03).
-- [ ] **AC-3** — `ManifestScope` covers: `task_class: str | list[str]`, `languages: str | list[str]`, `build_systems: str | list[str]` — where `"*"` is the wildcard literal carried as a raw string. **Sum-type lift to `PluginScope` happens in S2-04**, not here. Each field accepts either a single string or a list of strings; mixed types raise schema_violation.
-- [ ] **AC-4** — `ManifestContributes` covers: `adapters: dict[PrimitiveName, str] = {}` (primitive-name → `module:Class` string), `tccm: str = "./tccm.yaml"`, `subgraph: str = "./subgraph/"`, `skills: str = "./skills/"`, `recipes: str = "./recipes/"`, `probes: tuple[ProbeId, ...] = ()`. (Validating `module:Class` format on `adapters` values is S2-04's job — keep the loader dumb per ADR-0002.)
-- [ ] **AC-5** — `ManifestRequirements` covers: `external_tools: tuple[str, ...] = ()`, `optional: tuple[str, ...] = ()`. Both `frozen=True, extra="forbid"`. Matches production ADR-0031 lines 102-106.
+- [x] **AC-1** — `src/codegenie/plugins/manifest.py` exports `PluginManifest`, `ManifestScope`, `ManifestContributes`, `ManifestRequirements`, and the four `ManifestError` variants (`SizeCapExceeded`, `MalformedYaml`, `SchemaViolation`, `IoError`) plus the `ManifestError` discriminated-union alias. Every Pydantic model uses `model_config = ConfigDict(frozen=True, extra="forbid")`.
+- [x] **AC-2** — `PluginManifest` covers exactly: `name: PluginId`, `version: Annotated[str, StringConstraints(min_length=1)]` (non-empty; semantic PEP-440 validation deferred to Phase 11), `scope: ManifestScope`, `extends: tuple[PluginId, ...] = ()`, `precedence: int = 50` (matches production ADR-0031 default), `contributes: ManifestContributes`, `requirements: ManifestRequirements = ManifestRequirements()`. **No `signature` field** (per ADR-0011 the integrity check is `plugins/PLUGINS.lock`, S2-03).
+- [x] **AC-3** — `ManifestScope` covers: `task_class: str | list[str]`, `languages: str | list[str]`, `build_systems: str | list[str]` — where `"*"` is the wildcard literal carried as a raw string. **Sum-type lift to `PluginScope` happens in S2-04**, not here. Each field accepts either a single string or a list of strings; mixed types raise schema_violation.
+- [x] **AC-4** — `ManifestContributes` covers: `adapters: dict[PrimitiveName, str] = {}` (primitive-name → `module:Class` string), `tccm: str = "./tccm.yaml"`, `subgraph: str = "./subgraph/"`, `skills: str = "./skills/"`, `recipes: str = "./recipes/"`, `probes: tuple[ProbeId, ...] = ()`. (Validating `module:Class` format on `adapters` values is S2-04's job — keep the loader dumb per ADR-0002.)
+- [x] **AC-5** — `ManifestRequirements` covers: `external_tools: tuple[str, ...] = ()`, `optional: tuple[str, ...] = ()`. Both `frozen=True, extra="forbid"`. Matches production ADR-0031 lines 102-106.
 
 ### Error model — tagged union (ADR-0010 §Decision 3)
 
-- [ ] **AC-6** — `ManifestError` is a Pydantic discriminated union (`Field(discriminator="kind")`) over four variants, each carrying its evidence:
+- [x] **AC-6** — `ManifestError` is a Pydantic discriminated union (`Field(discriminator="kind")`) over four variants, each carrying its evidence:
   - `SizeCapExceeded(kind: Literal["size_cap_exceeded"], path: Path, actual_bytes: int, cap: int)`
   - `MalformedYaml(kind: Literal["malformed_yaml"], path: Path, message: str)`
   - `SchemaViolation(kind: Literal["schema_violation"], path: Path, field_errors: tuple[str, ...])` — `field_errors` rendered from `pydantic.ValidationError.errors()` via `".".join(str(p) for p in e["loc"])`.
   - `IoError(kind: Literal["io_error"], path: Path, errno: int, message: str)`
-- [ ] **AC-7** — A `match err: case SizeCapExceeded(): ... case MalformedYaml(): ... case SchemaViolation(): ... case IoError(): ...` over an instance of the union type-checks under `mypy --strict` with `assert_never(err)` after the four cases (exhaustiveness gate). At least one such match block lives in the test suite.
+- [x] **AC-7** — A `match err: case SizeCapExceeded(): ... case MalformedYaml(): ... case SchemaViolation(): ... case IoError(): ...` over an instance of the union type-checks under `mypy --strict` with `assert_never(err)` after the four cases (exhaustiveness gate). At least one such match block lives in the test suite.
 
 ### Loader behaviour
 
-- [ ] **AC-8** — `PluginManifest.from_yaml(cls, path: Path) -> Result[PluginManifest, ManifestError]` (classmethod) routes through `codegenie.parsers.safe_yaml.load(path, max_bytes=1 << 20)`. **No raw `yaml.*` imports** in `manifest.py`; AST-walk fence test enforces.
-- [ ] **AC-9** — Translation table from raw exceptions to `ManifestError` variants is pinned (matches `tccm/loader.py:_classify` discipline):
+- [x] **AC-8** — `PluginManifest.from_yaml(cls, path: Path) -> Result[PluginManifest, ManifestError]` (classmethod) routes through `codegenie.parsers.safe_yaml.load(path, max_bytes=1 << 20)`. **No raw `yaml.*` imports** in `manifest.py`; AST-walk fence test enforces.
+- [x] **AC-9** — Translation table from raw exceptions to `ManifestError` variants is pinned (matches `tccm/loader.py:_classify` discipline):
   - `SizeCapExceeded` from `safe_yaml` → `Err(SizeCapExceeded(path, actual_bytes=path.stat().st_size, cap=1 << 20))` (re-stat for `actual_bytes`; if re-stat itself raises, fall through to `IoError`).
   - `MalformedYAMLError` from `safe_yaml` → `Err(MalformedYaml(path, message=str(exc)))`. Covers: empty file, syntactically-broken YAML, **top-level non-mapping** (scalar, list, `null`).
   - `SymlinkRefusedError` from `safe_yaml` → `Err(IoError(path, errno=errno.ELOOP, message="symlink refused"))`. (Per ADR-0011 honest-framing — symlinks are a TOCTOU vector; `safe_yaml` refuses them at the chokepoint, the loader surfaces it under `io_error`.)
   - `OSError` (any subclass: `FileNotFoundError`, `PermissionError`, `IsADirectoryError`, etc.) → `Err(IoError(path, errno=exc.errno, message=str(exc)))`.
   - `pydantic.ValidationError` from `PluginManifest.model_validate(data)` → `Err(SchemaViolation(path, field_errors=tuple(".".join(str(p) for p in e["loc"]) for e in exc.errors())))`.
-- [ ] **AC-10** — `name` lift: after Pydantic validates the raw dict, `name: PluginId` is lifted from `str` via `codegenie.types.parsers.parse_plugin_id`. Lift failure → `Err(SchemaViolation(path, field_errors=("name",)))`. No `cast()`.
-- [ ] **AC-11** — `extends` lift: each entry in the YAML list is lifted via `parse_plugin_id`. First-failure short-circuits to `Err(SchemaViolation(path, field_errors=("extends",)))` with the offending index documented in `SchemaViolation.message` extension if added later (not required this story).
-- [ ] **AC-12** — **`from_yaml` never raises** for any input. A property test (Hypothesis, see TDD plan) feeds arbitrary bytes via `tmp_path.write_bytes` and asserts `from_yaml(path)` returns a `Result` for every input — never escapes an exception. Catches missed `except` arms.
+- [x] **AC-10** — `name` lift: after Pydantic validates the raw dict, `name: PluginId` is lifted from `str` via `codegenie.types.parsers.parse_plugin_id`. Lift failure → `Err(SchemaViolation(path, field_errors=("name",)))`. No `cast()`.
+- [x] **AC-11** — `extends` lift: each entry in the YAML list is lifted via `parse_plugin_id`. First-failure short-circuits to `Err(SchemaViolation(path, field_errors=("extends",)))` with the offending index documented in `SchemaViolation.message` extension if added later (not required this story).
+- [x] **AC-12** — **`from_yaml` never raises** for any input. A property test (Hypothesis, see TDD plan) feeds arbitrary bytes via `tmp_path.write_bytes` and asserts `from_yaml(path)` returns a `Result` for every input — never escapes an exception. Catches missed `except` arms.
 
 ### Defaults — pinned by literal equality
 
-- [ ] **AC-13** — Loading a minimal valid YAML (`name`, `version`, `scope.*`, `contributes: {}`) materialises every documented default exactly:
+- [x] **AC-13** — Loading a minimal valid YAML (`name`, `version`, `scope.*`, `contributes: {}`) materialises every documented default exactly:
   - `m.precedence == 50` (NOT 0 — arch §C2 line 756 contradicts production-ADR-0031; production-ADR wins).
   - `m.extends == ()`.
   - `m.requirements == ManifestRequirements()` AND `m.requirements.external_tools == ()` AND `m.requirements.optional == ()`.
@@ -99,16 +99,16 @@ Ship a `PluginManifest` Pydantic model (frozen, `extra="forbid"`) covering every
 
 ### `extra="forbid"` at every submodel boundary
 
-- [ ] **AC-14** — Unknown-field rejection is enforced at the top level AND on every submodel (`ManifestScope`, `ManifestContributes`, `ManifestRequirements`). One parametrized test per submodel + one at the top level — four cases total. Each catches the case where a refactor accidentally drops `extra="forbid"` from a submodel.
+- [x] **AC-14** — Unknown-field rejection is enforced at the top level AND on every submodel (`ManifestScope`, `ManifestContributes`, `ManifestRequirements`). One parametrized test per submodel + one at the top level — four cases total. Each catches the case where a refactor accidentally drops `extra="forbid"` from a submodel.
 
 ### Round-trip fidelity
 
-- [ ] **AC-15** — YAML round-trip preserves equality: `m == PluginManifest.from_yaml(write(yaml.safe_dump(m.model_dump(mode="json")))).unwrap()` for a fully-populated manifest. **Not** `model_dump_json` (which trivially round-trips through JSON-via-YAML). One concrete hand-authored block-style YAML fixture also round-trips — exercises block sequences, block mappings, and null sugar (`~`).
-- [ ] **AC-16** — Hypothesis property test: for any randomly generated valid manifest (`name`, `version`, varying `precedence` ∈ ℕ, varying `extends` length 0–5, all submodel defaults vs populated), `from_yaml(yaml.safe_dump(m.model_dump(mode="json")))` reconstructs `m` exactly. At least 100 examples.
+- [x] **AC-15** — YAML round-trip preserves equality: `m == PluginManifest.from_yaml(write(yaml.safe_dump(m.model_dump(mode="json")))).unwrap()` for a fully-populated manifest. **Not** `model_dump_json` (which trivially round-trips through JSON-via-YAML). One concrete hand-authored block-style YAML fixture also round-trips — exercises block sequences, block mappings, and null sugar (`~`).
+- [x] **AC-16** — Hypothesis property test: for any randomly generated valid manifest (`name`, `version`, varying `precedence` ∈ ℕ, varying `extends` length 0–5, all submodel defaults vs populated), `from_yaml(yaml.safe_dump(m.model_dump(mode="json")))` reconstructs `m` exactly. At least 100 examples.
 
 ### TDD red-first discipline
 
-- [ ] **AC-17** — Five distinct red tests committed before any green code, one per failure mode + one happy:
+- [x] **AC-17** — Five distinct red tests committed before any green code, one per failure mode + one happy:
   - `test_unknown_field_returns_err_schema_violation`
   - `test_malformed_yaml_returns_err_malformed_yaml` (covers empty file + invalid syntax + non-mapping top-level + null document — parametrized)
   - `test_oversized_file_returns_err_size_cap_exceeded`
@@ -117,8 +117,8 @@ Ship a `PluginManifest` Pydantic model (frozen, `extra="forbid"`) covering every
 
 ### Static + chokepoint fences
 
-- [ ] **AC-18** — AST-walk source-scan fence test (`test_manifest_module_does_not_bypass_safe_yaml`) asserts `src/codegenie/plugins/manifest.py` does not import `yaml`, `pyyaml`, `yaml.Loader`, `yaml.FullLoader`, or `yaml.SafeLoader`, and contains no string literal `"safe_load"`. Mirrors the pattern at `tests/unit/tccm/test_loader.py` (search for the analogous fence).
-- [ ] **AC-19** — `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/plugins/manifest.py`, `tests/unit/plugins/test_manifest.py`, and `tests/fixtures/plugins/sample_plugin_yaml.py`. No `# type: ignore`. No `Any`. No `dict[str, Any]`.
+- [x] **AC-18** — AST-walk source-scan fence test (`test_manifest_module_does_not_bypass_safe_yaml`) asserts `src/codegenie/plugins/manifest.py` does not import `yaml`, `pyyaml`, `yaml.Loader`, `yaml.FullLoader`, or `yaml.SafeLoader`, and contains no string literal `"safe_load"`. Mirrors the pattern at `tests/unit/tccm/test_loader.py` (search for the analogous fence).
+- [x] **AC-19** — `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/plugins/manifest.py`, `tests/unit/plugins/test_manifest.py`, and `tests/fixtures/plugins/sample_plugin_yaml.py`. No `# type: ignore`. No `Any`. No `dict[str, Any]`.
 
 ## Implementation outline
 
