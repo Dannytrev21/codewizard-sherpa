@@ -25,7 +25,7 @@ at :mod:`codegenie.types.parsers`; ``ParseError`` lives at
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Final, NewType
+from typing import TYPE_CHECKING, Final, Literal, NewType
 
 # DO NOT redefine — Phase 1 ADR-0013 owns this enum; this module re-exports
 # it. The re-export is **lazy** via :func:`__getattr__` below: a top-level
@@ -93,6 +93,19 @@ AttemptNumber = NewType("AttemptNumber", int)
 # ``RemediationError`` on the ``Failed`` variants in S1-03's outcomes module.
 ErrorId = NewType("ErrorId", str)
 
+# --- Phase-3 catalog (S3-02 additive — VulnIndex) -------------------------
+
+# Bare npm package name (scoped or unscoped, no ``@<version>``); S3-02
+# VulnIndex lookup key. S1-01's ``PackageId`` (``<name>@<pinned-semver>``)
+# does not fit per-name-across-versions vuln semantics — this newtype is the
+# additive companion to ``PackageId`` at the kernel-tier identifier home.
+PackageName = NewType("PackageName", str)
+
+# Closed-set ecosystem tag — Phase-3 ships ``npm``; the remaining four are
+# admitted by ADR amendment when their plugin scaffold lands (mirrors the
+# ``severity`` / ``source`` Literal-discipline on ``VulnerabilityRecord``).
+Ecosystem = Literal["npm", "pypi", "maven", "rubygems", "gomod"]
+
 
 __all__ = [
     "AttemptNumber",
@@ -100,6 +113,7 @@ __all__ = [
     "BranchName",
     "ConventionId",
     "CveId",
+    "Ecosystem",
     "ErrorId",
     "EventId",
     "IndexId",
@@ -107,6 +121,7 @@ __all__ = [
     "Language",
     "PackageId",
     "PackageManager",
+    "PackageName",
     "PluginId",
     "PrimitiveName",
     "ProbeId",
@@ -152,6 +167,13 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "TransformKind": "Phase-3 transform kind (ADR-0010); S5-01 recipe registry.",
     "AttemptNumber": "Phase-3 retry counter (ADR-0010); S1-04 AttemptSummary.",
     "ErrorId": "Phase-3 dotted snake-case error id (ADR-0010); S1-03 RecipeError/RemediationError.",
+    # Phase-3 (S3-02 — VulnIndex additive).
+    "PackageName": (
+        "Phase-3 bare npm package name (ADR-0010, ADR-0033); S3-02 VulnIndex lookup key."
+    ),
+    "Ecosystem": (
+        "Phase-3 closed-set ecosystem tag (ADR-0010); S3-02 VulnIndex.lookup ecosystem filter."
+    ),
 }
 
 

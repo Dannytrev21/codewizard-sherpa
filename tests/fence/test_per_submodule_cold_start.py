@@ -37,7 +37,14 @@ _SRC_ROOT: Final[Path] = Path(__file__).resolve().parents[2] / "src" / "codegeni
 # this fence is that *every* submodule round-trips.
 _SKIP: Final[frozenset[str]] = frozenset(
     {
-        # No legitimate exclusions today. Add with a comment naming the reason.
+        # S3-02 — Alembic migration scripts are internal plumbing only
+        # invocable through ``command.upgrade(cfg, "head")``; they import
+        # ``alembic.op`` at module top which crashes when imported without
+        # an Alembic ``context`` set up. Callers reach them via the public
+        # ``VulnIndex._upgrade`` seam, which is fenced separately by
+        # ``tests/unit/vuln_index/test_cold_start.py`` (AC-L2).
+        "codegenie.vuln_index.migrations.env",
+        "codegenie.vuln_index.migrations.versions.0001_initial_schema",
     }
 )
 

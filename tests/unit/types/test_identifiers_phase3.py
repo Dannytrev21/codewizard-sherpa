@@ -225,7 +225,12 @@ PHASE3_NAMES = {
     "TransformKind",
     "AttemptNumber",
     "ErrorId",
+    # S3-02 additive — VulnIndex kernel-tier additions.
+    "PackageName",
 }
+# Closed-set ``Literal[...]`` aliases — counted in ``__all__`` but not in the
+# NewType-specific assertions (``__name__``, ``isinstance``, distinctness).
+PHASE3_LITERAL_NAMES = {"Ecosystem"}
 PHASE2_NAMES = {
     "ConventionId",
     "IndexId",
@@ -251,7 +256,8 @@ def test_pairwise_distinct() -> None:
     """AC-10 — every NewType is a distinct object from every other."""
     import codegenie.types.identifiers as ids
 
-    # PackageManager is a Literal alias, not a NewType — exclude from identity check.
+    # PackageManager + PHASE3_LITERAL_NAMES (Ecosystem) are Literal aliases,
+    # not NewTypes — exclude from identity check.
     names = sorted((PHASE2_NAMES | PHASE3_NAMES) - {"PackageManager"})
     objs = [getattr(ids, n) for n in names]
     for i, a in enumerate(objs):
@@ -260,10 +266,10 @@ def test_pairwise_distinct() -> None:
 
 
 def test_all_is_exact_set() -> None:
-    """AC-11 — ``__all__`` is exactly Phase-2 ∪ Phase-3, sorted."""
+    """AC-11 — ``__all__`` is exactly Phase-2 ∪ Phase-3 ∪ literals, sorted."""
     import codegenie.types.identifiers as ids
 
-    assert set(ids.__all__) == PHASE2_NAMES | PHASE3_NAMES
+    assert set(ids.__all__) == PHASE2_NAMES | PHASE3_NAMES | PHASE3_LITERAL_NAMES
     assert ids.__all__ == sorted(ids.__all__), "__all__ must be sorted"
 
 

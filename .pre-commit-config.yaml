@@ -46,6 +46,12 @@ repos:
           - tree-sitter>=0.23,<0.26
           - tree-sitter-typescript>=0.23,<1
           - tree-sitter-javascript>=0.23,<1
+          # Phase 3 S3-02: ``codegenie.vuln_index`` imports ``alembic`` +
+          # ``sqlalchemy`` from inside lazy-import sites (cold-start fence,
+          # AC-L2 / AC-E1). Mirrors the runtime closure so the isolated
+          # mypy hook can resolve the stubs.
+          - alembic>=1.13
+          - sqlalchemy>=2
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.

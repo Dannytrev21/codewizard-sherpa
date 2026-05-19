@@ -1,7 +1,7 @@
 # Story S3-02 — `VulnIndex` sqlite schema + Alembic migrations + staleness signal
 
 **Step:** Step 3 — TCCM, BundleBuilder, VulnIndex, content-addressed cache
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S3-02.md`](_attempts/S3-02.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S3-01
 **ADRs honored:** Phase 3 ADR-0008 (`vuln_index.digest` participates in Bundle cache key), Phase 3 ADR-0005 (two-stream `EventLog` — `StaleVulnIndex` is a spanning event), Phase 3 ADR-0010 (sum-type / newtype discipline), production ADR-0033 (newtype identifiers), Phase 0 ADR-0001 (BLAKE3 chokepoint via `codegenie.hashing`), production ADR-0005 (cold-start budget — no LLM-SDK in `--help` closure; analogously: no heavyweight import on `import codegenie.vuln_index`).

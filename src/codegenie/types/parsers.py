@@ -29,8 +29,10 @@ from codegenie.types.identifiers import (
     BlobDigest,
     BranchName,
     CveId,
+    Ecosystem,
     EventId,
     PackageId,
+    PackageName,
     PluginId,
     PrimitiveName,
     RecipeId,
@@ -46,8 +48,10 @@ __all__ = [
     "parse_blob_digest",
     "parse_branch_name",
     "parse_cve_id",
+    "parse_ecosystem",
     "parse_event_id",
     "parse_package_id",
+    "parse_package_name",
     "parse_plugin_id",
     "parse_primitive_name",
     "parse_recipe_id",
@@ -71,6 +75,13 @@ _PLUGIN_RX: Final[re.Pattern[str]] = re.compile(
 )
 _BRANCH_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9/_.\-]{1,200}$")
 _NPM_NAME_RX: Final[re.Pattern[str]] = re.compile(r"^(?:@[a-z0-9\-_.]+/)?[a-z0-9\-_.]+$")
+# Bare npm package name (no version): scoped ``@scope/name`` OR unscoped
+# ``name``. Lowercase, allows ``[a-z0-9_.-]`` in segments. S3-02 VulnIndex.
+_PACKAGE_NAME_RX: Final[re.Pattern[str]] = re.compile(
+    r"^(?:@[a-z0-9][a-z0-9_.\-]*/)?[a-z0-9][a-z0-9_.\-]*$"
+)
+# Ecosystem closed set — same membership as the ``Ecosystem`` Literal.
+_ECOSYSTEMS: Final[frozenset[str]] = frozenset({"npm", "pypi", "maven", "rubygems", "gomod"})
 _PINNED_SEMVER_RX: Final[re.Pattern[str]] = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.+-]+)?$")
 _HOST_RX: Final[re.Pattern[str]] = re.compile(
     r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$"
@@ -115,6 +126,7 @@ _recipe_match = _regex_parser(_RECIPE_RX, max_len=64, name="RecipeId")
 _plugin_match = _regex_parser(_PLUGIN_RX, max_len=130, name="PluginId")
 _branch_match = _regex_parser(_BRANCH_RX, max_len=200, name="BranchName")
 _npm_name_match = _regex_parser(_NPM_NAME_RX, max_len=214, name="PackageId.name")
+_package_name_match = _regex_parser(_PACKAGE_NAME_RX, max_len=214, name="PackageName")
 _pinned_semver_match = _regex_parser(_PINNED_SEMVER_RX, max_len=128, name="PackageId.version")
 _host_match = _regex_parser(_HOST_RX, max_len=253, name="RegistryUrl.host")
 
@@ -286,6 +298,26 @@ def parse_registry_url(s: str) -> Result[RegistryUrl, ParseError]:
             error=ParseError(message=f"RegistryUrl: host must match {_HOST_RX.pattern}", value=s)
         )
     return Ok(value=RegistryUrl(s))
+
+
+def parse_package_name(s: str) -> Result[PackageName, ParseError]:
+    """External boundary: vuln-index lookup key. Scoped or unscoped npm name. ADR-0010."""
+    r = _package_name_match(s)
+    return Ok(value=PackageName(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_ecosystem(s: str) -> Result[Ecosystem, ParseError]:
+    """External boundary: vuln-index ecosystem filter. Closed set. ADR-0010."""
+    if s not in _ECOSYSTEMS:
+        return Err(
+            error=ParseError(
+                message=f"Ecosystem: must be one of {sorted(_ECOSYSTEMS)!r}",
+                value=s,
+            )
+        )
+    # Pyright/mypy cannot narrow ``s in _ECOSYSTEMS`` to the Literal
+    # automatically — explicit cast via the closed-set membership check above.
+    return Ok(value=s)  # type: ignore[arg-type]
 
 
 def parse_attempt_number(n: int) -> Result[AttemptNumber, ParseError]:
