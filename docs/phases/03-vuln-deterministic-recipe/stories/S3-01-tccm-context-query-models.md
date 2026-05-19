@@ -1,7 +1,7 @@
 # Story S3-01 — `TCCM` + `ContextQuery` Pydantic models (Phase 3 plugin-private capability shape)
 
 **Step:** Step 3 — TCCM, BundleBuilder, VulnIndex, content-addressed cache
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S3-01.md`](_attempts/S3-01.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S1-04, S2-01
 **ADRs honored:** Phase 3 ADR-0004 (plugin-private capabilities live on TCCM `provides`/`requires`, NOT on the kernel `Plugin` Protocol), Phase 3 ADR-0010 (tagged-union / Literal discipline for closed state sets), production ADR-0029 (Task-Class Context Manifests), production ADR-0030 (graph-aware context queries — fixed primitive set), production ADR-0033 (domain-modeling discipline; smart constructors at external boundaries)
