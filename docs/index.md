@@ -63,7 +63,7 @@ LLMs appear only at the **leaves**, called via the Agents SDK for narrow judgmen
 | Phase 2 — Layers B–G context gathering | 🚧 Most stories shipped; closeout in flight |
 | Phases 3–5, 6.5 — Designed | 📐 Designs complete |
 | Phase 6 — Plugin-aware redesign | 📐 Designs complete |
-| Phase 7 — Awaiting Phase 7 redesign | 📋 Planned |
+| Phase 7 — Migration task-class (distroless containers) | 📐 Designs complete |
 | Phases 8–16 — Roadmap stubs awaiting design | 📋 Planned |
 
 The implementation focus today is the **local CLI POC** (`codegenie gather`). The probe contract it implements is the same one the production service will use ([ADR-0007](production/adrs/0007-probe-contract-preserved-poc-to-service.md)) — drift here would propagate everywhere.
