@@ -62,3 +62,4 @@ Transitions:
 - `../design.md §4.5` Scenario B — solved-example reuse (Worker #45 benefits from Worker #2)
 - `../../auto-agent-design.md §2.1` — Konveyor Kai's solved-example pattern
 - `../../auto-agent-design.md §2.2` — OpenRewrite recipes
+- `../../reviews/2026-05-18-research-committee-search-paper.md` — external evidence: recipes have a perfect local soundness signal (transform applies cleanly or fails), so the chain order spends LLM budget only on slices recipes cannot cover

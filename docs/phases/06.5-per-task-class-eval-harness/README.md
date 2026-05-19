@@ -52,6 +52,16 @@ Six new Phase 6.5 ADRs are implied by the final design:
 
 `phase-architect` will produce `phase-arch-design.md`, the per-phase `ADRs/` directory in Nygard format, and `High-level-impl.md` as the implementation-step roadmap.
 
+## Why not SWE-bench (Verified or Pro)?
+
+The 2026 literature has triangulated on SWE-bench Pro (Scale AI) as the cleaner public-leaderboard signal after SWE-bench Verified contamination became openly acknowledged across frontier models (`../../reviews/2026-05-18-agent-orchestration-survey-and-recommendations.md` row #5). Phase 6.5 deliberately does **not** benchmark against either:
+
+- **Task-class mismatch.** SWE-bench scores arbitrary GitHub-issue resolution with free-form patches; vuln-remediation patches are a closed 4-variant `PlanProposal` sum type ([Phase 4 ADR-04-0001](../04-vuln-llm-fallback-rag/ADRs/)) and migration patches will share the same constrained-output discipline. The decision surface SWE-bench measures is not the decision surface this project ships.
+- **Promotion-gate evidence must be portfolio-shaped, not paper-shaped.** Trust-tier promotion ([Phase 5 ADR-0016](../05-sandbox-trust-gates/ADRs/0016-per-task-class-eval-harness-as-trust-evidence.md)) keys on cases that mirror the operator's repos and the operator's vulnerability sources. A SWE-bench score would not justify promoting a vuln-rem tier for a Java-heavy operator portfolio; per-task-class `bench/{task-class}/` cases do.
+- **Cleanroom property.** Phase 6.5's curation contract (held-out split fence-enforced, BLAKE3-chained provenance) gives a stronger contamination story than SWE-bench Pro's public-corpus posture for the metric we actually gate on.
+
+The two are complementary, not interchangeable: external SWE-bench-style numbers may surface in `phase-story-writer` design-pipeline literature reviews; the promotion gate stays on per-task-class evidence.
+
 ## Provenance
 
 | Round | Agent | Output | Token usage |

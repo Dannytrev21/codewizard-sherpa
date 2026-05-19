@@ -27,6 +27,7 @@ Architecture Decision Records for Phase 4, in Nygard format. Each ADR captures o
 | [0014](0014-cassette-discipline-security-control.md) | Cassette discipline as a security control — `CassetteSanitizer` + `cassettes.lock` + nightly drift job | ci-enforcement · supply-chain · test-determinism · nightly-canary · content-addressed-manifest |
 | [0015](0015-typecheck-typescript-signal-and-tsc-allowed-binary.md) | `typecheck.typescript` `SignalKind` lands; `./node_modules/.bin/tsc` added to `ALLOWED_BINARIES` | registry-pattern · open-closed · trust-signal · subprocess-allowlist |
 | [0016](0016-chromadb-embedded-yaml-canonical-store.md) | chromadb PersistentClient embedded mode; YAML records as canonical source; sqlite derived | ports-and-adapters · content-addressed-storage · single-writer · operational-recovery |
+| [0017](0017-attempt-anchor-event-schema.md) | `AttemptAnchor` event — schema for future critic-training and replay audit | event-sourcing · audit-anchor · schema-versioning · extension-by-addition · option-preservation |
 
 ## Conventions
 

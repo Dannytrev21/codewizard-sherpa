@@ -165,3 +165,4 @@ Replay is also a *test* primitive: every workflow's stored event history can be 
 - ADR-0003 — Temporal as workflow substrate (Phase 9 anchor)
 - ADR-0024 — Cost observability end-to-end
 - ADR-0033 — Domain modeling discipline (typed-events foundation; this ADR depends on it)
+- `../../reviews/2026-05-18-research-committee-search-paper.md` — external evidence: an append-only event log of `(proposal, evidence, validator_outcome, trust_outcome)` is the audit-anchor schema future critic training would consume; this ADR's append-only discipline makes that option cheap to preserve

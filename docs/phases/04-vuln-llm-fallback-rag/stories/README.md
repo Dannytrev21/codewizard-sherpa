@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-Phase 4 introduces the first LLM-produced bytes the system applies, lifted into a closed `PlanProposal` discriminated union and gated behind a `ProvenanceGate` that spends zero tokens on non-app-layer CVEs. The work decomposes into 41 stories across the 7 implementation steps: type substrate + path-scoped fence (S1), trust-boundary primitives (S2), leaf LLM port + cassette discipline (S3), RAG kernel (S4), retriever + calibration (S5), `FallbackTier` composition + first `typecheck.typescript` SignalKind (S6), and plugin wiring + E2E exit criteria (S7). Every story is sized for one focused autonomous session and traces to specific arch §Components, ADRs, edge cases, or gap-analysis entries; every roadmap exit criterion has at least one named story that proves it.
+Phase 4 introduces the first LLM-produced bytes the system applies, lifted into a closed `PlanProposal` discriminated union and gated behind a `ProvenanceGate` that spends zero tokens on non-app-layer CVEs. The work decomposes into 42 stories across the 7 implementation steps: type substrate + path-scoped fence (S1), trust-boundary primitives (S2), leaf LLM port + cassette discipline (S3), RAG kernel (S4), retriever + calibration (S5), `FallbackTier` composition + first `typecheck.typescript` SignalKind (S6), and plugin wiring + E2E exit criteria (S7). Every story is sized for one focused autonomous session and traces to specific arch §Components, ADRs, edge cases, or gap-analysis entries; every roadmap exit criterion has at least one named story that proves it.
 
 ## How to use this backlog
 
@@ -183,6 +183,7 @@ graph TD
 | S6-05 | [TypecheckTypescriptSignal collector](S6-05-typecheck-typescript-signal.md) | M | S6-04 | Ship `TypecheckTypescriptSignal` decorated with `@register_signal_kind("typecheck.typescript")`; runs `tsc --noEmit --pretty false` in Phase 3 `SubprocessJail` (30s cap); strict-AND folds via Phase-3 `TrustScorer` with zero edits; registry contains exactly one `typecheck.*` entry post-import (ADR-0015). |
 | S6-06 | [`tsc` applicability matrix](S6-06-typecheck-applicability-matrix.md) | S | S6-05 | Detect TypeScript-in-scope via `tsconfig.json` + any `.ts` files; four-case applicability matrix per Gap 4 — `{tsconfig + .ts, tsconfig + no .ts, no tsconfig + .ts, no tsconfig + no .ts}` mapped to `(passed, applicable, confidence)`. |
 | S6-07 | [Determinism-under-cassette-replay property](S6-07-determinism-cassette-replay-property.md) | M | S6-01, S6-02 | Land `tests/property/test_determinism_under_cassette_replay.py` — 50 runs with `(cassette_id, store_digest, repo_snapshot_sha, embedding_model_digest)` constant: byte-identical `Transform.diff_bytes` and event order modulo timestamps. |
+| S6-08 | [`AttemptAnchor` event emission + JSONL projection](S6-08-attempt-anchor-emission.md) | M | S6-01, S6-03 | Emit `AttemptAnchorRecorded(anchor)` as the *terminal* event per attempt; persist as JSONL at `.codegenie/fallback/anchors/{utc-date}/{workflow_id}.jsonl` (0600, fsync); Phase 5's `GateRunner` deferred-attaches `TrustOutcome` via `anchor.attach_trust_outcome(...)`. Preserves the option of future CTRL-style critic training without retroactive data archaeology (ADR-04-0017). |
 
 ### Step 7: Ship plugin wiring: FallbackTierPlanRecipeEngine + harvest + E2E exit criteria
 

@@ -57,3 +57,4 @@ The retry cap is configurable per subgraph and per node — defaults to 3 but ca
 - `../design.md §5` (Retry limits subsection)
 - `../design.md §8.9` (Trust-Aware gate decision flow — explicit `Retry count < 3?` branch)
 - Konveyor Kai's retry-and-adjust pattern (`../../auto-agent-design.md §2.1`)
+- `../../reviews/2026-05-18-research-committee-search-paper.md` — external context: this ADR sets a fixed `k=3` budget; the survey ledger flags adaptive retry budgets and committee-search variants as future amendments, deferred until Phase 4 runtime evidence is available

@@ -138,6 +138,7 @@ The validator's job is to move the story to this bar.
 - Does not add new ACs that weren't implied by the goal — only adds ACs that *enforce* the existing goal more strictly
 - Does not commit (humans always merge — `docs/production/design.md` load-bearing commitment)
 - Does not silently fold in adjacent improvements outside the story's scope (Rule 3 — surgical changes)
+- **Does not debate the writer.** The validator is a one-way critic: it issues STRONG / HARDENED / RESCUE on a single proposal. If the story cannot be hardened in a single critic+synthesizer pass, the verdict is RESCUE — re-run `phase-story-writer`, do not iterate critic↔writer rounds. The 2025–2026 controlled-debate literature (`docs/reviews/2026-05-18-agent-orchestration-survey-and-recommendations.md` rows #2, #6) shows multi-round critic↔writer dialogue gains nothing over plain ensembling and amplifies bias in homogeneous panels. The hardening pass is bounded; comparator-over-k mode is a separate, explicit extension and is not enabled today.
 
 ## Failure modes the skill handles explicitly
 

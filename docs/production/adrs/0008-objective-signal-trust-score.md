@@ -59,3 +59,4 @@ LLM self-reported confidence **may** be logged for observability and drift analy
 - `../../gemini-auto-agent-design.md §"Mitigating the Confidence Trap"` — empirical Confidence-Trap data
 - `../../gemini-auto-agent-design.md §"Empirical Realities"` — agentic-PR breaking-change rates by task type
 - arXiv 2603.27524 "Safer Builders, Risky Maintainers" — agents fail at higher rates during maintenance than feature work
+- `../../reviews/2026-05-18-research-committee-search-paper.md` — external evidence: executable / type-check / test signals are the "local soundness signal" the committee-search bounds require; the objective-signal trust score is exactly that shape

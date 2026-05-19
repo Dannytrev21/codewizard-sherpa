@@ -47,3 +47,4 @@ Many similar projects (LLM-powered code-understanding tools) invoke an LLM to su
 - `../design.md §3.2` ("Why this matters architecturally" — the determinism-enables-continuity argument)
 - `../../localv2.md §"Design principles"` ("Deterministic over probabilistic")
 - `../../context.md §"Why this shape"` — determinism, bounded probe scope, organizational uniqueness as data
+- `../../reviews/2026-05-18-research-committee-search-paper.md` — external evidence: verifier-backed orchestration requires a soundness signal that is itself LLM-free, or selection cannot reliably amplify proposals (Sunkaraneni et al., arXiv:2605.14163)
