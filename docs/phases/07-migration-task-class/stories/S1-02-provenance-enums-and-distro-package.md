@@ -1,7 +1,31 @@
 # Story S1-02 — `DistroPackage` + `AppKind` / `BaseKind` / `UnknownReason` / `AdapterConfidence` enums
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** HARDENED
+**Status:** GREEN
+
+## GREEN evidence (2026-05-19, phase-story-executor)
+
+All 15 ACs land with runtime evidence; see [_attempts/S1-02-provenance-enums-and-distro-package.md](_attempts/S1-02-provenance-enums-and-distro-package.md) for the ReAct trace, deviations, and lessons.
+
+| AC | Evidence |
+|---|---|
+| AC-1 — `_Frozen` base | `src/codegenie/primitives/vuln_provenance/types.py` `class _Frozen` |
+| AC-2 — `DistroPackage` shape | `test_distro_package_happy_path`, `_frozen_rejects_mutation`, `_extra_forbid` |
+| AC-3 — `AdapterConfidence` enum | `test_adapter_confidence_values_match_arch`, `_round_trips_from_string`, `_is_string_enum` (uses `StrEnum`; see attempt log for the `(str, Enum)` deviation) |
+| AC-4 — `UnknownReason` Literal × 6 | `test_unknown_reason_literal_args_match_arch`, `_args_count_is_six` |
+| AC-5 — `AppKind`/`BaseKind` OUT | `__init__.py.__all__` carries exactly the three names; `types.py` carries no `AppKind`/`BaseKind` |
+| AC-6 — `match` + `assert_never` | `_describe` + `test_describe_every_reason` (parametrized × 6) |
+| AC-7 — rejection matrix | `test_distro_package_rejects_invalid_input` (12 cases); `test_distro_package_admits_every_supported_distro` (4 cases); whitespace `field_validator` on `name`/`version` |
+| AC-8 — `AdapterConfidence` round-trip | `test_adapter_confidence_values_match_arch`, `_round_trips_from_string`, `_members_are_distinct` |
+| AC-9 — exact import set | `tests/unit/primitives/vuln_provenance/test_types_module_purity.py:_ALLOWED_TOP_LEVEL_IMPORTS` (exact-equality assertion) |
+| AC-10 — gates | `mypy --strict src/` 188 files clean; `ruff check` clean; `ruff format --check` clean; `lint-imports` 4 kept, 0 broken |
+| AC-11 — `_Frozen` inheritance fence | `tests/fence/test_vuln_provenance_frozen_base.py` (4 parametrized cases) |
+| AC-12 — JSON round-trip | `test_distro_package_json_round_trip` (4 distros) + `test_distro_package_json_keys_are_exactly_three` |
+| AC-13 — `__all__` sorted + exact + no underscore-prefixed | `tests/unit/primitives/vuln_provenance/test_types_dunder_all.py` |
+| AC-14 — `model_construct` fence | `tests/fence/test_vuln_provenance_no_model_construct.py` (3 parametrized cases) |
+| AC-15 — `mypy --strict` negative test | `tests/unit/primitives/vuln_provenance/test_types_mypy_negative.py` (3 rejects + 3 negative-control accepts via subprocess-mypy) |
+
+Suite delta: **+56 net new pytest items**; full suite 5367 passed (S1-01 baseline 5311); the 7 pre-existing env failures are identical to the S1-01-documented set (secret-in-source SCIP fixture×2, golden, docker sandbox×2, lint-imports PATH×2).
 **Effort:** S
 **Depends on:** S1-01
 **ADRs honored:** ADR-0004 (the primitive's home — these enums land under `src/codegenie/primitives/vuln_provenance/types.py`), production ADR-0033 (sum-type discipline; `UnknownReason` is a `Literal` union, not a `str`), production ADR-0038 (the `Provenance` contract names `AppKind`, `BaseKind`, `UnknownReason`, `AdapterConfidence`)

@@ -169,6 +169,12 @@ _TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset(
         # ADR-0005 staleness predicate). Additive Phase-3 surface; not part
         # of the Phase-0/1/2 kernel scope.
         "vuln_index",
+        # Phase 7 S1-02 — `primitives/` is the named home for bounded
+        # additive core primitives (Phase 7 ADR-0004 §Decision + production
+        # ADR-0039). Established as a new top-level package by S1-02 with
+        # the `vuln_provenance` seed; future ADR-0039 primitives land under
+        # `primitives/{name}/` by precedent.
+        "primitives",
     }
 )
 
