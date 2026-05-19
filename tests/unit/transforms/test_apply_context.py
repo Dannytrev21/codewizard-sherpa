@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from codegenie.plugins.capabilities import NpmInstallCapability
 from codegenie.transforms import (
     ApplyContext,
     AttemptSummary,
@@ -36,6 +37,7 @@ from codegenie.types.identifiers import (
     EventId,
     PluginId,
     RecipeId,
+    RegistryUrl,
     SignalKind,
     TransformId,
     TransformKind,
@@ -51,8 +53,17 @@ _ULID_B: str = "01HYY00000000000000000000Z"
 
 
 def _empty_caps() -> CapabilityBundle:
-    """S4-05 widens this; Phase-3-Step-1 ships an empty Pydantic shell."""
-    return CapabilityBundle()
+    """S4-05 widens this — the substituted ``CapabilityBundle`` from
+    ``codegenie.plugins.capabilities`` requires exactly one non-None
+    capability slot. The fixture name is preserved for callsite
+    stability; "empty" now means "no fs / no git" rather than literally
+    zero capabilities (Phase-3-Step-1's empty shell)."""
+    return CapabilityBundle(
+        npm=NpmInstallCapability(
+            registry=RegistryUrl("https://registry.npmjs.org"),
+            _minted_by=PluginId("vulnerability-remediation--node--npm"),
+        )
+    )
 
 
 def _provenance(**overrides: Any) -> TransformProvenance:
@@ -118,7 +129,7 @@ def test_apply_context_defaults_to_empty_prior_attempts() -> None:
             ApplyContext,
         ),
         (lambda: _provenance(), TransformProvenance),
-        (lambda: CapabilityBundle(), CapabilityBundle),
+        (lambda: _empty_caps(), CapabilityBundle),
     ],
 )
 def test_round_trip_identity(instance_factory: Any, model_cls: type[BaseModel]) -> None:
@@ -277,11 +288,13 @@ def test_transform_provenance_frozen_rejects_attribute_reassignment() -> None:
             setattr(p, field, getattr(p, field))
 
 
-def test_capability_bundle_frozen_has_no_fields_but_still_extra_forbid() -> None:
-    """``CapabilityBundle`` body is ``pass`` (no ``_placeholder`` field — V-D-F1
-    closure). Verify the shell carries the frozen / extra-forbid config so S4-05
-    extends a hardened parent."""
-    cb = CapabilityBundle()
+def test_capability_bundle_carries_frozen_and_extra_forbid_after_s4_05() -> None:
+    """Post-S4-05 substitution: ``CapabilityBundle`` is the real model from
+    ``codegenie.plugins.capabilities``. The frozen / extra-forbid contract
+    survives the substitution; the bundle additionally carries an
+    ``exactly-one-non-None`` validator (covered by AC-Sub-4 in
+    ``tests/unit/plugins/test_capabilities.py``)."""
+    cb = _empty_caps()
     assert cb.model_config.get("frozen") is True
     assert cb.model_config.get("extra") == "forbid"
 

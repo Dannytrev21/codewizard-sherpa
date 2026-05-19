@@ -1,7 +1,7 @@
 # Story S4-05 — `ALLOWED_BINARIES` amendment + `Capability` tokens + `mint()` chokepoint + ruff custom fence + `--ignore-scripts` enforcement
 
 **Step:** Step 4 — SubprocessJail Port + Bwrap + sandbox-exec + ALLOWED_BINARIES amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S4-05.md`](_attempts/S4-05.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S4-04 (`SandboxedPath` exists; capability scope references it); transitively S4-01 (`SubprocessJail` Port consumers reference capability tokens), S1-01 (`PluginId`, `RegistryUrl` newtypes), and Phase 2 ADR-0001 (the omnibus this story amends)
 **ADRs honored:** 03-ADR-0012 (amend `ALLOWED_BINARIES` with `npm`, `bwrap`, `sandbox-exec`, `jq` — amends 02-ADR-0001); 03-ADR-0011 (honest framing — `Capability` tokens are *audit + lint*, NOT runtime-unforgeable; `GitLocalOpsCapability` has no `push` field as a real type-level invariant); 03-ADR-0006 (`--ignore-scripts` enforced at BOTH CLI and env)

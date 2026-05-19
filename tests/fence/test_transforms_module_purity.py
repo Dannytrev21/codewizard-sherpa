@@ -26,8 +26,20 @@ import codegenie.transforms.transform as transform_mod
 # Adding to any allowlist requires an ADR amendment (see ADR-0001).
 # ---------------------------------------------------------------------------
 
+# 03-ADR-0011 §Decision §Capability tokens + S4-05 substitution: ``_forward``
+# additionally admits ``codegenie.plugins.capabilities`` so the empty
+# ``CapabilityBundle`` shim becomes a re-export of the real model. The
+# one-way ``transforms → transforms._forward`` direction is unchanged
+# (see _forward.py:14-20 docstring for the substitution prescription).
 _FORWARD_ALLOWED: frozenset[str] = frozenset(
-    {"__future__", "pathlib", "typing", "pydantic", "codegenie.plugins.sandbox_path"}
+    {
+        "__future__",
+        "pathlib",
+        "typing",
+        "pydantic",
+        "codegenie.plugins.sandbox_path",
+        "codegenie.plugins.capabilities",
+    }
 )
 
 _TRANSFORM_ALLOWED: frozenset[str] = frozenset(

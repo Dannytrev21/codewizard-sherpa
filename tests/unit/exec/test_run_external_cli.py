@@ -51,13 +51,20 @@ def reset_bwrap_warned(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-3a — regression: bwrap stays out of ALLOWED_BINARIES (pins 02-ADR-0001).
+# AC-3a — Phase-3 ratchet (03-ADR-0012): ``bwrap`` short symlink IS now
+# admitted to ``ALLOWED_BINARIES`` for the Phase-3 ``BwrapAdapter`` (S4-02).
+# The Phase-2 ``run_external_cli`` bwrap path remains structural — it still
+# spawns in-module via ``_spawn_with_invariants``. The canonical long name
+# ``bubblewrap`` stays out so operators must invoke as the short name.
 # ---------------------------------------------------------------------------
 
 
-def test_bwrap_not_in_allowed_binaries() -> None:
-    assert "bwrap" not in ALLOWED_BINARIES
+def test_bubblewrap_long_name_not_in_allowed_binaries() -> None:
+    """03-ADR-0012 admits only the short ``"bwrap"`` symlink; the
+    canonical full name ``"bubblewrap"`` stays out. ``"bwrap"`` IS now
+    in the allowlist (Phase-3 polarity flip)."""
     assert "bubblewrap" not in ALLOWED_BINARIES
+    assert "bwrap" in ALLOWED_BINARIES  # paired — the short name flipped in Phase 3
 
 
 # ---------------------------------------------------------------------------

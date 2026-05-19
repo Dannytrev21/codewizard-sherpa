@@ -34,7 +34,7 @@ Adopt **Option C.** Three primitives ship with explicit framing:
 
 `NpmInstallCapability`, `FsReadWriteCapability`, `GitLocalOpsCapability`, `CapabilityBundle` are typed Pydantic models. Their value is:
 - **Audit trail** — `mint()` is the single chokepoint that emits a `CapabilityMinted` spanning event; `CapabilityUsed` events tie operations to capability use.
-- **Lint enforcement** — a custom `ruff` rule (`tooling/ruff_rules/no_capability_construction.py`) AST-walks `src/` + `plugins/` and fails on any `*Capability(...)` construction outside `capabilities.py` or `tests/`.
+- **Lint enforcement** — a pure-Python AST walker (`src/codegenie/_capability_fence.py`; S4-05) AST-walks `src/codegenie/` (plus future plugin roots) and reports any `*Capability(...)` construction outside `capabilities.py` or `tests/`. Consumed from `tests/fence/test_capability_fence.py` as a CI-gating check. (S4-05 picked the in-tree fence-module convention over the ADR's originally-stated `tooling/ruff_rules/no_capability_construction.py` path: the codebase has no `tooling/` directory and `src/codegenie/_phase3_fence.py` is the established precedent — Rule 7 + Rule 11.)
 
 **Framed as:** audit + lint, NOT runtime unforgeability. Threat model assumes first-party plugins.
 
@@ -69,10 +69,10 @@ Implements **Capability pattern** (toolkit §Composition / coupling patterns) at
 
 ## Consequences
 
-- `src/codegenie/plugins/capabilities.py` houses `mint()` and the capability types; `tooling/ruff_rules/no_capability_construction.py` enforces the lint.
+- `src/codegenie/plugins/capabilities.py` houses `mint()` and the capability types; `src/codegenie/_capability_fence.py` (S4-05; mirrors `_phase3_fence.py`'s shape) is the AST walker enforcing the lint, consumed from `tests/fence/test_capability_fence.py`.
 - `src/codegenie/plugins/sandbox_path.py` ships `SandboxedPath.create` (returning `Result`) and `SandboxedPath.open` (always `O_NOFOLLOW`); `tests/unit/plugins/test_sandbox_path.py` exercises the TOCTOU swap via deliberate fixture.
 - `src/codegenie/plugins/loader.py` performs per-plugin SHA-256 tree digest verification on startup; mismatch raises `PluginRejected(integrity_mismatch)`.
-- `tests/static/test_capability_fence.py` runs the ruff custom rule across the repo as a CI-gating check.
+- `tests/fence/test_capability_fence.py` (S4-05; under `tests/fence/`, matching `_phase3_fence`'s locality) runs the AST walker across the repo as a CI-gating check; planted-positive fixtures prove the walker is alive.
 - `CODEOWNERS` includes `plugins/PLUGINS.lock` mapped to the platform team; PR template calls out lockfile changes.
 - The docs framing this ADR establishes is reused verbatim in operator runbooks — "audit + lint" not "unforgeable"; "integrity check" not "signature."
 - Phase 11 substitutes `PLUGINS.lock` with Sigstore signing; the loader interface stays the same (`verify_plugin(plugin_dir) -> Result[None, VerificationError]`).
