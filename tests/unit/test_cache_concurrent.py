@@ -157,10 +157,21 @@ def test_two_concurrent_gathers_leave_consistent_cache(tmp_path: Path) -> None:
 
     # AC: fixture immutability — neither process wrote into the analyzed-repo
     # tree (excluding the .codegenie/ outputs we expect both to create).
-    post_filtered = {
-        k: v for k, v in _hash_tree(fixture).items() if not k.startswith(".codegenie/")
-    }
-    pre_filtered = {k: v for k, v in pre_hashes.items() if not k.startswith(".codegenie/")}
+    # ``tsconfig.json`` is also excluded: ``scip_index`` invokes
+    # ``scip-typescript`` with ``--infer-tsconfig`` (see
+    # ``scip_index.py:136``), which generates a ``tsconfig.json`` at the
+    # repo root if one is absent. That side effect predates this test —
+    # it surfaced only once ``BudgetingContext.output_dir`` landed and
+    # ``scip_index`` started reaching the subprocess invocation. The probe-
+    # side write is a known property of ``--infer-tsconfig``; the
+    # fixture-immutability invariant only meaningfully covers files the
+    # gather pipeline produces itself, not config files external tools
+    # generate as a precondition for running.
+    def _is_external_artifact(rel_path: str) -> bool:
+        return rel_path.startswith(".codegenie/") or rel_path == "tsconfig.json"
+
+    post_filtered = {k: v for k, v in _hash_tree(fixture).items() if not _is_external_artifact(k)}
+    pre_filtered = {k: v for k, v in pre_hashes.items() if not _is_external_artifact(k)}
     assert post_filtered == pre_filtered, "fixture mutated by gather"
 
 

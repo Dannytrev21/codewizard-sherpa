@@ -86,11 +86,15 @@ def test_resource_budget_invariant_truncate_le_hard_ceiling() -> None:
 
 
 def test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields() -> None:
-    """AC-15 — five-field shape pinned in order, both new fields default None.
+    """AC-15 — field shape pinned in order, additive None-default tail.
 
     The BudgetingContext field tuple is the *runtime ctx contract* every
-    probe accessing ``ctx.parsed_manifest`` / ``ctx.input_snapshot`` reads
-    against; reordering or renaming would break S2-04 / S1-08 downstream.
+    probe accessing ``ctx.parsed_manifest`` / ``ctx.input_snapshot`` /
+    ``ctx.output_dir`` reads against; reordering or renaming would break
+    S2-04 / S1-08 and the Layer-B raw-sidecar emitters
+    (``scip_index``, ``tree_sitter_import_graph``) plus the Layer-E
+    ``slo`` stub. ``output_dir`` closes the structural drift against the
+    frozen :class:`codegenie.probes.base.ProbeContext` (ADR-0007).
     """
     names = tuple(f.name for f in dataclasses.fields(BudgetingContext))
     assert names == (
@@ -99,10 +103,15 @@ def test_budgeting_context_has_parsed_manifest_and_input_snapshot_fields() -> No
         "bytes_written",
         "parsed_manifest",
         "input_snapshot",
+        "output_dir",
     )
     bc = BudgetingContext(workspace=Path("/tmp"), raw_artifact_mb=10)
     assert bc.parsed_manifest is None
     assert bc.input_snapshot is None
+    # output_dir defaults to ``workspace / .codegenie / context`` via
+    # __post_init__ so probes can read it without AttributeError when
+    # the caller omits it.
+    assert bc.output_dir == Path("/tmp") / ".codegenie" / "context"
 
 
 # ─────────────── Coordinator-level enforcement ─────────────────────────────

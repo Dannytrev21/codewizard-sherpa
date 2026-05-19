@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from codegenie.errors import ProbeBudgetExceeded
+from codegenie.output.paths import context_dir
 
 if TYPE_CHECKING:
     from codegenie.probes.base import InputFingerprint
@@ -123,6 +124,32 @@ class BudgetingContext:
     # S1-06 :class:`codegenie.probes.base.ProbeContext` extension.
     parsed_manifest: Callable[[Path], Mapping[str, Any] | None] | None = None
     input_snapshot: frozenset[InputFingerprint] | None = None
+    # Structural parity with :class:`codegenie.probes.base.ProbeContext`
+    # (ADR-0007 frozen contract) for the ``output_dir`` field. The
+    # contract says the runtime ctx is a :class:`ProbeContext`; in
+    # practice the coordinator hands the probe a :class:`BudgetingContext`.
+    # Layer-B raw-sidecar emitters (``scip_index``,
+    # ``tree_sitter_import_graph``) and the Layer-E ``slo`` stub call
+    # ``ctx.output_dir / "raw" / X`` and hit ``AttributeError`` at runtime
+    # without this field. ``ci.py:581-587`` documents the same drift and
+    # works around it for ``ci``. Defaulted to
+    # ``workspace / .codegenie / context`` via :meth:`__post_init__` so
+    # callers that omit it (the three pre-existing test sites that
+    # construct ``BudgetingContext(workspace=, raw_artifact_mb=)``) keep
+    # working without churn. Other ``ProbeContext`` fields (``config``,
+    # ``image_digest_resolver``, ``cache_dir``, ``logger``) are also
+    # absent from the runtime ctx; adding them is out of scope here
+    # because it unmasks a separate ``skills_index`` sub-schema mismatch
+    # ('shadowed_skills' is not in the schema). Fix one drift, surface
+    # the rest in their own change.
+    output_dir: Path | None = None
+
+    def __post_init__(self) -> None:
+        # ``ProbeContext.output_dir`` is non-Optional in the frozen spec;
+        # resolve the default so probes can always do
+        # ``ctx.output_dir / X`` without an AttributeError.
+        if self.output_dir is None:
+            self.output_dir = context_dir(self.workspace)
 
     def report_bytes(self, n: int) -> None:
         """Account ``n`` newly written bytes and raise if the budget is exceeded.
