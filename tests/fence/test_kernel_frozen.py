@@ -78,6 +78,13 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # than the types.identifiers re-export, to keep this module out of the
         # types.identifiers init cycle. Phase 1 ADR-0013 still owns the enum.
         Path("src/codegenie/probes/layer_b/dep_graph.py"),
+        # S2-03 — additive ``tree_digest_of_files`` extension of the ADR-0001
+        # chokepoint. The Phase-3 plugin loader routes its per-plugin
+        # tree-digest verification through this function rather than importing
+        # ``hashlib.sha256`` directly. adr: docs/phases/03-vuln-deterministic-
+        # recipe/ADRs/0011-honest-framing-capability-sandboxedpath-pluginslock.md
+        # §Consequences (Phase 11 substitution seam exposed as ``PluginVerifier``).
+        Path("src/codegenie/hashing.py"),
     }
 )
 

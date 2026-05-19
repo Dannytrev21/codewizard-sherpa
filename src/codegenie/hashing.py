@@ -42,6 +42,7 @@ __all__ = [
     "content_hash_of_inputs",
     "identity_hash",
     "identity_hash_bytes",
+    "tree_digest_of_files",
 ]
 
 
@@ -149,6 +150,33 @@ def content_hash_fd(fd: int, *, offset: int, size: int) -> str:
         hasher.update(chunk)
         remaining -= len(chunk)
     return f"blake3:{hasher.hexdigest()}"
+
+
+def tree_digest_of_files(pairs: Iterable[tuple[str, bytes]]) -> str:
+    """Return un-prefixed lowercase 64-hex SHA-256 of a ``(relpath, bytes)`` stream.
+
+    The Phase-3 S2-03 plugin-tree integrity check (ADR-0011) consumes this.
+    Each pair is serialized as ``<relpath>\\x1f<size>\\x1f<bytes>`` (the
+    ``content_hash_of_inputs`` separator discipline) and records are joined
+    by ``\\x1e``. Pure given the input stream — the caller does sorting +
+    filtering + the filesystem walk; this function is the chokepoint-resident
+    hashing core (ADR-0001 §Decision).
+
+    Returns un-prefixed 64-hex (matches the ``BlobDigest`` newtype regex
+    ``^[0-9a-f]{64}$``) rather than the prefix-tagged ``sha256:<hex>`` form
+    other chokepoint helpers return — ``BlobDigest`` is algorithm-agnostic
+    at the type level (S1-01 ADR-0010), so the algorithm-naming prefix would
+    leak the implementation choice into the typed payload.
+    """
+    hasher = hashlib.sha256()
+    first = True
+    for relpath, body in pairs:
+        if not first:
+            hasher.update(_RECORD_SEP)
+        first = False
+        hasher.update(f"{relpath}{_UNIT_SEP}{len(body)}{_UNIT_SEP}".encode())
+        hasher.update(body)
+    return hasher.hexdigest()
 
 
 def content_hash_of_inputs(paths: Iterable[Path]) -> str:

@@ -1,7 +1,7 @@
 # Story S2-03 — Plugin loader: filesystem walk, `importlib`, `PLUGINS.lock` integrity check
 
 **Step:** Step 2 — Plugin Registry kernel, manifest schema, loader, resolver
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S2-03.md`](_attempts/S2-03.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-01 (`PluginId`, `BlobDigest`, `parse_plugin_id`, `parse_blob_digest`), S1-03 (tagged-union outcomes), S2-01 (`PluginRegistry`, `default_registry`), S2-02 (`PluginManifest.from_yaml`)
 **ADRs honored:** Phase 0 ADR-0001 (hashing chokepoint), Phase 1 ADR-0009 (`safe_json.load` chokepoint), ADR-0002 (registry kernel + exit 4), ADR-0010 (tagged-union sum types; newtypes), ADR-0011 (honest framing; Phase 11 substitution seam), production ADR-0031 (filesystem walk + `importlib`)

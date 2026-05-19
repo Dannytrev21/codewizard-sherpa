@@ -24,10 +24,14 @@ import pytest
 
 
 def test_module_all_closure_is_exactly_six_public_functions() -> None:
-    """AC-1 (S2-03) + AC-13 (S3-01) + AC-25 (S2-01): ``__all__`` pins the
-    public surface — three original helpers, two byte-hash extensions from
-    S3-01, plus :func:`content_hash_fd` (the fd-based streaming chokepoint
-    added in S2-01 for the SkillsLoader progressive-disclosure invariant)."""
+    """AC-1 (S2-03 Phase 2) + AC-13 (S3-01) + AC-25 (S2-01) + Phase-3 S2-03:
+    ``__all__`` pins the public surface — three original helpers, two
+    byte-hash extensions from S3-01, plus :func:`content_hash_fd` (the
+    fd-based streaming chokepoint added in S2-01 for the SkillsLoader
+    progressive-disclosure invariant), plus :func:`tree_digest_of_files`
+    (Phase-3 S2-03 additive extension for the plugin loader's
+    integrity check — ADR-0001 chokepoint).
+    """
     import codegenie.hashing as h
 
     assert set(h.__all__) == {
@@ -37,6 +41,7 @@ def test_module_all_closure_is_exactly_six_public_functions() -> None:
         "content_hash_of_inputs",
         "identity_hash",
         "identity_hash_bytes",
+        "tree_digest_of_files",
     }
 
 

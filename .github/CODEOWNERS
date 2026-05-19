@@ -29,3 +29,7 @@ tests/unit/test_project_artifacts.py @Dannytrev21
 localv2.md @Dannytrev21
 docs/production/adrs/ @Dannytrev21
 .github/CODEOWNERS @Dannytrev21
+# Phase 3 S2-03 / ADR-0011: PLUGINS.lock is the plugin-tree integrity
+# attestation. Edits gate-keep the trust boundary the loader enforces.
+# TODO: substitute @Dannytrev21 with the actual @platform-team handle.
+plugins/PLUGINS.lock @Dannytrev21

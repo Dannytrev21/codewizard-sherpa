@@ -27,6 +27,9 @@ ADR amendment issue (template: `.github/ISSUE_TEMPLATE/adr-amendment.md`):
 - `tests/unit/test_pyproject_fence.py`
 - `localv2.md`
 - `docs/production/adrs/`
+- `plugins/PLUGINS.lock` — if you changed it, confirm: plugin tree
+  integrity recomputed; ADR-0011 honest-framing language preserved
+  (integrity check, not signature).
 
 See [ADR-0007](docs/production/adrs/) for the drift-resolution policy and the
 `adr-amendment` issue / PR-template workflow.
