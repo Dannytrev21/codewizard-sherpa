@@ -388,3 +388,22 @@ type = "forbidden"
 source_modules = ["codegenie.transforms"]
 as_packages = true
 forbidden_modules = ["anthropic", "langgraph", "openai", "langchain", "transformers"]
+
+# ---------------------------------------------------------------------------
+# Phase 7 LLM-SDK contract (S1-06). The `codegenie.primitives.vuln_provenance`
+# tree is becoming kernel surface (Phase 7 ADR-0004 — bounded-additive
+# primitive home). The fence extends the gather-pipeline ADR-0002 / production
+# ADR-0005 closure to the new primitive. `as_packages = true` is load-bearing:
+# without it only `__init__.py` would be scanned and submodules
+# (`types`, `protocols`, `errors`, `syft_reader`) would leak. The five forbidden
+# names mirror `codegenie._fence.FORBIDDEN_LLM_SDKS`; drift is asserted by
+# `tests/fence/test_phase7_importlinter_contracts_shape.py`.
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "phase-7 primitive does not import LLM SDKs"
+type = "forbidden"
+source_modules = ["codegenie.primitives.vuln_provenance"]
+as_packages = true
+include_external_packages = true
+forbidden_modules = ["anthropic", "openai", "langchain", "langgraph", "transformers"]

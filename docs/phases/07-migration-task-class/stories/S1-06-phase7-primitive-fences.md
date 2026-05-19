@@ -1,7 +1,20 @@
 # Story S1-06 — Phase 7 LLM-SDK import-linter contract + no-`Any` AST fence
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** HARDENED
+**Status:** GREEN
+
+> **GREEN (2026-05-19):** Three CI gates landed and exercised against
+> planted violations (3-of-3 evidence in
+> `_attempts/S1-06-phase7-primitive-fences.md`). New files:
+> `pyproject.toml` (one `[[tool.importlinter.contracts]]` block),
+> `tests/fence/test_phase7_no_llm.py` (8 tests),
+> `tests/fence/test_no_any_in_provenance_surface.py` (20 tests),
+> `tests/fence/test_phase7_importlinter_contracts_shape.py` (6 tests),
+> `tests/fence/test_lint_imports_catches_phase7_planted_leak.py` (1 test).
+> Reuses `walk_any_annotations` + `Violation` + `FORBIDDEN_LLM_SDKS` from
+> existing Phase 0 / Phase 3 fence helpers (no fork, Rule 7).
+> `make lint-imports` → 5 kept / 0 broken; `make fence` → 284 passed;
+> `mypy --strict` + `ruff check` + `ruff format --check` clean on touched files.
 **Effort:** S
 **Depends on:** S1-03, S1-04, S1-05
 
