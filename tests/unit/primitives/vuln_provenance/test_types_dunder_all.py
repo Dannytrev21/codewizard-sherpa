@@ -39,6 +39,8 @@ _EXPECTED_TYPES_ALL: Final[tuple[str, ...]] = (
 )
 _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "AdapterConfidence",
+    # S1-04 — vuln-provenance Protocol + error hierarchy.
+    "AdapterError",
     "AppDirect",
     "AppKind",
     "AppTransitive",
@@ -48,9 +50,15 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "Both",
     "DistroPackage",
     "Provenance",
+    # S1-04.
+    "ProvenanceError",
+    # S1-04.
+    "RegistryError",
     "RuntimeBundled",
     "Unknown",
     "UnknownReason",
+    # S1-04 — Protocol port.
+    "VulnProvenanceAdapter",
 )
 
 

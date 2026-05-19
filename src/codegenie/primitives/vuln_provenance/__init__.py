@@ -12,10 +12,20 @@ add the `VulnProvenanceAdapter` Protocol + errors (S1-04) and the
 `__all__` is sorted and exact (locked by
 `tests/unit/primitives/vuln_provenance/test_types_dunder_all.py`); future
 stories grow it additively in ASCII order.
+
+S1-04 grows the surface by four names — `VulnProvenanceAdapter` (the
+Protocol port; `errors.py` companions `ProvenanceError`, `RegistryError`,
+`AdapterError`).
 """
 
 from __future__ import annotations
 
+from codegenie.primitives.vuln_provenance.errors import (
+    AdapterError,
+    ProvenanceError,
+    RegistryError,
+)
+from codegenie.primitives.vuln_provenance.protocols import VulnProvenanceAdapter
 from codegenie.primitives.vuln_provenance.types import (
     AdapterConfidence,
     AppDirect,
@@ -34,6 +44,7 @@ from codegenie.primitives.vuln_provenance.types import (
 
 __all__ = [
     "AdapterConfidence",
+    "AdapterError",
     "AppDirect",
     "AppKind",
     "AppTransitive",
@@ -43,7 +54,10 @@ __all__ = [
     "Both",
     "DistroPackage",
     "Provenance",
+    "ProvenanceError",
+    "RegistryError",
     "RuntimeBundled",
     "Unknown",
     "UnknownReason",
+    "VulnProvenanceAdapter",
 ]

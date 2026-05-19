@@ -1,7 +1,7 @@
 # Story S1-04 — `VulnProvenanceAdapter` Protocol + `ProvenanceError` hierarchy
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** HARDENED
+**Status:** GREEN
 **Effort:** S
 **Depends on:** S1-01 (newtype identifiers); S1-02 + S1-03 (`AdapterConfidence`, `Provenance`)
 **ADRs honored:** ADR-0004 (the Protocol + errors live under `src/codegenie/primitives/vuln_provenance/`), ADR-0007 (registry stores classes — the Protocol is a structural duck-typed contract, no ABC inheritance), production ADR-0032 (Adapter Protocol pattern; this story instantiates it for vuln provenance), production ADR-0038 (the Protocol shape is part of the contract)
