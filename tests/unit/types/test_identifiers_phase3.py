@@ -229,6 +229,8 @@ PHASE3_NAMES = {
     "PackageName",
     # S3-03 additive — semver-2.0.0 newtype for AffectedRange parsing.
     "SemverVersion",
+    # S3-05 additive — Bundle cache key (compose_bundle_cache_key smart constructor).
+    "BundleCacheKey",
 }
 # Closed-set ``Literal[...]`` aliases — counted in ``__all__`` but not in the
 # NewType-specific assertions (``__name__``, ``isinstance``, distinctness).

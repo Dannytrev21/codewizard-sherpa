@@ -869,6 +869,7 @@ class WorkflowSpanningEvent(BaseModel):
         "workflow_started", "workflow_completed", "cost_sandbox_run",
         "capability_minted", "capability_used", "plugin_registry_corrupted",
         "bench_replayable", "stale_vuln_index",
+        "cache_gc_completed",  # S3-05 additive (arch line ~1077 authorises additive extension).
     ]
     payload: dict[str, str | int | bool | float | list[str]]
 ```

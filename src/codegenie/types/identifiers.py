@@ -116,11 +116,22 @@ Ecosystem = Literal["npm", "pypi", "maven", "rubygems", "gomod"]
 # names version strings explicitly as a "review-blocker" raw-``str`` site.
 SemverVersion = NewType("SemverVersion", str)
 
+# --- Phase-3 catalog (S3-05 additive — Bundle cache key) ------------------
+
+# ``"blake3:<64-hex>"`` Bundle cache key (S3-05). The smart constructor
+# :func:`codegenie.plugins.cache.compose_bundle_cache_key` is the only
+# sanctioned way to build a :data:`BundleCacheKey` value — direct
+# ``BundleCacheKey(...)`` construction outside the composer is forbidden
+# by an AST chokepoint test (story S3-05 §AC-4 + DP-D). Rule-of-three
+# (composer + ``BundleCacheStore.put`` + ``BundleCacheStore.get``) met.
+BundleCacheKey = NewType("BundleCacheKey", str)
+
 
 __all__ = [
     "AttemptNumber",
     "BlobDigest",
     "BranchName",
+    "BundleCacheKey",
     "ConventionId",
     "CveId",
     "Ecosystem",
@@ -189,6 +200,11 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "SemverVersion": (
         "Phase-3 semver-2.0.0 version string (ADR-0010, ADR-0033); "
         "S3-03 AffectedRange parse boundary."
+    ),
+    # Phase-3 (S3-05 — Bundle cache key additive).
+    "BundleCacheKey": (
+        "Phase-3 ``blake3:<64-hex>`` Bundle cache key (ADR-0010); "
+        "S3-05 smart-constructed via ``compose_bundle_cache_key``."
     ),
 }
 

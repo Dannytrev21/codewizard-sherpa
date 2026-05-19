@@ -48,6 +48,18 @@ A property test asserts byte-identical Bundle output across 100 Hypothesis runs 
 | `CODEGENIE_BUNDLE_CONCURRENCY` env var escape hatch addresses the critic's "unbenchmarked SSD-knee" Hidden Assumption #4 — CI tuning without code edits | Env var sprawl risk; we limit to two env vars total in Phase 3 (this + `CODEGENIE_VULN_INDEX_PATH`) |
 | Cache key includes content digests of every input, not file paths or mtimes — content-addressed cache survives repo moves and clock skew | Cache key computation requires reading all inputs to digest them; amortized by caching the digests themselves |
 
+**Postscript (2026-05-19, S3-05 amendment, additive).** The Phase-3 env-var
+ceiling rises from two to three with the addition of
+``CODEGENIE_BUNDLE_CACHE_TTL_DAYS`` — the operator tuning knob for Bundle
+cache eviction shipped by [S3-05](../stories/S3-05-bundle-cache-gc.md)
+(Gap 4 fix). The three env vars are now:
+
+- ``CODEGENIE_BUNDLE_CONCURRENCY`` — original (this ADR).
+- ``CODEGENIE_VULN_INDEX_PATH`` — S3-02.
+- ``CODEGENIE_BUNDLE_CACHE_TTL_DAYS`` — S3-05 (positive decimal integer days;
+  default ``7``). Malformed values raise ``BundleCacheRaise(reason="invalid_ttl_env")``
+  — silent default-fallback hides operator typos (Rule 12).
+
 ## Pattern fit
 
 Implements **Functional core / imperative shell** (toolkit §Architecture-scale patterns) — the Bundle is a pure fold over typed inputs (`plugin_id`, `repo_ctx.digest`, `vuln_index.digest`, primitive queries' canonicalized args), with side effects (adapter dispatch, disk reads) at the edges. The cache key IS the content-hash of the inputs; identical inputs guarantee identical outputs. Rejects hedged-race composition because it introduces scheduler-dependent non-determinism into a function that must be pure.

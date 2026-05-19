@@ -1,7 +1,7 @@
 # Story S3-05 — Bundle cache key (incl. `vuln_index.digest`) + `BundleCacheGc` + `codegenie cache prune` CLI (Gap 4 fix)
 
 **Step:** Step 3 — TCCM, BundleBuilder, VulnIndex, content-addressed cache
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S3-05.md`](_attempts/S3-05.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S3-03 (VulnIndex.digest), S3-04 (Bundle shape)
 **ADRs honored:**

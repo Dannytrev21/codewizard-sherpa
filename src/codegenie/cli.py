@@ -919,6 +919,54 @@ def cache_gc() -> None:
     sys.exit(0)
 
 
+@cache.command(name="prune")
+@click.option(
+    "--cache-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Bundle cache directory (defaults to ``<cwd>/.codegenie/cache``).",
+)
+def cache_prune(cache_dir: Path | None) -> None:
+    """S3-05 — evict stale Bundle cache entries (Gap 4 fix).
+
+    Calls :meth:`codegenie.plugins.cache_gc.BundleCacheGc.run` unconditionally
+    and emits **exactly one** ``cache_gc_completed`` spanning event with
+    ``trigger="operator_cli"`` to ``<cache_dir>/../events/spanning/append.jsonl``
+    (interim wire format — S6-01 absorbs this additively into the chained
+    zstd file). Exits 0 on success.
+    """
+    cache_gc_mod = importlib.import_module("codegenie.plugins.cache_gc")
+    resolved_cache_dir = cache_dir if cache_dir is not None else Path.cwd() / ".codegenie" / "cache"
+    resolved_cache_dir.mkdir(parents=True, exist_ok=True)
+    events_dir = resolved_cache_dir.parent / "events" / "spanning"
+    events_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(events_dir, 0o700)
+        os.chmod(events_dir.parent, 0o700)
+    except (FileNotFoundError, PermissionError):
+        pass
+    append_path = events_dir / "append.jsonl"
+
+    def _emit(event: Any) -> None:
+        line = event.model_dump_json()
+        fd = os.open(
+            append_path,
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+            0o600,
+        )
+        try:
+            os.write(fd, line.encode("utf-8") + b"\n")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    gc = cache_gc_mod.BundleCacheGc(resolved_cache_dir)
+    result = gc.run()
+    event = cache_gc_mod.CacheGcCompletedEvent.from_result(result, trigger="operator_cli")
+    _emit(event)
+    sys.exit(0)
+
+
 # ---------------------------------------------------------------------------
 # vuln-index — Phase 3 S3-03 NVD/GHSA/OSV refresh CLI surface.
 #

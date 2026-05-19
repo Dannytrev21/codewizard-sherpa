@@ -64,3 +64,36 @@ phase-story-executor runs in this phase. New entries at the bottom.
    manifest loader's own tests cover the production regex. Coupling
    resolver tests to the production name format would mean every
    sort-tie test ships with three nonsense `--`-segments.
+
+7. **Story preconditions can become stale between HARDENED and GREEN**
+   (S3-05). AC-5 declared "the `SemverVersion` newtype does not yet
+   exist" but S3-03 had landed it the day before. The right move is
+   to honour the AC literally (`plugin_version: str`) and surface the
+   elevation opportunity in the attempt log — widening an AC during
+   execution erodes the validator's contract. Phase-3 cleanup should
+   audit all "X does not yet exist" claims in HARDENED stories at
+   execution time.
+
+8. **`from __future__ import annotations` defeats
+   `__annotations__["x"] is ExpectedClass`** (S3-04 lesson, S3-05
+   repeat). The annotation is stored as the source-text spelling,
+   not resolved. Pin the string instead: `assert annotation ==
+   "SandboxedPath"`. The canonical precedent is
+   `tests/unit/plugins/test_bundle_builder.py:181-189`.
+
+9. **Two atomic-write inlines is still under the rule-of-three**
+   (S3-05). `_atomic_write_bytes` (`plugins/cache.py`) and
+   `_atomic_write_text` (`plugins/cache_gc.py`) join Phase-0
+   `cache/store.py:_atomic_write_bytes` as the third call site by
+   spirit but story §Notes DP-G defers extraction explicitly.
+   Surface the cleanup when the next atomic-write site lands (likely
+   Phase 4 recipe-cache writer); `codegenie._fs_atomic` is the
+   pre-blessed home.
+
+10. **Local-raise wrappers have drifted on kwarg name** (S3-05).
+    `BundleBuilderRaise(error=...)` (S3-04) vs
+    `BundleCacheRaise(model=...)` (S3-05). Both wrap a frozen
+    Pydantic value. When a third local-raise class appears,
+    standardise on one kwarg name in a sweep — pick `error` (matches
+    the rest of `codegenie.errors` taxonomy vocabulary) and update
+    S3-05 + every catch site. Not a now-bug; flag as Phase-3 cleanup.
