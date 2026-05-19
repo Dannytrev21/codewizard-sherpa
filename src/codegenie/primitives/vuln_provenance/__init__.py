@@ -16,6 +16,10 @@ stories grow it additively in ASCII order.
 S1-04 grows the surface by four names — `VulnProvenanceAdapter` (the
 Protocol port; `errors.py` companions `ProvenanceError`, `RegistryError`,
 `AdapterError`).
+
+S1-05 grows the surface by three names — the upstream-syft Pydantic
+models `SyftSbom`, `SyftArtifact`, `SyftLocation` (carrying the
+deliberate `extra="allow"` posture; consumer-side fence lives in S4-04).
 """
 
 from __future__ import annotations
@@ -26,6 +30,11 @@ from codegenie.primitives.vuln_provenance.errors import (
     RegistryError,
 )
 from codegenie.primitives.vuln_provenance.protocols import VulnProvenanceAdapter
+from codegenie.primitives.vuln_provenance.syft_reader import (
+    SyftArtifact,
+    SyftLocation,
+    SyftSbom,
+)
 from codegenie.primitives.vuln_provenance.types import (
     AdapterConfidence,
     AppDirect,
@@ -57,6 +66,9 @@ __all__ = [
     "ProvenanceError",
     "RegistryError",
     "RuntimeBundled",
+    "SyftArtifact",
+    "SyftLocation",
+    "SyftSbom",
     "Unknown",
     "UnknownReason",
     "VulnProvenanceAdapter",

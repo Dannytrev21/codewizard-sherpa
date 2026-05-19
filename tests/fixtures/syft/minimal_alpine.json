@@ -1,0 +1,14 @@
+{
+  "schema": "syft-2.3",
+  "source": {"type": "image", "target": "alpine:3.18"},
+  "descriptor": {"name": "syft", "version": "1.0.0"},
+  "artifacts": [
+    {
+      "name": "openssl",
+      "version": "3.0.7-r0",
+      "locations": [
+        {"path": "/usr/bin/openssl", "layerID": "sha256:abc123"}
+      ]
+    }
+  ]
+}

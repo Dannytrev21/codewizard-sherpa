@@ -55,6 +55,10 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     # S1-04.
     "RegistryError",
     "RuntimeBundled",
+    # S1-05 — upstream syft SBOM Pydantic models (deliberate extra="allow").
+    "SyftArtifact",
+    "SyftLocation",
+    "SyftSbom",
     "Unknown",
     "UnknownReason",
     # S1-04 — Protocol port.
