@@ -1,7 +1,7 @@
 # Story S1-03 — Seven-variant `Provenance` discriminated union + nested `Both` guard
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** HARDENED
+**Status:** GREEN
 **Effort:** M
 **Depends on:** S1-01, S1-02
 **ADRs honored:** ADR-0004 (the primitive's home — the union lands at `src/codegenie/primitives/vuln_provenance/types.py`), ADR-0006 (consumers of `Provenance` must `match`/`assert_never` — this story makes that exhaustiveness possible), production ADR-0033 (sum types + frozen + extra="forbid"), production ADR-0038 (the verbatim seven-variant contract this story implements)
