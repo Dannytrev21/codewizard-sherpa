@@ -206,7 +206,10 @@ def test_generated_sb_substitution(tmp_path: Path) -> None:
     rendered = _render_profile(template, spec)
     assert re.search(r"\$[A-Z_]+", rendered) is None
     assert str(tmp_path) in rendered
-    assert '"registry.npmjs.org:443"' in rendered
+    # SBPL forbids hostnames in ``(remote tcp ...)``; hostname filtering
+    # lives in pf rules (ADR-0006 §Consequences). The profile renders a
+    # port-wildcard clause instead — hostname is validated upstream.
+    assert '"*:443"' in rendered
     lines = [
         ln.strip() for ln in rendered.splitlines() if ln.strip() and not ln.strip().startswith(";;")
     ]
@@ -525,17 +528,27 @@ def test_property_deny_all_has_no_allow_network(host_strings: set[str]) -> None:
     )
 )
 @settings(max_examples=25, deadline=None)
-def test_property_every_allowlisted_host_appears(host_strings: set[str]) -> None:
+def test_property_every_allowlisted_port_appears(host_strings: set[str]) -> None:
+    """Property: every distinct port in the URL set appears as a
+    ``(allow network* (remote tcp "*:PORT"))`` clause in the rendered
+    profile. Hostnames are NOT emitted into SBPL — only ``*`` or
+    ``localhost`` are valid in ``(remote tcp ...)``; hostname filtering
+    lives in pf rules per ADR-0006 §Consequences.
+    """
     template = _load_template()
     hosts = frozenset({RegistryUrl(s) for s in host_strings})
     spec = _make_spec(_HYPOTHESIS_TMP, network=RegistryAllowlist(hosts=hosts))
     rendered = _render_profile(template, spec)
-    for s in host_strings:
-        from urllib.parse import urlparse
+    from urllib.parse import urlparse
 
+    ports = {urlparse(s).port or 443 for s in host_strings}
+    for p in ports:
+        assert f'"*:{p}"' in rendered
+    # Negative: no rendered hostname clauses leak through.
+    for s in host_strings:
         host = urlparse(s).hostname
         assert host is not None
-        assert f'"{host}:443"' in rendered
+        assert f'"{host}:' not in rendered
 
 
 @given(
@@ -623,6 +636,46 @@ async def test_substrate_setup_failure_typed(tmp_path: Path) -> None:
     assert isinstance(result, JailSetupFailed)
     assert result.reason == "kernel-setup-failed"
     assert "parse failure" in result.detail
+
+
+@pytest.mark.parametrize(
+    "stderr_payload, expected_excerpt",
+    [
+        # CLI-emitted execvp denial (return 71 / EX_OSERR).
+        (
+            b"sandbox-exec: execvp() of '/bin/echo' failed: Operation not permitted\n",
+            "execvp()",
+        ),
+        # CLI-emitted profile parse error (return 65).
+        (
+            b"sandbox-exec: host must be * or localhost in network address\n",
+            "host must be",
+        ),
+    ],
+)
+async def test_substrate_setup_failure_cli_prefix_typed(
+    stderr_payload: bytes,
+    expected_excerpt: str,
+    tmp_path: Path,
+) -> None:
+    """``sandbox-exec`` writes a *different* stderr prefix than the
+    kernel ``Sandbox:`` form when its CLI rejects the profile or fails
+    to ``execvp`` the child. Both must surface as
+    ``JailSetupFailed(kernel-setup-failed)`` — Rule 12.
+    """
+
+    async def fake(argv: list[str], **kwargs: Any) -> ProcessResult:
+        return _make_result(returncode=65, stderr=stderr_payload)
+
+    spec = _make_spec(tmp_path)
+    with mock.patch(
+        "codegenie.transforms.sandbox.sandbox_exec.run_allowlisted",
+        side_effect=fake,
+    ):
+        result = await SandboxExecAdapter().run(spec)
+    assert isinstance(result, JailSetupFailed)
+    assert result.reason == "kernel-setup-failed"
+    assert expected_excerpt in result.detail
 
 
 # ---------------------------------------------------------------------------
