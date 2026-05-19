@@ -60,6 +60,14 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("src/codegenie/py.typed"),
         # S1-05 — this story's walker
         Path("src/codegenie/_phase3_fence.py"),
+        # S4-05 — Phase 3 capability-construction AST fence.
+        # `find_violations()` reports any `*Capability(...)` construction
+        # outside the chokepoint at `codegenie.plugins.capabilities`. Mirrors
+        # the `_phase3_fence.py` shape (Rule 11). adr: docs/phases/
+        # 03-vuln-deterministic-recipe/ADRs/0011-honest-framing-capability-
+        # sandboxedpath-pluginslock.md §Decision §Capability tokens +
+        # §Consequences amendment (S4-05).
+        Path("src/codegenie/_capability_fence.py"),
         # ADR-0010 Amendment 2026-05-18 — AdapterConfidence canonical-home
         # consolidation: adapters.confidence becomes a pure re-export of
         # transforms.outcomes (Phase 2 typed surface preserved; classes
