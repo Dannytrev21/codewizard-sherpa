@@ -1,7 +1,7 @@
 # Story S4-03 — `SandboxExecAdapter` (macOS) + `templates/macos-npm.sb` profile
 
 **Step:** Step 4 — SubprocessJail Port + Bwrap + sandbox-exec + ALLOWED_BINARIES amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S4-03.md`](_attempts/S4-03.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S4-01 (`SubprocessJail` Protocol, `JailedSubprocessSpec`, `JailedSubprocessResult` variants including `SubstrateSetupFailed` per validation coordination, `NetworkPolicy`); S4-02 (`src/codegenie/transforms/sandbox/_classify.py::_classify_outcome` kernel + `Syscall` `StrEnum`); S4-04 (`SandboxedPath` real type, consumed via `from codegenie.transforms import SandboxedPath`); transitively S1-03
 **Coordinates with:** S4-05 (admits `sandbox-exec` to `ALLOWED_BINARIES` + closed-set deny-list adjustment)

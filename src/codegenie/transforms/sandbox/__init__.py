@@ -20,5 +20,6 @@ to this module).
 """
 
 from codegenie.transforms.sandbox.bwrap import BwrapAdapter
+from codegenie.transforms.sandbox.sandbox_exec import SandboxExecAdapter
 
-__all__ = ["BwrapAdapter"]
+__all__ = ["BwrapAdapter", "SandboxExecAdapter"]

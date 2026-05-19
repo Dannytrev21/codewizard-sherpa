@@ -57,7 +57,13 @@ from codegenie.transforms.sandbox_jail import (
     RegistryAllowlist,
 )
 
-__all__ = ["BwrapAdapter", "Syscall", "_BLOCKED_SYSCALLS"]
+__all__ = ["BwrapAdapter", "Syscall", "_BLOCKED_SYSCALLS", "classify_outcome"]
+
+
+# S4-03 AC-29: Hexagonal-Port symmetry made observable at the file
+# boundary. The same frozenset MUST appear in ``sandbox_exec.py``; a
+# meta-test pins identity.
+_HELPER_VERBS: Final[frozenset[str]] = frozenset({"build_argv", "render", "translate"})
 
 
 # AC-24: closed-set blocked syscalls, typed as :class:`Syscall` — no

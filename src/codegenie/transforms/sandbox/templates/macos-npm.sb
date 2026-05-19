@@ -1,0 +1,44 @@
+;; codegenie macOS sandbox profile — Phase 3 / S4-03 (ADR-0006 §Decision).
+;;
+;; Loaded via ``importlib.resources`` and rendered through
+;; ``string.Template.safe_substitute`` by
+;; ``codegenie.transforms.sandbox.sandbox_exec._render_profile``. Placeholder
+;; tokens: JAIL (the absolute path of the jail cwd) and ALLOWLIST_HOSTS
+;; (one or zero (allow network*) clauses rendered from the NetworkPolicy
+;; sum). Any other dollar-prefixed token surviving substitute raises
+;; ProfilePlaceholderUnresolved (AC-28) — Rule 12: fail loud.
+(version 1)
+(deny default)
+
+;; Read system frameworks node/npm need to start.
+(allow file-read*
+  (subpath "/usr/lib")
+  (subpath "/usr/bin")
+  (subpath "/usr/local/bin")
+  (subpath "/Library/Developer/CommandLineTools")
+  (subpath "/System/Library/Frameworks"))
+
+;; Read + write inside the jail directory.
+(allow file-read* file-write*
+  (subpath "$JAIL"))
+
+;; /private/tmp is the canonical /tmp on macOS; npm uses it for scratch.
+(allow file-read* file-write*
+  (subpath "/private/tmp"))
+
+;; Process invocation (npm shells out to node + helper binaries).
+(allow process-exec
+  (subpath "/usr/local/bin")
+  (subpath "/usr/bin"))
+
+;; Network policy — body substituted per ``NetworkPolicy``.
+;; ``DenyAll`` renders an empty body so no (allow network*) clause exists.
+;; ``RegistryAllowlist`` renders one (allow network* (remote tcp ...)) per
+;; host, sorted for determinism (AC-17).
+$ALLOWLIST_HOSTS
+
+;; Required syscall surface — minimal.
+(allow mach-lookup)
+(allow sysctl-read)
+(allow process-fork)
+(allow signal (target self))
