@@ -29,14 +29,19 @@ from codegenie.types.identifiers import (
     BlobDigest,
     BranchName,
     CveId,
+    DockerStageName,
     Ecosystem,
     EventId,
+    ImageDigest,
+    ImageRef,
+    LayerDigest,
     PackageId,
     PackageName,
     PluginId,
     PrimitiveName,
     RecipeId,
     RegistryUrl,
+    RuntimeId,
     SemverVersion,
     SignalKind,
     TransformId,
@@ -49,14 +54,19 @@ __all__ = [
     "parse_blob_digest",
     "parse_branch_name",
     "parse_cve_id",
+    "parse_docker_stage_name",
     "parse_ecosystem",
     "parse_event_id",
+    "parse_image_digest",
+    "parse_image_ref",
+    "parse_layer_digest",
     "parse_package_id",
     "parse_package_name",
     "parse_plugin_id",
     "parse_primitive_name",
     "parse_recipe_id",
     "parse_registry_url",
+    "parse_runtime_id",
     "parse_semver",
     "parse_signal_kind",
     "parse_transform_id",
@@ -101,6 +111,28 @@ _HOST_RX: Final[re.Pattern[str]] = re.compile(
 
 _REGISTRY_URL_MAX_LEN: Final[int] = 2048
 
+# Phase 7 S1-01 — OCI image-spec digest grammar; ADR-0006. Shared by
+# :data:`ImageDigest` and :data:`LayerDigest` (semantically distinct
+# provenance; identical wire shape). Each newtype instantiates its own
+# closure below so ``Err.message`` names the correct type.
+_SHA256_DIGEST_RX: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
+# Length of ``sha256:`` + 64 hex chars. Used by both digest closures.
+_SHA256_DIGEST_LEN: Final[int] = 7 + 64
+
+# Phase 7 S1-01 — RuntimeId / DockerStageName share the same grammar
+# (``^[a-z][a-z0-9_-]{0,63}$``) but instantiate separate closures so error
+# messages name the correct type (Phase 3 ``_match``-closure-per-newtype
+# precedent).
+_RUNTIME_KEBAB_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+
+# Phase 7 S1-01 — ``parse_image_ref`` floor. Tight rejection set covering
+# whitespace + C0 control chars (``\x00..\x1f``) + DEL (``\x7f``). Full
+# Distribution-spec validation is a deferred follow-up.
+_IMAGE_REF_MAX_LEN: Final[int] = 256
+_IMAGE_REF_BANNED_CHARS: Final[frozenset[str]] = frozenset(
+    {chr(c) for c in range(0x00, 0x20)} | {"\x7f"}
+)
+
 
 # --- Single helper — every regex match flows through here (AC-18) ----------
 
@@ -142,6 +174,18 @@ _package_name_match = _regex_parser(_PACKAGE_NAME_RX, max_len=214, name="Package
 _pinned_semver_match = _regex_parser(_PINNED_SEMVER_RX, max_len=128, name="PackageId.version")
 _host_match = _regex_parser(_HOST_RX, max_len=253, name="RegistryUrl.host")
 _semver_match = _regex_parser(_SEMVER_RX, max_len=256, name="SemverVersion")
+# Phase 7 S1-01 — per-newtype closures over shared regexes (so ``Err.message``
+# names the correct newtype). ``ImageDigest`` and ``LayerDigest`` share
+# ``_SHA256_DIGEST_RX``; ``RuntimeId`` and ``DockerStageName`` share
+# ``_RUNTIME_KEBAB_RX``.
+_image_digest_match = _regex_parser(
+    _SHA256_DIGEST_RX, max_len=_SHA256_DIGEST_LEN, name="ImageDigest"
+)
+_layer_digest_match = _regex_parser(
+    _SHA256_DIGEST_RX, max_len=_SHA256_DIGEST_LEN, name="LayerDigest"
+)
+_runtime_id_match = _regex_parser(_RUNTIME_KEBAB_RX, max_len=64, name="RuntimeId")
+_docker_stage_name_match = _regex_parser(_RUNTIME_KEBAB_RX, max_len=64, name="DockerStageName")
 
 
 def _is_ascii(s: str) -> bool:
@@ -346,3 +390,77 @@ def parse_semver(s: str) -> Result[SemverVersion, ParseError]:
     """External boundary: CVE-feed version string. semver-2.0.0 grammar. ADR-0010."""
     r = _semver_match(s)
     return Ok(value=SemverVersion(r.value)) if isinstance(r, Ok) else r
+
+
+# --- Phase 7 parsers (S1-01) -----------------------------------------------
+
+
+def parse_image_digest(s: str) -> Result[ImageDigest, ParseError]:
+    """External boundary: BaseImageProbe / SyftSbom image-digest field. ADR-0004 + ADR-0006.
+
+    The ``sha256:`` prefix is the load-bearing invariant — other algorithms
+    require an additive ADR amendment, not a parser tweak.
+    """
+    r = _image_digest_match(s)
+    return Ok(value=ImageDigest(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_layer_digest(s: str) -> Result[LayerDigest, ParseError]:
+    """External boundary: SyftSbom ``locations[].layerID``. ADR-0004.
+
+    Shares ``_SHA256_DIGEST_RX`` with :func:`parse_image_digest`; the closure
+    above carries the ``LayerDigest`` name so error messages distinguish the
+    two newtypes at the error boundary.
+    """
+    r = _layer_digest_match(s)
+    return Ok(value=LayerDigest(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_runtime_id(s: str) -> Result[RuntimeId, ParseError]:
+    """External boundary: RuntimeBundled adapter input. ADR-0004."""
+    r = _runtime_id_match(s)
+    return Ok(value=RuntimeId(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_docker_stage_name(s: str) -> Result[DockerStageName, ParseError]:
+    """External boundary: Dockerfile ``AS <stage>`` name. BuildKit normalisation. ADR-0004."""
+    r = _docker_stage_name_match(s)
+    return Ok(value=DockerStageName(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_image_ref(s: str) -> Result[ImageRef, ParseError]:
+    """External boundary: BaseImageStage.ref + Dockerfile recipes. ADR-0004.
+
+    Tight floor — non-empty, ≤ 256 chars, no whitespace, no C0/DEL control
+    characters, at most one ``:`` in the input (and the tag must be non-empty
+    when ``:`` is present). Full Distribution-spec validation is a deferred
+    follow-up; this parser exists to reject contamination at the boundary.
+    """
+    if not s:
+        return Err(error=ParseError(message="ImageRef: must be non-empty", value=s))
+    if len(s) > _IMAGE_REF_MAX_LEN:
+        return Err(
+            error=ParseError(message=f"ImageRef: exceeds max length {_IMAGE_REF_MAX_LEN}", value=s)
+        )
+    for ch in s:
+        if ch.isspace():
+            return Err(error=ParseError(message="ImageRef: must not contain whitespace", value=s))
+        if ch in _IMAGE_REF_BANNED_CHARS:
+            return Err(
+                error=ParseError(
+                    message="ImageRef: must not contain C0 control chars or DEL", value=s
+                )
+            )
+    # Exactly zero or one ``:`` allowed; if present, tag must be non-empty.
+    colon_count = s.count(":")
+    if colon_count > 1:
+        return Err(error=ParseError(message="ImageRef: must contain at most one ':'", value=s))
+    if colon_count == 1:
+        name, _, tag = s.rpartition(":")
+        if not name:
+            return Err(error=ParseError(message="ImageRef: empty name before ':'", value=s))
+        if not tag:
+            return Err(
+                error=ParseError(message="ImageRef: empty tag after ':' is not allowed", value=s)
+            )
+    return Ok(value=ImageRef(s))

@@ -245,6 +245,19 @@ PHASE2_NAMES = {
     "SkillId",
     "TaskClassId",
 }
+# Phase 7 S1-01 — additive catalog extensions. Five str-backed NewTypes plus
+# the ``ProvenanceAdapterId`` ``TypeAlias`` (``tuple[Layer, Ecosystem]`` —
+# NewType over a generic tuple is unsupported under mypy --strict, so this
+# row is in ``__all__`` but NOT in ``_NEWTYPE_REGISTRY`` — see Phase 7
+# ADR-0006).
+PHASE7_NEWTYPE_NAMES = {
+    "ImageRef",
+    "ImageDigest",
+    "LayerDigest",
+    "RuntimeId",
+    "DockerStageName",
+}
+PHASE7_TYPE_ALIAS_NAMES = {"ProvenanceAdapterId"}
 
 
 def test_newtype_names_pinned() -> None:
@@ -270,10 +283,17 @@ def test_pairwise_distinct() -> None:
 
 
 def test_all_is_exact_set() -> None:
-    """AC-11 — ``__all__`` is exactly Phase-2 ∪ Phase-3 ∪ literals, sorted."""
+    """AC-11 — ``__all__`` is exactly Phase-2 ∪ Phase-3 ∪ literals ∪ Phase-7, sorted."""
     import codegenie.types.identifiers as ids
 
-    assert set(ids.__all__) == PHASE2_NAMES | PHASE3_NAMES | PHASE3_LITERAL_NAMES
+    assert (
+        set(ids.__all__)
+        == PHASE2_NAMES
+        | PHASE3_NAMES
+        | PHASE3_LITERAL_NAMES
+        | PHASE7_NEWTYPE_NAMES
+        | PHASE7_TYPE_ALIAS_NAMES
+    )
     assert ids.__all__ == sorted(ids.__all__), "__all__ must be sorted"
 
 
@@ -305,13 +325,26 @@ def test_attempt_number_isinstance_raises_typeerror() -> None:
 
 
 def test_newtype_registry_matches_all() -> None:
-    """AC-15 — module-level _NEWTYPE_REGISTRY mirrors ``__all__`` exactly."""
+    """AC-15 — _NEWTYPE_REGISTRY mirrors ``__all__`` modulo TypeAlias rows.
+
+    ``ProvenanceAdapterId`` (Phase 7 S1-01) is a ``TypeAlias`` over a generic
+    tuple, not a ``NewType``; it appears in ``__all__`` but not in
+    ``_NEWTYPE_REGISTRY``. Phase 7 entries cite ADR-0004 / ADR-0006 instead
+    of Phase 3's ADR-0010 — the per-entry-doc citation assertion below honours
+    both (Phase 7 entries are validated in
+    ``tests/unit/types/test_identifiers_phase7.py``).
+    """
     from codegenie.types.identifiers import _NEWTYPE_REGISTRY, __all__
 
-    assert set(_NEWTYPE_REGISTRY.keys()) == set(__all__)
+    assert set(_NEWTYPE_REGISTRY.keys()) == set(__all__) - PHASE7_TYPE_ALIAS_NAMES
     for name, doc in _NEWTYPE_REGISTRY.items():
         assert doc.strip(), f"{name} has empty docstring"
-        assert "ADR-0010" in doc, f"{name} docstring missing ADR-0010 citation"
+        if name in PHASE7_NEWTYPE_NAMES:
+            assert "ADR-0004" in doc or "ADR-0006" in doc, (
+                f"{name} Phase 7 docstring missing ADR-0004 / ADR-0006 citation"
+            )
+        else:
+            assert "ADR-0010" in doc, f"{name} docstring missing ADR-0010 citation"
 
 
 # ---------------------------------------------------------------------------

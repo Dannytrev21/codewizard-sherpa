@@ -25,7 +25,7 @@ at :mod:`codegenie.types.parsers`; ``ParseError`` lives at
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Final, Literal, NewType
+from typing import TYPE_CHECKING, Final, Literal, NewType, TypeAlias
 
 # DO NOT redefine — Phase 1 ADR-0013 owns this enum; this module re-exports
 # it. The re-export is **lazy** via :func:`__getattr__` below: a top-level
@@ -37,6 +37,17 @@ from typing import TYPE_CHECKING, Final, Literal, NewType
 # TYPE_CHECKING import below keeps the static-typing contract intact
 # (mypy --strict still sees ``PackageManager`` as a re-exported name).
 if TYPE_CHECKING:  # pragma: no cover — type-checker-only re-export
+    # Phase 7 S1-01 — forward refs for the S2-01 enums (lands
+    # ``Layer`` / ``Ecosystem`` in ``codegenie.primitives.vuln_provenance.registry``).
+    # Aliased to underscored names to break the symbol collision with the
+    # Phase 3 ``Ecosystem`` Literal defined later in this module — the Phase 7
+    # enum lives in a DIFFERENT module with DIFFERENT membership (ADR-0006).
+    from codegenie.primitives.vuln_provenance.registry import (  # noqa: F401
+        Ecosystem as _PhVnEcosystem,
+    )
+    from codegenie.primitives.vuln_provenance.registry import (  # noqa: F401
+        Layer as _PhVnLayer,
+    )
     from codegenie.probes.node_build_system import (
         PackageManager as PackageManager,
     )
@@ -126,6 +137,51 @@ SemverVersion = NewType("SemverVersion", str)
 # (composer + ``BundleCacheStore.put`` + ``BundleCacheStore.get``) met.
 BundleCacheKey = NewType("BundleCacheKey", str)
 
+# --- Phase-7 catalog (S1-01) ----------------------------------------------
+
+# OCI image reference (``registry/name[:tag]`` or ``name[:tag]``). The smart
+# constructor :func:`codegenie.types.parsers.parse_image_ref` is a tight
+# floor — non-empty, ≤ 256 chars, no whitespace, no C0/DEL controls, at most
+# one ``:`` (and the tag must be non-empty when ``:`` is present). Full
+# Distribution-spec validation is a deferred follow-up. Consumed by the
+# Phase 7 ``BaseImageStage.ref`` and Dockerfile recipes (ADR-0004).
+ImageRef = NewType("ImageRef", str)
+
+# OCI image content digest. ``sha256:<64 lowercase hex>`` — the ``sha256:``
+# prefix is asserted by the smart constructor (load-bearing per ADR-0004 +
+# ADR-0006). Other algorithms (sha512, blake3, ...) require an additive
+# ADR amendment, not a parser tweak. Carried by the ``BaseImage`` variant
+# of the Phase 7 ``Provenance`` discriminated union + ``BaseImageStage.digest``.
+ImageDigest = NewType("ImageDigest", str)
+
+# OCI layer content digest. Same grammar as :data:`ImageDigest` but the
+# semantic difference is provenance: a layer is one slice of an image. The
+# smart constructor instantiates a separate ``_layer_digest_match`` closure
+# so error messages name the correct newtype (ADR-0004 + SyftSbom layer
+# attribution).
+LayerDigest = NewType("LayerDigest", str)
+
+# Runtime identifier — ``^[a-z][a-z0-9_-]{0,63}$``. Examples: ``node20``,
+# ``python3-11``, ``openjdk21``. Lowercase only. Consumed by the
+# ``RuntimeBundled`` variant of the Phase 7 ``Provenance`` union and the
+# runtime-bundled adapter (ADR-0004).
+RuntimeId = NewType("RuntimeId", str)
+
+# Dockerfile ``AS <stage>`` name — ``^[a-z][a-z0-9_-]{0,63}$`` per BuildKit's
+# stage-name normalisation. Leading digit + uppercase rejected. Consumed by
+# ``BaseImageStage.name`` and Dockerfile recipes (ADR-0004).
+DockerStageName = NewType("DockerStageName", str)
+
+# Phase 7 provenance-adapter registry key. The arch + ADR-0006 specify
+# ``tuple[Layer, Ecosystem]``; ``NewType`` over a generic tuple is unsupported
+# in mypy --strict, so this is a ``TypeAlias`` with TYPE_CHECKING-guarded
+# forward references (the real enums land in S2-01 inside
+# ``codegenie.primitives.vuln_provenance.registry``). The underscored
+# ``_PhVnLayer`` / ``_PhVnEcosystem`` aliases above keep the Phase 7
+# ``Ecosystem`` Enum distinct from the Phase 3 ``Ecosystem`` Literal also
+# defined in this module (Validator AC-11 sentinel — fail loud, Rule 12).
+ProvenanceAdapterId: TypeAlias = tuple["_PhVnLayer", "_PhVnEcosystem"]
+
 
 __all__ = [
     "AttemptNumber",
@@ -134,20 +190,26 @@ __all__ = [
     "BundleCacheKey",
     "ConventionId",
     "CveId",
+    "DockerStageName",
     "Ecosystem",
     "ErrorId",
     "EventId",
+    "ImageDigest",
+    "ImageRef",
     "IndexId",
     "IndexName",
     "Language",
+    "LayerDigest",
     "PackageId",
     "PackageManager",
     "PackageName",
     "PluginId",
     "PrimitiveName",
     "ProbeId",
+    "ProvenanceAdapterId",
     "RecipeId",
     "RegistryUrl",
+    "RuntimeId",
     "SemverVersion",
     "SignalKind",
     "SkillId",
@@ -205,6 +267,22 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "BundleCacheKey": (
         "Phase-3 ``blake3:<64-hex>`` Bundle cache key (ADR-0010); "
         "S3-05 smart-constructed via ``compose_bundle_cache_key``."
+    ),
+    # Phase-7 (S1-01 — vuln.provenance newtype catalog).
+    "ImageRef": "Phase-7 OCI image reference (ADR-0004); BaseImageStage.ref + Dockerfile recipes.",
+    "ImageDigest": (
+        "Phase-7 sha256:<64-hex> image digest (ADR-0004 + ADR-0006); "
+        "BaseImage variant + BaseImageStage.digest."
+    ),
+    "LayerDigest": (
+        "Phase-7 sha256:<64-hex> OCI layer digest (ADR-0004); "
+        "BaseImage variant + SyftSbom layer-attribution."
+    ),
+    "RuntimeId": (
+        "Phase-7 runtime identifier (ADR-0004); RuntimeBundled variant + runtime-bundled adapter."
+    ),
+    "DockerStageName": (
+        "Phase-7 Dockerfile AS-stage name (ADR-0004); BaseImageStage.name + Dockerfile recipes."
     ),
 }
 

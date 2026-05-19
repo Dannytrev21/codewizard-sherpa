@@ -223,6 +223,18 @@ ignore_missing_imports = true
 module = ["networkx", "networkx.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# Phase 7 S1-01 — `codegenie.primitives.vuln_provenance.registry` is the
+# Phase 7 ADR-0004 home for the `Layer` / `Ecosystem` enums; the module
+# lands in S2-01. Until then, the TYPE_CHECKING-guarded forward references
+# in `codegenie.types.identifiers` (used by the `ProvenanceAdapterId` type
+# alias) point at a not-yet-existent module. `ignore_missing_imports` lets
+# the alias compile under `mypy --strict` while the alias contract — a
+# `tuple[Layer, Ecosystem]` keyed registry — stays statically declared.
+# Remove this override when S2-01 lands the registry module.
+module = ["codegenie.primitives.vuln_provenance.registry"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # asyncio_mode = "auto" lets coroutine tests run without @pytest.mark.asyncio
 # — S3-05's coordinator tests depend on this.

@@ -1,7 +1,7 @@
 # Story S1-01 — Phase 7 newtype identifiers + smart constructors
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** HARDENED
+**Status:** GREEN
 **Effort:** M
 **Depends on:** —
 **ADRs honored:** ADR-0004 (the primitive lives at `src/codegenie/primitives/vuln_provenance/`; this story lands the typed vocabulary it imports), ADR-0006 (`ProvenanceAdapterId = tuple[Layer, Ecosystem]` is the registry key the dispatch tuple iterates), Phase 3 ADR-0010 / production ADR-0033 (newtype-every-domain-identifier discipline this story extends to Phase 7)
@@ -25,6 +25,25 @@ Edits relative to the as-written story, with rationale:
 - **Explicit out-of-scope (Consistency / nit).** Added that no edits to `src/codegenie/primitives/vuln_provenance/` land in this story (S1-02+ territory).
 
 **Verdict:** HARDENED. Full audit log at `_validation/S1-01-phase7-newtype-identifiers.md`.
+
+## Implementation evidence (2026-05-19 — GREEN)
+
+Every acceptance criterion is satisfied with runtime evidence below. Full attempt log at [`_attempts/S1-01-phase7-newtype-identifiers.md`](_attempts/S1-01-phase7-newtype-identifiers.md).
+
+- **AC-1** — [`src/codegenie/types/identifiers.py:140-198`](../../../../src/codegenie/types/identifiers.py) — five `NewType` declarations + `ProvenanceAdapterId: TypeAlias = tuple["_PhVnLayer", "_PhVnEcosystem"]` under `TYPE_CHECKING` guard. Test: `test_phase7_newtype_names_pinned`, `test_provenance_adapter_id_is_tuple_alias_with_forward_refs`.
+- **AC-2** — `CveId` / `PackageId` not redefined; identity-checked via `test_phase3_cve_id_and_package_id_unchanged`.
+- **AC-3** — [`src/codegenie/types/parsers.py:213-292`](../../../../src/codegenie/types/parsers.py) — five smart constructors. Tests: `test_parser_happy_path[*]`, `test_image_ref_rejects[*]`, boundary tests for `RuntimeId` / `DockerStageName` (64 accepted, 65 rejected).
+- **AC-4** — `test_image_digest_rejects_non_sha256[*]` covers algorithm, casing, length, charset, structure, AND contamination matrix (17 cases).
+- **AC-5** — `test_phase7_pairwise_distinct` (across 30 newtypes), `test_phase7_exact_set_all`, `test_phase7_identity_passthrough`, `test_phase7_isinstance_raises_typeerror[*]` (5 cases).
+- **AC-6** — `tests/unit/types/test_identifiers_phase7_mypy_negative.py` — 6 swap pairs + 1 negative-control. All 7 pass.
+- **AC-7** — `tests/unit/types/test_parsers_phase7_properties.py` — Hypothesis totality (5 parsers × 100 draws), determinism (5 parsers × 100 draws), round-trip-identity (4 parsers × 100 draws).
+- **AC-8** — `_NEWTYPE_REGISTRY` extended with 5 Phase 7 entries citing ADR-0004 / ADR-0006 + consumer; `test_phase7_registry_entry_cites_adr_and_consumer[*]` validates both.
+- **AC-9** — `test_provenance_adapter_id_is_tuple_alias_with_forward_refs` asserts `origin=tuple`, args=(`_PhVnLayer`, `_PhVnEcosystem`). `# TODO(S2-01)` marker in test.
+- **AC-10** — `src/codegenie/types/__init__.py` re-exports 6 Phase 7 names; `test_package_level_reexport_identity[*]` (6 cases) asserts identity passthrough.
+- **AC-11** — `test_phase3_ecosystem_is_literal_not_enum` sentinel passes; `# TODO(S2-01)` marker in test.
+- **AC-12** — `make lint-imports` green (4 kept, 0 broken); `.venv/bin/python -m mypy --strict src/codegenie/types/` → `Success: no issues found in 4 source files`; `mypy --strict src/` → 185 source files clean; `ruff check` + `ruff format --check` clean; Phase 3 + types regression suite green (326 passed).
+
+Full Phase 7 unit/property suite: **98 passed in 2.50s**.
 
 ## Context
 
