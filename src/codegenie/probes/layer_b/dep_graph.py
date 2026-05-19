@@ -65,8 +65,18 @@ from codegenie.logging import (
 from codegenie.output.paths import raw_dir
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot, Task
 from codegenie.probes.language_filter import _admits_node_project
+
+# Import-cycle note: importing from ``codegenie.probes.node_build_system``
+# (the canonical origin) rather than the ``codegenie.types.identifiers``
+# re-export keeps this module out of the ``types.identifiers`` ↔ ``probes``
+# initialisation cycle that fires whenever an outside-``probes`` module
+# (e.g., ``transforms.outcomes`` via ``adapters.confidence``) triggers
+# ``types.identifiers`` first. ``probes/__init__.py`` imports
+# ``node_build_system`` (line 21) **before** ``layer_b/dep_graph`` (line 27),
+# so the origin module is fully loaded by the time we reach this line.
+# Phase 1 ADR-0013 still owns the enum.
+from codegenie.probes.node_build_system import PackageManager
 from codegenie.probes.registry import register_probe
-from codegenie.types.identifiers import PackageManager
 
 __all__ = ["DepGraphProbe"]
 

@@ -15,6 +15,19 @@ Hardened by `phase-story-validator`. See `_validation/S1-03-tagged-union-outcome
 4. Literal taxonomies enumerated for `SkipReason`, `EscalationReason`, `HumanReviewReason`, `DegradationReason`, `UnavailabilityReason` (story listed names; ACs did not pin the literal members).
 5. Repo-uniform conventions pinned: `kind: Literal["..."] = "..."` default-value form; `Annotated[A | B | C, Field(discriminator="kind")]` (not `Discriminator(...)`); module-purity AST scan; `model_construct` source-scan absence; `__all__` exact-set; subprocess-mypy negative meta-test for `assert_never` enforcement.
 
+## Validation amendment (2026-05-18, post-GREEN)
+
+After this story shipped GREEN, a follow-up audit discovered a duplicate `Trusted` / `Degraded` / `Unavailable` / `AdapterConfidence` declaration in `src/codegenie/adapters/confidence.py` (Phase 2, `reason: str`, 8 src consumers) that pre-dated this story. The two class hierarchies had the same `kind` discriminator strings but different `reason` field typing (`str` vs Literal); the two `reason` taxonomies were empirically disjoint (Phase 2 emits `"scip_unavailable"` / `"tool_missing"` / `"self_check"` etc.; Phase 3's Literal set was `"timeout"|"partial_results"|"rate_limited"` etc., zero overlap). This was silent type drift that would have surfaced as a real bug once `BundleBuilder` (S3-04) consumed `transforms.outcomes.AdapterConfidence` while every existing adapter consumed the `adapters.confidence` version.
+
+**Resolution** (ADR-0010 Amendment 2026-05-18, see ADR file):
+
+- `codegenie.transforms.outcomes` is now the single canonical declaration site (kernel-tier home, satisfies `test_outcomes_purity.py` allowlist).
+- `codegenie.adapters.confidence` re-exports the same class objects — identity equality across both layers (allowed by adapter-tier fence: `codegenie.transforms` is not in the forbidden-prefix set).
+- `Degraded.reason` and `Unavailable.reason` widened from `Literal[...]` to `str` (AC-6 above amended).
+- `DegradationReason` and `UnavailabilityReason` survive as advisory orchestrator-domain catalogs, not field types (AC-7e / AC-7f above amended). Membership tests (`set(DegradationReason) == {...}`) continue to assert the catalog's pinned set.
+
+The advisory-catalog discipline is the explicit migration ramp toward strict-Literal `reason` if a future consumer (BundleBuilder S3-04 or a Phase-5 gate) demonstrates the cost of free-form strings. Tightening is reversible by a one-line type change at the canonical site plus a Literal-set expansion audit; today's widening does not foreclose tomorrow's tightening.
+
 ## Context
 
 Production ADR-0033 rejects booleans-for-state and `(passed: bool, error: str | None)`-style returns; ADR-0010 carries the rule into Phase 3 with concrete unions for every outcome the orchestrator, recipe engine, adapter, and subgraph node can produce. The critic flagged this as the load-bearing missing piece in `critique.md §Best-practices design §Open Q #5` — `RecipeProtocol.applies(...) -> bool` cannot carry the `plan` the engine needs nor the `reason` the orchestrator needs. This story ships the five Pydantic discriminated unions every later Phase-3 module dispatches on: `RecipeOutcome`, `RemediationOutcome`, `NodeTransition`, `AdapterConfidence`, `Applicability` — each via `Field(discriminator="kind")` so mypy + Pydantic both enforce exhaustiveness and `extra="forbid"` rejects accidental field drift.
@@ -62,8 +75,9 @@ Land `src/codegenie/transforms/outcomes.py` with five Pydantic discriminated uni
   - `Escalate(kind="escalate", reason: EscalationReason)`.
 - [ ] **AC-6 `AdapterConfidence`** — three variants:
   - `Trusted(kind="trusted")`.
-  - `Degraded(kind="degraded", reason: DegradationReason)`.
-  - `Unavailable(kind="unavailable", reason: UnavailabilityReason)`.
+  - `Degraded(kind="degraded", reason: str)`.
+  - `Unavailable(kind="unavailable", reason: str)`.
+  - **Amended 2026-05-18** (ADR-0010 Amendment): `reason` is `str` by design. The probe-adapter domain (Phase 2) uses vocabulary disjoint from the orchestrator domain (Phase 3); a closed Literal would reject Phase 2's reasons like `"scip_unavailable"` / `"tool_missing"` / `"self_check"`. See AC-7e / AC-7f for the advisory-catalog framing.
 - [ ] **AC-7 `Applicability`** — two variants:
   - `Applies(kind="applies", plan: ApplicationPlan)` where `ApplicationPlan(BaseModel)` has `model_config = ConfigDict(frozen=True, extra="forbid")` and `summary: str | None = None` (S5-01 recipe engines widen additively).
   - `NotApplies(kind="not_applies", reason: NotApplicableReason)`.
@@ -74,8 +88,8 @@ Land `src/codegenie/transforms/outcomes.py` with five Pydantic discriminated uni
 - [ ] **AC-7b `SkipReason`** = `Literal["plugin_disabled", "registry_skipped"]` — minimal extensible set; Phase 4+ adds members additively.
 - [ ] **AC-7c `EscalationReason`** = `Literal["plugin_extends_cycle", "manifest_rejected", "capability_missing"]`.
 - [ ] **AC-7d `HumanReviewReason`** = `Literal["no_concrete_match", "trust_outcome_failed", "policy_violation_unrecoverable"]` (arch line 1075 + §E10 pin `no_concrete_match` for universal-fallback exhaustion).
-- [ ] **AC-7e `DegradationReason`** = `Literal["timeout", "partial_results", "rate_limited"]`.
-- [ ] **AC-7f `UnavailabilityReason`** = `Literal["binary_missing", "io_error", "unsupported_version"]`.
+- [ ] **AC-7e `DegradationReason`** = `Literal["timeout", "partial_results", "rate_limited"]`. **Amended 2026-05-18** (ADR-0010 Amendment): this is an **advisory orchestrator-domain catalog**, NOT the type of `Degraded.reason`. Membership test `set(DegradationReason) == {"timeout", "partial_results", "rate_limited"}` (line 333 of `test_outcomes.py`) continues to assert the catalog's pinned set. `BundleBuilder` (S3-04) MAY validate `degraded.reason in get_args(DegradationReason)` and emit a `degraded_with_unknown_reason` audit event when an out-of-catalog reason arrives — that's the migration ramp toward strict-Literal typing.
+- [ ] **AC-7f `UnavailabilityReason`** = `Literal["binary_missing", "io_error", "unsupported_version"]`. **Amended 2026-05-18** — same advisory-catalog discipline as AC-7e.
 
 ### Error models
 

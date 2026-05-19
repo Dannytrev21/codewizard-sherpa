@@ -383,12 +383,22 @@ def test_dep_graph_probe_output_field_set_pinned() -> None:
 
 
 # ---------------------------------------------------------------------------
-# T-10 — PackageManager imported from codegenie.types.identifiers
+# T-10 — PackageManager imported from a single ADR-0013-owning source
 # ---------------------------------------------------------------------------
 
 
-def test_package_manager_imported_from_types_identifiers() -> None:
-    """Validator note #4: import source MUST be the kernel-tier re-export."""
+def test_package_manager_imported_from_canonical_source() -> None:
+    """Import source MUST be either the Phase-1 ADR-0013 owning module
+    (``codegenie.probes.node_build_system``) or its kernel-tier re-export
+    (``codegenie.types.identifiers``). The dep-graph probe took the
+    origin-module form to break the ``types.identifiers`` ↔ ``probes``
+    initialisation cycle (see :mod:`codegenie.types.identifiers` module
+    docstring and ADR-0010 Amendment 2026-05-18) — ``probes/__init__.py``
+    loads ``node_build_system`` (line 21) before ``layer_b/dep_graph``
+    (line 27), so the origin import is fully resolved by the time this
+    module's import statement runs. Re-assigning or re-annotating
+    ``PackageManager`` here is still forbidden (Phase-1 ADR-0013 owns the
+    enum)."""
     src = Path(dg.__file__).read_text(encoding="utf-8")
     tree = ast.parse(src)
     pm_imports: list[str] = []
@@ -404,7 +414,12 @@ def test_package_manager_imported_from_types_identifiers() -> None:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             if node.target.id == "PackageManager":
                 pytest.fail("PackageManager re-annotated at module level")
-    assert pm_imports == ["codegenie.types.identifiers"], pm_imports
+    allowed_sources = {
+        "codegenie.types.identifiers",
+        "codegenie.probes.node_build_system",
+    }
+    assert len(pm_imports) == 1, f"exactly one PackageManager import expected, got {pm_imports!r}"
+    assert pm_imports[0] in allowed_sources, pm_imports
 
 
 # ---------------------------------------------------------------------------

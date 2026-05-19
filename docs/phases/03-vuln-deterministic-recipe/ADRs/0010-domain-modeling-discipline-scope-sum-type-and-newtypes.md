@@ -83,3 +83,30 @@ Implements four toolkit patterns simultaneously:
 - `../critique.md §Best-practices design — concrete problems` (`Literal["*"]` collapse to `str`), §Design-pattern critiques §Missed patterns (`WorkflowId`/`BundleId` newtype gap)
 - [production ADR-0033 — domain modeling discipline](../../../production/adrs/0033-domain-modeling-discipline.md)
 - design-patterns-toolkit.md §Newtype, §Tagged union, §Smart constructor, §Make illegal states unrepresentable
+
+## Amendments
+
+### 2026-05-18 — `AdapterConfidence` canonical home + advisory Literal catalogs
+
+**Context.** `Trusted` / `Degraded` / `Unavailable` plus an `AdapterConfidence` discriminated union were declared in two locations: `src/codegenie/adapters/confidence.py` (Phase 2, `reason: str`, 8 consumers including TCCM loader and the four adapter Protocols) and `src/codegenie/transforms/outcomes.py` (Phase 3, `reason: Literal[DegradationReason]` / `Literal[UnavailabilityReason]`, 0 src consumers but 5 test files pinning the contract). The two `reason` taxonomies were *empirically disjoint*: Phase 2 callers emit `"scip_unavailable"`, `"tool_missing"`, `"self_check"`, `"scip_offline"`, `"stale_scip_acceptable_for_self_check"`; Phase 3's Literal set was `"timeout" | "partial_results" | "rate_limited"` / `"binary_missing" | "io_error" | "unsupported_version"`. Zero overlap. The class-name collision was silent type drift: Phase 3's `BundleBuilder` (S3-04) was documented to consume `transforms.outcomes.AdapterConfidence`, while every existing adapter consumed the `adapters.confidence` version. Once S3-04 landed, the two paths would dispatch through different class objects.
+
+**Decision.** Single canonical class hierarchy declared in `codegenie.transforms.outcomes` (kernel-tier, satisfies `tests/unit/transforms/test_outcomes_purity.py` allowlist). `codegenie.adapters.confidence` re-exports the same class objects — identity equality across both layers. `Degraded.reason` and `Unavailable.reason` widen from `Literal[...]` to `str` (Phase 2's empirically-shipped vocabulary is admitted).
+
+`DegradationReason` and `UnavailabilityReason` survive as **advisory orchestrator-domain Literal catalogs**, NOT field types. The aliases continue to be exported and exercised by `tests/unit/transforms/test_outcomes.py::test_reason_literal_sets_pinned`. Orchestrator consumers (`BundleBuilder` S3-04 and any later gate) MAY validate `degraded.reason in get_args(DegradationReason)` and emit a `degraded_with_unknown_reason` audit event when an out-of-catalog reason arrives — this is the documented migration ramp toward strict reasons if a consumer later demonstrates the cost of free-form strings.
+
+**Tradeoffs.** Eliminates the duplication bug before S3-04 ships; preserves all 8 Phase-2 consumers unchanged; preserves Phase 3's S1-03 test contract (Literal members still pinned by membership tests). Cost: Phase 3's `reason` field loses its type-level enforcement — a typo like `Degraded(reason="netwrok_denied")` now constructs successfully and propagates downstream. Mitigation: advisory-catalog validation at the orchestrator boundary is the explicit migration ramp; the Open/Closed direction (tighten later) remains intact.
+
+**Reversibility.** High. Re-narrowing `reason: str` to `reason: DegradationReason` is a one-line type change at the canonical site, conditional on auditing the actual emitted reasons across the codebase and expanding the Literal set to cover them. This amendment does not foreclose the tightening; it defers it to a consumer that pays for it.
+
+**Consequences.**
+
+- `codegenie.transforms.outcomes` is the single declaration site for `Trusted`/`Degraded`/`Unavailable`/`AdapterConfidence`. `codegenie.adapters.confidence` is now a pure re-export module (no class declarations; allowed by `tests/unit/adapters/test_protocols.py::test_adapter_modules_are_pure_typing` because `codegenie.transforms` is not in the forbidden-prefix set).
+- S1-03 story file amended at AC-6, AC-7e, AC-7f to reflect `reason: str` + advisory-catalog framing; `_validation/S1-03-tagged-union-outcomes.md` carries the post-validation amendment.
+- Phase 2's typed-surface invariant (02-ADR-0007: "Phase 2 ships Protocols + `AdapterConfidence`, never implementations") is honored — the typed surface is still shipped, just from a single source.
+- Future amendments to the Literal catalogs (additive members) require an ADR amendment; field-type tightening (`reason: str` → `reason: Literal[...]`) requires a dedicated story + audit.
+- Latent ``codegenie.types.identifiers`` ↔ ``codegenie.probes`` import-cycle uncovered while landing the dedup: `types.identifiers` re-exported `PackageManager` from `probes.node_build_system` at module top-level. The transitive chain `probes/__init__ → layer_b/dep_graph → depgraph/registry → types.identifiers.PackageManager` formed a real cycle whenever an outside-`probes` module loaded `types.identifiers` first (which now happens for every `transforms.outcomes` import that comes in via `adapters.confidence`). Fixed by: (a) `types/identifiers.py` resolves `PackageManager` via a module-level `__getattr__` lazy re-export (TYPE_CHECKING import keeps the static-typing contract); (b) `depgraph/registry.py` moves its `PackageManager` import to a TYPE_CHECKING block (no runtime use thanks to `from __future__ import annotations`); (c) `probes/layer_b/dep_graph.py` imports `PackageManager` from the canonical origin module `codegenie.probes.node_build_system` directly (which `probes/__init__.py` finishes loading before reaching `layer_b/dep_graph`). The Phase-1 ADR-0013 "single owner" contract is preserved — `probes.node_build_system` still owns the `Literal`. The test `test_package_manager_imported_from_types_identifiers` is renamed to `test_package_manager_imported_from_canonical_source` and accepts either source.
+
+**Sources.**
+
+- `tests/unit/transforms/test_outcomes_purity.py:_ALLOWED_IMPORT_ROOTS` — kernel-tier constraint forcing the canonical home to be `outcomes.py`.
+- `tests/unit/adapters/test_protocols.py::test_adapter_modules_are_pure_typing` — adapter-tier constraint admitting `codegenie.transforms` imports.

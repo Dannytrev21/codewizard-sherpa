@@ -25,10 +25,21 @@ at :mod:`codegenie.types.parsers`; ``ParseError`` lives at
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final, NewType
+from typing import TYPE_CHECKING, Final, NewType
 
-# DO NOT redefine — Phase 1 ADR-0013 owns this enum; this is a re-export.
-from codegenie.probes.node_build_system import PackageManager as PackageManager
+# DO NOT redefine — Phase 1 ADR-0013 owns this enum; this module re-exports
+# it. The re-export is **lazy** via :func:`__getattr__` below: a top-level
+# ``from codegenie.probes.node_build_system import PackageManager`` would
+# fire ``probes/__init__.py`` (which eagerly loads ``layer_b/*`` probes
+# whose modules also reach back into ``codegenie.types.identifiers``),
+# forming a cycle the first time anything outside ``probes`` triggers this
+# module (e.g., ``transforms.outcomes`` via ``adapters.confidence``). The
+# TYPE_CHECKING import below keeps the static-typing contract intact
+# (mypy --strict still sees ``PackageManager`` as a re-exported name).
+if TYPE_CHECKING:  # pragma: no cover — type-checker-only re-export
+    from codegenie.probes.node_build_system import (
+        PackageManager as PackageManager,
+    )
 
 # --- Phase-2 catalog (5 + 3 amendments) -----------------------------------
 
@@ -142,3 +153,23 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "AttemptNumber": "Phase-3 retry counter (ADR-0010); S1-04 AttemptSummary.",
     "ErrorId": "Phase-3 dotted snake-case error id (ADR-0010); S1-03 RecipeError/RemediationError.",
 }
+
+
+def __getattr__(name: str) -> object:
+    """Lazy re-export of :data:`PackageManager` from
+    :mod:`codegenie.probes.node_build_system`.
+
+    Resolved on first attribute access (after the ``probes`` package
+    finishes initialising) so the kernel-tier ``types.identifiers`` module
+    can be imported by ``transforms.outcomes`` / ``adapters.confidence``
+    without forming the ``types ↔ probes`` cycle (see the TYPE_CHECKING
+    import block at the top of this file). All other names in
+    :data:`__all__` are bound at module load — only ``PackageManager`` is
+    resolved lazily.
+    """
+
+    if name == "PackageManager":
+        from codegenie.probes.node_build_system import PackageManager
+
+        return PackageManager
+    raise AttributeError(f"module 'codegenie.types.identifiers' has no attribute {name!r}")

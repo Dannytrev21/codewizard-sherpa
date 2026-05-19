@@ -104,8 +104,27 @@ HumanReviewReason = Literal[
 ]
 
 DegradationReason = Literal["timeout", "partial_results", "rate_limited"]
+"""Advisory catalog of orchestrator-domain degradation reasons.
+
+NOT the type of :attr:`Degraded.reason`. The field is ``str`` by design
+(amended 2026-05-18, ADR-0010 Amendment): the probe-adapter domain uses
+vocabulary disjoint from the orchestrator domain
+(e.g. ``"scip_unavailable"``, ``"tool_missing"``, ``"self_check"``), and a
+closed Literal would reject those at construction.
+
+Consumers in the orchestrator domain (``BundleBuilder`` S3-04) MAY
+validate ``degraded.reason in get_args(DegradationReason)`` and emit a
+``degraded_with_unknown_reason`` audit event for drift — that's the
+intended migration ramp toward strict reasons if/when a consumer pays
+for it.
+"""
 
 UnavailabilityReason = Literal["binary_missing", "io_error", "unsupported_version"]
+"""Advisory catalog of orchestrator-domain unavailability reasons.
+
+See :data:`DegradationReason` for the discipline rationale; same advisory
+discipline applies to :attr:`Unavailable.reason`.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +354,12 @@ NodeTransition = Annotated[
 
 
 class Trusted(BaseModel):
-    """``Trusted`` — the adapter ran and the result is consumable as-is."""
+    """``Trusted`` — the adapter ran and the result is consumable as-is.
+
+    Canonical declaration. ``codegenie.adapters.confidence`` re-exports this
+    name (ADR-0010 Amendment 2026-05-18) — both Phase 2 adapter Protocols
+    and Phase 3 ``BundleBuilder`` dispatch on the same class object.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["trusted"] = "trusted"
@@ -343,22 +367,32 @@ class Trusted(BaseModel):
 
 class Degraded(BaseModel):
     """``Degraded`` — adapter completed but with reduced confidence (timeout,
-    partial results, rate-limit). Downstream may still consume but should
-    mark its own confidence as ``degraded``."""
+    partial results, rate-limit, stale index, etc.). Downstream may still
+    consume but should mark its own confidence as ``degraded``.
+
+    ``reason`` is ``str`` by design (ADR-0010 Amendment 2026-05-18). The
+    probe-adapter domain (Phase 2) uses vocabulary disjoint from the
+    orchestrator domain (Phase 3) — see :data:`DegradationReason` docstring
+    for the advisory-catalog discipline.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["degraded"] = "degraded"
-    reason: DegradationReason
+    reason: str
 
 
 class Unavailable(BaseModel):
     """``Unavailable`` — adapter could not run (binary missing, I/O error,
-    unsupported version). ``BundleBuilder`` triggers the deterministic
-    serial fallback."""
+    unsupported version, etc.). ``BundleBuilder`` triggers the deterministic
+    serial fallback.
+
+    ``reason`` is ``str`` by design (ADR-0010 Amendment 2026-05-18); see
+    :data:`UnavailabilityReason` docstring.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["unavailable"] = "unavailable"
-    reason: UnavailabilityReason
+    reason: str
 
 
 AdapterConfidence = Annotated[

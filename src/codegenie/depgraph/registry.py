@@ -52,10 +52,21 @@ from codegenie.probes.base import ProbeContext
 # kernel-tier alias surface is :mod:`codegenie.types.identifiers` (S1-05
 # re-export). Importing from the types package is the canonical interface
 # (production ADR-0033 §3).
-from codegenie.types.identifiers import PackageManager
-
+#
+# Import-cycle note: the import is TYPE_CHECKING-guarded because
+# ``codegenie.types.identifiers`` re-exports ``PackageManager`` from
+# ``codegenie.probes.node_build_system`` (line 31 of identifiers.py), and
+# ``probes/__init__.py`` eagerly loads ``layer_b/dep_graph.py`` which
+# imports this module. A runtime import here would form a cycle the first
+# time anything outside ``probes`` (e.g., ``transforms.outcomes`` via
+# ``adapters.confidence``) triggers ``types.identifiers``. Since this
+# module has ``from __future__ import annotations`` on line 41, every use
+# of ``PackageManager`` below is a stringified annotation — no runtime
+# reference exists, so the TYPE_CHECKING guard is sound.
 if TYPE_CHECKING:
     import networkx
+
+    from codegenie.types.identifiers import PackageManager
 
 DepGraphStrategy = Callable[[ProbeContext, list[Mapping[str, Any]]], "networkx.DiGraph"]
 """Function shape every ecosystem strategy must satisfy.

@@ -193,3 +193,26 @@ The story has the right scope and the right intent, but ships ACs that:
 - **Notes for the implementer** — added paragraphs on: build-order rationale for `transform_id` (S1-04 closes the loop); `branch` / `report_path` placeholder typing (S4-01 closes); S6-02 widening path for `Validated`; arch-typo on `NodeTransition.ShortCircuit.outcome`; freshness-precedent test patterns to mirror.
 
 **Final verdict: HARDENED.** Story is ready for the executor with two block-tier consistency issues closed, eight test-quality regressions pinned, and the repo-uniform discriminated-union conventions fenced.
+
+---
+
+## Post-GREEN amendment (2026-05-18)
+
+After the story shipped GREEN, a cross-phase consistency audit surfaced a parallel `Trusted` / `Degraded` / `Unavailable` / `AdapterConfidence` declaration in `src/codegenie/adapters/confidence.py` (Phase 2 S1-03 typed surface; 8 src consumers; `reason: str`). The two class hierarchies shared `kind` discriminator strings but diverged on `reason` typing (str vs Literal) and used empirically disjoint reason taxonomies — silent type drift that would have manifested as a real bug once `BundleBuilder` (S3-04) consumed `transforms.outcomes.AdapterConfidence` while every existing adapter consumed the `adapters.confidence` version.
+
+**Resolution** (ADR-0010 Amendment 2026-05-18; see ADR file for full rationale):
+
+1. `codegenie.transforms.outcomes` becomes the single canonical declaration site (already the kernel-tier home that the S1-03 story exercises; satisfies the strict `test_outcomes_purity.py` import allowlist).
+2. `codegenie.adapters.confidence` deletes its parallel class declarations and re-exports the same class objects from `transforms.outcomes`. The adapter-tier fence `test_adapter_modules_are_pure_typing` admits this import because `codegenie.transforms` is not in the forbidden-prefix set.
+3. `Degraded.reason` and `Unavailable.reason` widen from `Literal[...]` to `str` — admits the Phase 2 vocabulary (`"scip_unavailable"`, `"tool_missing"`, etc.) that the original closed Literal would have rejected.
+4. `DegradationReason` and `UnavailabilityReason` survive as advisory orchestrator-domain Literal catalogs (not field types). The story's AC-7e / AC-7f membership tests continue to pass against the unchanged Literal aliases.
+
+**Story-file edits** (corresponding to the source-code amendment):
+
+- AC-6 reworded: `Degraded(kind, reason: str)` + `Unavailable(kind, reason: str)`; inline note pointing at this amendment.
+- AC-7e / AC-7f reframed: "advisory orchestrator-domain catalog, NOT the type of `Degraded.reason`."
+- "Validation amendment (2026-05-18, post-GREEN)" paragraph appended after the original Validation notes block recording the same rationale.
+
+**Why this is post-GREEN, not a re-validation:** the original validation pass (above) was correct against the in-scope ADRs at the time. The duplication was a *cross-phase* concern (Phase 2's typed surface vs Phase 3's outcomes module) that the per-story validator didn't catch because each story-local critic only reads its own story's references. A future enhancement: add a "cross-phase consistency" critic that diffs new declarations against existing typed-surface modules.
+
+**Verdict (amendment): RECONCILED.** Story remains GREEN. Source code, ADR, and story file are now consistent. No re-execution required.
