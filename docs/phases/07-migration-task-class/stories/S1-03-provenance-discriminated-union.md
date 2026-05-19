@@ -1,10 +1,27 @@
 # Story S1-03 — Seven-variant `Provenance` discriminated union + nested `Both` guard
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** M
 **Depends on:** S1-01, S1-02
 **ADRs honored:** ADR-0004 (the primitive's home — the union lands at `src/codegenie/primitives/vuln_provenance/types.py`), ADR-0006 (consumers of `Provenance` must `match`/`assert_never` — this story makes that exhaustiveness possible), production ADR-0033 (sum types + frozen + extra="forbid"), production ADR-0038 (the verbatim seven-variant contract this story implements)
+
+## Validation notes (2026-05-19, `phase-story-validator` pass)
+
+**Verdict:** HARDENED. Real but fixable weaknesses across all four critic lenses; edits applied. Full report at [`_validation/S1-03-provenance-discriminated-union.md`](_validation/S1-03-provenance-discriminated-union.md).
+
+Edits applied:
+- **AC-1** — added explicit `BaseImage.stage` happy-path coverage requirement (both `None` and `DockerStageName(...)` cases).
+- **AC-4** — enumerated all six structural-rejection cases for `Both.app_record` / `Both.base_record` (was three); surfaced the dual-layer invariant (mypy --strict + Pydantic runtime).
+- **AC-5** — strengthened from single-instance to explicit per-variant parametrize over all seven.
+- **AC-7** — expanded round-trip coverage from 3 of 7 variants to all seven (incl. `Both` nested-discriminator routing and `Unknown`); added JSON-string round-trip via `TypeAdapter.dump_json` / `validate_json`.
+- **AC-8** — added empty-tuple `chain=()` invalid case alongside the length-1 case.
+- **AC-10** — restricted scope statement: this story lands the union surface only; protocols / registry / assembly arrive in S1-04 / S2-01 / S2-04.
+- **AC-11** — widened gate to project-wide `make check` (was `mypy --strict src/codegenie/primitives/vuln_provenance/` only).
+- **AC-12 NEW** — `Unknown.details: dict[str, str]` rejects non-str values at construction (no-`Any` runtime pin complementing the S1-06 static fence).
+- **AC-13 NEW** — discriminator-routing integrity: payload with `kind` value mismatched to fields rejects at deserialization.
+- **AC-14 NEW** — mypy-negative test at `test_provenance_mypy_negative.py` mirrors the S1-01 precedent; pins the static-typing layer of the recursion guard.
+- **Implementer notes** — added the closed-boundary statement (no `@register_provenance_variant`), the Make-Illegal-States-Unrepresentable lineage, the forward-reference ordering rationale, the `outcomes.py` `Annotated[..., Field(...)]` precedent, the `_Frozen` + `model_construct` fence cross-references, the Rule-9 docstring-encodes-WHY note, and the explicit ban on defensive `@field_validator` checks on `Both.app_record` / `Both.base_record`.
 
 ## Context
 
@@ -44,7 +61,7 @@ Implement the verbatim seven-variant `Provenance` discriminated union from `phas
   - `class AppDirect(_Frozen)`: `kind: Literal["app_direct"] = "app_direct"`, `manifest_path: Path`, `package: PackageId`, `confidence: AdapterConfidence`.
   - `class AppTransitive(_Frozen)`: `kind: Literal["app_transitive"]`, `manifest_path: Path`, `package: PackageId`, `chain: tuple[PackageId, ...]` (length ≥ 2 enforced via Pydantic `Field(min_length=2)`), `confidence: AdapterConfidence`.
   - `class AppVendored(_Frozen)`: `kind: Literal["app_vendored"]`, `vendored_path: Path`, `package: PackageId`, `confidence: AdapterConfidence`.
-  - `class BaseImage(_Frozen)`: `kind: Literal["base_image"]`, `image_digest: ImageDigest`, `layer_digest: LayerDigest`, `distro_pkg: DistroPackage`, `stage: DockerStageName | None`, `confidence: AdapterConfidence`.
+  - `class BaseImage(_Frozen)`: `kind: Literal["base_image"]`, `image_digest: ImageDigest`, `layer_digest: LayerDigest`, `distro_pkg: DistroPackage`, `stage: DockerStageName | None`, `confidence: AdapterConfidence`. **Happy-path coverage MUST exercise both `stage=None` (single-stage Dockerfile) and `stage=DockerStageName("builder")` (multi-stage) — both shapes round-trip through the discriminated union.**
   - `class RuntimeBundled(_Frozen)`: `kind: Literal["runtime_bundled"]`, `runtime: RuntimeId`, `bundled_path: Path`, `package: PackageId`, `confidence: AdapterConfidence`.
   - `class Both(_Frozen)`: `kind: Literal["both"]`, `app_record: AppKind`, `base_record: BaseKind`. (No `confidence` field — the nested records carry their own.)
   - `class Unknown(_Frozen)`: `kind: Literal["unknown"]`, `reason: UnknownReason`, `details: dict[str, str] | None = None`.
@@ -62,20 +79,41 @@ Implement the verbatim seven-variant `Provenance` discriminated union from `phas
   ]
   ```
   Round-trip via Pydantic `TypeAdapter(Provenance).validate_python(...)` works for every variant.
-- [ ] **AC-4 — `Both(Both(...), ...)` rejected at construction.** The load-bearing recursion guard: a parametrized test attempts to construct `Both` with a `Both`-shaped `app_record` (or a `Both`-shaped `base_record`, or both) and asserts `ValidationError`. Variants:
+- [ ] **AC-4 — `Both` recursion guard rejects every structurally-invalid shape (dual layer: mypy + Pydantic).** The load-bearing invariant. Two independent safety layers must hold simultaneously: (a) **mypy --strict** rejects each invalid construction at type-check time (the `# type: ignore[arg-type]` markers below pin this), and (b) **Pydantic v2** raises `ValidationError` at runtime via discriminated-union routing on `AppKind` / `BaseKind`. Both layers MUST be present — a loosened type annotation (e.g., `Both.app_record: AppKind | Both`) would silently pass the runtime test, so AC-15 pins the static layer separately. Six structural-rejection cases (all six MUST be parametrized tests, not just three):
   ```python
   inner_both = Both(app_record=app_direct, base_record=base_image)
+  # (1) Both nested inside Both.app_record
   with pytest.raises(ValidationError):
-      Both(app_record=inner_both, base_record=base_image)   # type: ignore[arg-type]
+      Both(app_record=inner_both, base_record=base_image)         # type: ignore[arg-type]
+  # (2) Both nested inside Both.base_record
   with pytest.raises(ValidationError):
-      Both(app_record=app_direct, base_record=inner_both)   # type: ignore[arg-type]
+      Both(app_record=app_direct, base_record=inner_both)         # type: ignore[arg-type]
+  # (3) Unknown in app_record — AppKind excludes Unknown
   with pytest.raises(ValidationError):
-      Both(app_record=unknown_kind, base_record=base_image)  # Unknown not in AppKind
+      Both(app_record=Unknown(reason="no_adapter_resolved"),
+           base_record=base_image)                                # type: ignore[arg-type]
+  # (4) Unknown in base_record — BaseKind excludes Unknown
+  with pytest.raises(ValidationError):
+      Both(app_record=app_direct,
+           base_record=Unknown(reason="no_adapter_resolved"))     # type: ignore[arg-type]
+  # (5) BaseImage in app_record — AppKind excludes base-layer variants
+  with pytest.raises(ValidationError):
+      Both(app_record=base_image, base_record=base_image)         # type: ignore[arg-type]
+  # (6) AppDirect in base_record — BaseKind excludes app-layer variants
+  with pytest.raises(ValidationError):
+      Both(app_record=app_direct, base_record=app_direct)         # type: ignore[arg-type]
   ```
-- [ ] **AC-5 — `frozen=True` rejects post-construction mutation.** Parametrized test over every variant: `with pytest.raises(ValidationError): variant.field = ...`.
-- [ ] **AC-6 — `extra="forbid"` rejects unknown fields.** Parametrized test over every variant: constructing with an extra kwarg raises `ValidationError`.
-- [ ] **AC-7 — JSON round-trip.** `TypeAdapter(Provenance).validate_python(provenance.model_dump()) == provenance` for at least one happy-path instance of each variant. Asserts the discriminator wiring picks the right variant on deserialization.
-- [ ] **AC-8 — `AppTransitive.chain` length ≥ 2.** Pydantic `Field(min_length=2)` (or equivalent validator) enforces the architecture's "chain length > 1 → `AppTransitive`" rule at the type level. Test: `chain=(pkg,)` → `ValidationError`; `chain=(pkg, pkg2)` → ok.
+- [ ] **AC-5 — `frozen=True` rejects post-construction mutation, every variant.** **Parametrize over all seven variants explicitly** (the TDD plan MUST land seven distinct test cases, one per variant, not just `test_app_direct_frozen` — a single-variant test would not catch a regression where one variant forgets to inherit `_Frozen`).
+- [ ] **AC-6 — `extra="forbid"` rejects unknown fields, every variant.** Parametrized test over all seven variants: constructing with an extra kwarg raises `ValidationError`.
+- [ ] **AC-7 — Round-trip via the outer discriminator, every variant (dict path AND JSON-string path).** Two parametrize sweeps, each over **all seven variants** (`app_direct`, `app_transitive`, `app_vendored`, `base_image`, `base_image_no_stage`, `runtime_bundled`, `both`, `unknown`):
+  - **Dict path:** `TypeAdapter(Provenance).validate_python(p.model_dump()) == p`.
+  - **JSON-string path:** `adapter.validate_json(adapter.dump_json(p)) == p` (catches `Path` ↔ `str`, `tuple` ↔ `list` coercion drift that the dict path can mask — the event log per ADR-0034 and `coordination-summary.yaml` writer per S11-02 serialize through this surface).
+  - **`Both` round-trip specifically MUST be exercised** — the nested discriminated unions in `app_record` / `base_record` resolve their own `kind` independently of the outer alias; this is exactly where round-trip drift can hide.
+- [ ] **AC-8 — `AppTransitive.chain` length ≥ 2.** Pydantic `Annotated[tuple[PackageId, ...], Field(min_length=2)]` (codebase precedent style, mirroring `transforms/outcomes.py`) enforces the architecture's "chain length 1 → `AppDirect`; chain length > 1 → `AppTransitive`" rule at the type level. Tests pin three boundary cases:
+  - `chain=()` → `ValidationError` (empty tuple).
+  - `chain=(pkg,)` → `ValidationError` (length 1).
+  - `chain=(pkg, pkg2)` → ok (minimum valid length).
+  - `chain=(pkg, pkg2, pkg3)` → ok (typical depth).
 - [ ] **AC-9 — Exhaustiveness via `match` + `assert_never`.** `tests/unit/primitives/vuln_provenance/test_provenance_exhaustiveness.py`:
   ```python
   def _summarize(p: Provenance) -> str:
@@ -92,8 +130,11 @@ Implement the verbatim seven-variant `Provenance` discriminated union from `phas
       return ...
   ```
   Test runs `_summarize` over a happy-path instance of every variant; mypy --strict would catch a missing arm.
-- [ ] **AC-10 — `vuln_provenance/__init__.py` re-exports the full surface.** `from codegenie.primitives.vuln_provenance import AppDirect, AppTransitive, AppVendored, BaseImage, RuntimeBundled, Both, Unknown, AppKind, BaseKind, Provenance, AdapterConfidence, UnknownReason, DistroPackage` succeeds.
-- [ ] **AC-11 — Gates.** `mypy --strict src/codegenie/primitives/vuln_provenance/` clean; `ruff check`, `ruff format --check` clean; `make lint-imports` green; existing Phase 0/1/2/3 + Phase 5/6.5 regression suite green.
+- [ ] **AC-10 — `vuln_provenance/__init__.py` re-exports the union surface this story lands (and only this).** The import `from codegenie.primitives.vuln_provenance import AppDirect, AppTransitive, AppVendored, BaseImage, RuntimeBundled, Both, Unknown, AppKind, BaseKind, Provenance, AdapterConfidence, UnknownReason, DistroPackage` succeeds. **Scope clarification:** S1-03 lands the **union surface only**. `VulnProvenanceAdapter` Protocol arrives in S1-04; `Layer`/`Ecosystem`/`register_provenance_adapter` arrive in S2-01; `assemble_provenance`/`_ADAPTER_DISPATCH_ORDER` arrive in S2-04. The `__all__` list MUST stay sorted (locked by `tests/unit/primitives/vuln_provenance/test_types_dunder_all.py`, established by S1-02 AC-13).
+- [ ] **AC-11 — Project-wide gate.** `make check` end-to-end clean: `ruff check`, `ruff format --check`, `mypy --strict src/` (all of `src/`, not just the subdir — catches cross-package drift), `make lint-imports`, full `pytest` suite green (Phase 0–6.5 regression). The narrow subdir-only `mypy --strict src/codegenie/primitives/vuln_provenance/` is INSUFFICIENT — mirror the S1-02 widening precedent (see `_validation/S1-02-provenance-enums-and-distro-package.md` CO4).
+- [ ] **AC-12 — `Unknown.details: dict[str, str]` value-type runtime pin.** Constructing `Unknown(reason="adapter_error", details={"err": 42})` raises `ValidationError` (non-`str` value is rejected by Pydantic's runtime type-check of `dict[str, str]`). The no-`Any` static fence S1-06 catches the typing layer; this AC catches an executor who writes `details: dict` and relies on the fence. Parametrize: `{"k": 1}` (int value), `{"k": None}` (None value), `{"k": ["x"]}` (list value) — all reject.
+- [ ] **AC-13 — Discriminator-routing integrity at deserialization.** A payload whose `kind` value mismatches its field shape MUST reject at `TypeAdapter(Provenance).validate_python(...)` — Pydantic v2's discriminator-routing fast path is what makes round-trip safe, and a future implementation that loosens the outer `Field(discriminator="kind")` could silently coerce one variant's payload into another's shape. Pin three cases: `{"kind": "app_direct", "image_digest": "sha256:..."}` rejects (no `BaseImage`-shape absorption); `{"kind": "unknown_variant"}` rejects (no fallback to first member); `{"kind": "both", "app_record": {...Both shape...}, ...}` rejects (the recursion guard at AC-4 must survive deserialization too).
+- [ ] **AC-14 — mypy-negative test pins the static-typing layer of the recursion guard.** New file `tests/unit/primitives/vuln_provenance/test_provenance_mypy_negative.py` mirrors the S1-01 precedent at `tests/unit/types/test_identifiers_phase7_mypy_negative.py`. Three explicit `# type: ignore[arg-type]` assertions on the `Both(app_record=..., ...)` surface: (a) passing a `Both` instance, (b) passing an `Unknown` instance, (c) passing a `BaseImage` instance — each MUST be a mypy --strict error. Without this AC, a future implementation that widens `Both.app_record: AppKind | Both` would pass every runtime test while silently regressing the static guarantee that gives the recursion guard its "the type system itself enforces it" status.
 - [ ] The TDD plan's red test exists, was committed, and is green.
 - [ ] `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest` all pass on the touched files.
 
@@ -291,8 +332,9 @@ State why it fails: `ImportError` — the seven variant classes + `Provenance`/`
 |---|---|
 | `src/codegenie/primitives/vuln_provenance/types.py` | Replace S1-02 placeholders with real `AppKind`/`BaseKind`; add the 7 variant classes + `Provenance` alias. |
 | `src/codegenie/primitives/vuln_provenance/__init__.py` | Extend re-exports with the 7 variants + `AppKind`/`BaseKind`/`Provenance`. |
-| `tests/unit/primitives/vuln_provenance/test_provenance_union.py` | NEW — anchors TDD red; covers all 11 ACs above. |
+| `tests/unit/primitives/vuln_provenance/test_provenance_union.py` | NEW — anchors TDD red; covers AC-1..AC-8, AC-10, AC-12, AC-13. |
 | `tests/unit/primitives/vuln_provenance/test_provenance_exhaustiveness.py` | NEW — `match`/`assert_never` over every variant (AC-9). |
+| `tests/unit/primitives/vuln_provenance/test_provenance_mypy_negative.py` | NEW — mypy-negative pins of the recursion-guard static-typing layer (AC-14). Mirrors `tests/unit/types/test_identifiers_phase7_mypy_negative.py` precedent. |
 
 ## Out of scope
 
@@ -305,7 +347,16 @@ State why it fails: `ImportError` — the seven variant classes + `Provenance`/`
 
 ## Notes for the implementer
 
-- **The `Both` recursion guard is the load-bearing piece.** The arch is explicit: "the type system itself enforces the recursion guard, not a runtime check." Pydantic v2's discriminated-union resolution does this automatically when `Both.app_record: AppKind` (and `AppKind` is `Union[AppDirect, AppTransitive, AppVendored]` — a discriminated union that does NOT include `Both` or `Unknown`). Do NOT add a custom `@field_validator` that does the check at runtime — the validation-time rejection is what the test pins.
+- **The `Both` recursion guard is the load-bearing piece.** The arch is explicit: "the type system itself enforces the recursion guard, not a runtime check." Pydantic v2's discriminated-union resolution does this automatically when `Both.app_record: AppKind` (and `AppKind` is `Union[AppDirect, AppTransitive, AppVendored]` — a discriminated union that does NOT include `Both` or `Unknown`). **Do NOT add a custom `@field_validator` or `model_validator` that does a kind check on `Both.app_record` / `Both.base_record` at runtime** — any defensive runtime check there is a code smell. It implies the structural type guarantee is uncertain, duplicates Pydantic's discriminated-union routing, and creates a maintenance burden the moment ADR-0038 amends the union (a future eighth variant would have to be added in two places: the type, AND the validator). The structural guarantee IS the guard.
+- **Design-pattern lineage — Make-Illegal-States-Unrepresentable.** S1-02's validation surfaced this pattern as the umbrella over Phase 7's primitive surface (`_Frozen` base, `Literal` discriminators, `Enum` typed handles, AST-walk fences). S1-03 is the structural exemplar: nested discriminated unions make `Both(Both, ...)` not just-rejected-at-runtime but **literally unrepresentable** in the type system. Production ADR-0033 names this discipline; the recursion guard is its load-bearing application here.
+- **The `Provenance` union is a closed contract, NOT an Open/Closed plugin seam.** Many surfaces in this codebase use registry-based extension (`@register_probe`, `@register_dep_graph_strategy`, `@register_provenance_adapter` arriving in S2-01). The `Provenance` variant set is intentionally NOT one of them — ADR-0038 fixes the seven variants by amendment, not by additive plugin. **Do NOT introduce a `@register_provenance_variant` decorator or any similar dispatch table for variants.** A future eighth variant arrives via ADR-0038 amendment + this file's edit + a story; that's the *intended* friction. Open/Closed lives one layer up (adapters), not at the data shape.
+- **Pydantic v2 forward-reference order matters — file layout is deliberate, not stylistic.** The implementation outline orders declarations top-to-bottom as `AppDirect` → `AppTransitive` → `AppVendored` → `BaseImage` → `RuntimeBundled` → `AppKind` / `BaseKind` aliases → `Both` (references the aliases) → `Unknown` → `Provenance` final alias. **An executor who alphabetizes the file would break the build:** Pydantic v2 resolves discriminated-union member types at class-body evaluation time; if `Both` is declared before `AppKind` exists, the field annotation cannot resolve. Keep the declaration order as written.
+- **`Annotated[..., Field(min_length=2)]` is the codebase idiom for `AppTransitive.chain`.** See `src/codegenie/transforms/outcomes.py` for the precedent style (`RecipeOutcome`, `Applicability`, etc. — every variant uses `Annotated[A | B | C, Field(discriminator="kind")]` umbrellas; field-level constraints use `Annotated[tuple[...], Field(min_length=N)]`). Do NOT reach for `Field(default=..., min_length=2)` — that's the deprecated v1-style form and would smell wrong against the rest of the codebase.
+- **`_Frozen` inheritance fence + `model_construct` ban transitively apply to this story.** S1-02 planted two AST-walk fences scoped to `src/codegenie/primitives/vuln_provenance/`:
+  - `tests/fence/test_vuln_provenance_frozen_base.py` — every `class X(BaseModel)` under the subpackage MUST inherit `_Frozen`. Forgetting `_Frozen` on any of the seven new variants (or on a future fixture-helper subclass) fails this fence.
+  - `tests/fence/test_vuln_provenance_no_model_construct.py` — no `Model.model_construct(...)` call sites. **Do NOT use `model_construct()` in test fixtures or in the production code** — it bypasses validation, defeats AC-4's recursion guard at the fixture surface, and breaks the fence. Use the normal constructor: validation IS the test.
+- **Tests verify intent, not just behavior (Rule 9).** Every test pinning a Pydantic constraint MUST carry a one-line docstring naming the arch rule it pins. Example: `test_app_transitive_chain_length_one_rejected` → `"""Chain length 1 collapses to AppDirect — arch §Component design §2. A future PR that admits length-1 here would silently mis-classify direct deps as transitive."""`. Without the WHY, a future executor "fixing" `min_length` to admit a corner case loses the historical reason.
+- **Smart-constructor pattern (`make_provenance(...) -> Result[Provenance, ParseError]`) deliberately omitted.** Per Rule 2 (no abstractions for single-use code). Pydantic's `ValidationError` IS the equivalent failure signal — adapters return `Unknown(reason="adapter_error")` for "I don't apply", and raise `ProvenanceError` (S1-04) for genuine errors. Do NOT introduce a `Result`-wrapper "for consistency with S1-01's smart constructors" — the smart-constructor pattern in S1-01 protects against parsing raw strings into newtypes (a different problem).
 - **`AppKind` excludes `Unknown`.** The arch is explicit: `Both` carries non-`Unknown` records. If the app layer resolved to `Unknown`, `assemble_provenance` (S2-04) takes the `(None, base)` or `(None, None)` arm instead — it never wraps an `Unknown` in `Both`. AC-4's `test_both_rejects_unknown_in_app_record` pins this.
 - **`AppTransitive.chain` length ≥ 2 is the type-level shape of "transitive."** The arch's `NpmVulnProvenanceAdapter` rule ("chain length 1 → `AppDirect`; chain length > 1 → `AppTransitive`") only holds if the type system enforces ≥ 2. Use Pydantic's `Field(min_length=2)`. Without this, an adapter could mis-classify a direct dep as `AppTransitive(chain=(pkg,))`.
 - **Use the existing `_Frozen` base from S1-02.** Do not redeclare `_Frozen`. Inheritance: every variant subclasses `_Frozen`, never `BaseModel` directly.
@@ -313,5 +364,5 @@ State why it fails: `ImportError` — the seven variant classes + `Provenance`/`
 - **`stage: DockerStageName | None`.** The `BaseImage.stage` field is optional — a single-stage Dockerfile has no stage name. Default to `None`; do NOT add a `DockerStageName("")` sentinel.
 - **`Unknown.details: dict[str, str] | None`.** The arch deliberately uses `dict[str, str]`, not `dict[str, Any]` — the no-`Any` fence S1-06 will plant catches the latter. Keep it `dict[str, str]`.
 - **Round-trip via `TypeAdapter`, not via per-class `model_validate`.** The discriminator on the outer `Provenance` alias is what routes incoming JSON to the right variant; `TypeAdapter(Provenance).validate_python(payload)` exercises that wiring. AC-7 must use this idiom, not `AppDirect.model_validate(payload)` (which short-circuits the discriminator path).
-- **Phase 3 regression suite stays green.** This story does not touch any Phase 3 file — verify by running `pytest tests/unit/transforms/ tests/unit/plugins/vulnerability_remediation_node_npm/ -q` after green. If a test fails, the cause is a Pydantic version drift or an `import-linter` contract that did not yet admit `codegenie.primitives.vuln_provenance` — surface either as a follow-up.
+- **Phase 0–6.5 regression suite stays green.** This story does not touch any pre-Phase-7 source file — verify via `make check` end-to-end (per the hardened AC-11). Per-phase narrow runs (`pytest tests/unit/transforms/ tests/unit/plugins/vulnerability_remediation_node_npm/ -q`) are useful for triage but not sufficient for the gate. If a test fails, the cause is typically Pydantic version drift, an `import-linter` contract that did not yet admit `codegenie.primitives.vuln_provenance`, or a coverage subset issue (see CLAUDE.md pytest config — narrow subsets need `--no-cov`). Surface either as a follow-up.
 - **No `model_construct()` call sites.** ADR-0004's Consequences clause names a deferred fence: "a fence asserts no `model_construct()` call sites under `src/codegenie/primitives/vuln_provenance/`" (the smart-constructor bypass). This story does not land that fence — S1-06 does — but do not use `model_construct()` in this story's code either; it would force a same-PR fence edit.

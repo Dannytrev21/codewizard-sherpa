@@ -24,12 +24,32 @@ import codegenie.primitives.vuln_provenance.types as types_mod
 
 _EXPECTED_TYPES_ALL: Final[tuple[str, ...]] = (
     "AdapterConfidence",
+    "AppDirect",
+    "AppKind",
+    "AppTransitive",
+    "AppVendored",
+    "BaseImage",
+    "BaseKind",
+    "Both",
     "DistroPackage",
+    "Provenance",
+    "RuntimeBundled",
+    "Unknown",
     "UnknownReason",
 )
 _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "AdapterConfidence",
+    "AppDirect",
+    "AppKind",
+    "AppTransitive",
+    "AppVendored",
+    "BaseImage",
+    "BaseKind",
+    "Both",
     "DistroPackage",
+    "Provenance",
+    "RuntimeBundled",
+    "Unknown",
     "UnknownReason",
 )
 

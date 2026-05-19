@@ -27,7 +27,14 @@ _ALLOWED_TOP_LEVEL_IMPORTS: Final[frozenset[str]] = frozenset(
         "__future__",
         "typing",
         "enum",
+        "pathlib",
         "pydantic",
+        # S1-03 — the seven variants' field types reference the kernel-tier
+        # newtypes (`ImageDigest`, `LayerDigest`, `RuntimeId`,
+        # `DockerStageName`, `PackageId`). The single sibling-package
+        # dependency admitted by ADR-0004; widening this set further is an
+        # ADR-0004 amendment.
+        "codegenie.types.identifiers",
     }
 )
 
