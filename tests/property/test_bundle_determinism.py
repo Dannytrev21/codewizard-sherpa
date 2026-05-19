@@ -146,9 +146,14 @@ def test_hedged_race_reference_fails_determinism(
     """
 
     async def _run_pair() -> tuple[Bundle, Bundle]:
-        rng_seed = seed
-        b1 = await _run_hedged_with_seed(rng_seed, tmp_path_factory.mktemp(f"hx-{seed}-a"))
-        b2 = await _run_hedged_with_seed(rng_seed, tmp_path_factory.mktemp(f"hx-{seed}-b"))
+        # Distinct seeds across the pair so sleep durations differ — the
+        # hedged-race winner flips on scheduler jitter, surfacing the
+        # determinism violation (the assertion below MUST fail in xfail mode).
+        # Reusing the same seed would make `random.Random(seed).uniform(...)`
+        # produce identical sleep schedules, the race outcome would be
+        # deterministic, and xfail(strict=True) would xpass and break CI.
+        b1 = await _run_hedged_with_seed(seed, tmp_path_factory.mktemp(f"hx-{seed}-a"))
+        b2 = await _run_hedged_with_seed(seed + 1, tmp_path_factory.mktemp(f"hx-{seed}-b"))
         return b1, b2
 
     b1, b2 = asyncio.run(_run_pair())
