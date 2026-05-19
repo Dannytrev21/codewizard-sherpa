@@ -33,14 +33,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from codegenie.plugins.manifest import PluginManifest as PluginManifest
     from codegenie.plugins.registry import PluginRegistry
-    from codegenie.types.identifiers import PluginId, PrimitiveName, TransformKind
-
-    # S2-02 ships PluginManifest. Forward-ref stub carries the one field
-    # the S2-01 registry's collision check reads (``manifest.name``); S2-02
-    # replaces the stub with the full Pydantic model.
-    class PluginManifest:  # pragma: no cover - forward-ref stub
-        name: PluginId
+    from codegenie.types.identifiers import PrimitiveName, TransformKind
 
     # S2-04 ships the resolver and the PluginSubgraph node-graph type.
     class PluginSubgraph:  # pragma: no cover - forward-ref stub

@@ -1,7 +1,7 @@
 # Story S2-04 — Plugin resolver: `(specificity, precedence, name)` ordering + `extends` walker + `UniversalFallbackResolution`
 
 **Step:** Step 2 — Plugin Registry kernel, manifest schema, loader, resolver
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S2-04.md`](_attempts/S2-04.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-02 (`PluginScope`), S1-03 (tagged-union discipline), S2-01 (kernel + `resolve` `NotImplementedError` stub), S2-02 (`ManifestScope` shape — pre-lift), S2-03 (loader + `PluginRejected`)
 **ADRs honored:** ADR-0002, ADR-0003, ADR-0010, production ADR-0031, production ADR-0009

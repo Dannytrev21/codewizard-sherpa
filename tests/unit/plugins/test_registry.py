@@ -17,12 +17,14 @@ import pytest
 from codegenie.plugins.errors import (
     PluginAlreadyRegistered,
     PluginNotRegistered,
+    PluginRegistryCorrupted,
 )
 from codegenie.plugins.registry import (
     PluginRegistry,
     default_registry,
     register_plugin,
 )
+from codegenie.plugins.scope import Concrete, PluginScope
 from codegenie.types.identifiers import PluginId
 from tests.fixtures.plugins.fake_plugin import make_fake_plugin
 
@@ -111,12 +113,25 @@ def test_get_unknown_raises_plugin_not_registered_with_typed_name(
     assert "vulnerability-remediation--node--npm" in str(exc_info.value)
 
 
-def test_resolve_stub_names_s2_04(plugin_registry: PluginRegistry) -> None:
-    """AC-2 — :meth:`PluginRegistry.resolve` is a typed stub.
-    The literal substring ``"S2-04"`` MUST appear in the message — S2-04's
-    executor will grep on this forward-reference contract."""
-    with pytest.raises(NotImplementedError, match="S2-04"):
-        plugin_registry.resolve(scope=None)  # type: ignore[arg-type]
+def test_resolve_delegates_to_resolver(plugin_registry: PluginRegistry) -> None:
+    """AC-2 (S2-04 update) — :meth:`PluginRegistry.resolve` now
+    delegates to :func:`codegenie.plugins.resolver.resolve` (S2-04
+    landed the algorithm). The S2-01 ``NotImplementedError`` stub is
+    gone; the static AST scan in
+    ``tests/static/test_no_notimplemented_in_registry.py`` enforces.
+
+    Smoke: resolving against an empty registry surfaces the
+    well-formedness defence (``PluginRegistryCorrupted("empty_registry")``)
+    rather than a ``NotImplementedError`` — proof the delegation is
+    live."""
+    scope = PluginScope(
+        task_class=Concrete(value="vulnerability-remediation"),
+        language=Concrete(value="node"),
+        build_system=Concrete(value="npm"),
+    )
+    with pytest.raises(PluginRegistryCorrupted) as excinfo:
+        plugin_registry.resolve(scope)
+    assert excinfo.value.reason == "empty_registry"
 
 
 def test_runtime_checkable_protocols_match_fakes() -> None:

@@ -29,7 +29,7 @@ types — markers + structured payloads — no behavior, no logging, no I/O.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, ClassVar, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,8 +43,10 @@ __all__ = [
     "MissingPluginDirectory",
     "PluginAlreadyRegistered",
     "PluginExtendsCycle",
+    "PluginExtendsDepthExceeded",
     "PluginImportError",
     "PluginNotRegistered",
+    "PluginRegistryCorrupted",
     "PluginRejected",
     "SchemaViolation",
     "SymlinkEscape",
@@ -93,12 +95,78 @@ class PluginNotRegistered(CodegenieError):
 
 
 class PluginExtendsCycle(CodegenieError):
-    """Raised by S2-04's resolver when the ``extends`` chain cycles.
+    """Raised by the S2-04 resolver when the ``extends`` chain cycles.
 
-    Placeholder declaration here so the Phase 3 plugin-error hierarchy
-    lives in one file — S2-04 wires the raise site and adds the
-    cycle-chain payload.
+    ``chain`` carries the visited :class:`PluginId` sequence with the
+    entry-point repeated at the tail — e.g. ``A extends B extends A``
+    surfaces as ``(PluginId("A"), PluginId("B"), PluginId("A"))``. The
+    repeated tail lets an operator reading the stack immediately see
+    "we came back to where we started" without re-deriving the cycle.
+    Exit code 4 — Phase-3 ADR-0002 §Consequences.
     """
+
+    chain: tuple[PluginId, ...]
+    exit_code: ClassVar[int] = 4
+
+    def __init__(self, chain: tuple[PluginId, ...]) -> None:
+        self.chain = chain
+        rendered = " -> ".join(repr(p) for p in chain)
+        super().__init__(f"plugin extends chain cycles: {rendered}")
+
+
+class PluginExtendsDepthExceeded(CodegenieError):
+    """Raised by the S2-04 resolver when the ``extends`` chain exceeds
+    :data:`codegenie.plugins.resolver._MAX_EXTENDS_DEPTH` (=4).
+
+    The cap is empirical per Phase-3 ADR-0003 §Tradeoffs — no production
+    plugin chain is expected to exceed it. ``chain`` carries the visited
+    :class:`PluginId` sequence at the point of refusal so an operator
+    reading the stack can see how the limit was crossed. Exit code 4 —
+    Phase-3 ADR-0002 §Consequences.
+
+    Distinct exception (not a :data:`PluginRejected` BaseModel variant)
+    because the resolver's totality contract is "returns a
+    :class:`codegenie.plugins.resolver.PluginResolution`, or raises";
+    BaseModel value-types live in the loader's
+    ``Result[X, PluginRejected]`` return shape and cannot be raised.
+    """
+
+    chain: tuple[PluginId, ...]
+    reason: ClassVar[Literal["extends_depth_exceeded"]] = "extends_depth_exceeded"
+    exit_code: ClassVar[int] = 4
+
+    def __init__(self, chain: tuple[PluginId, ...]) -> None:
+        self.chain = chain
+        rendered = " -> ".join(repr(p) for p in chain)
+        super().__init__(f"plugin extends chain exceeds max depth: {rendered}")
+
+
+class PluginRegistryCorrupted(CodegenieError):
+    """Raised by the S2-04 resolver when the registry is structurally
+    invalid for resolution.
+
+    ``reason`` is one of:
+
+    - ``"missing_universal"`` — at least one concrete plugin is
+      registered but the canonical universal-fallback plugin
+      (see :data:`codegenie.plugins.resolver.UNIVERSAL_FALLBACK_ID`) is
+      absent, so the resolver cannot honour
+      production ADR-0009 (humans always merge) on a no-match.
+    - ``"empty_registry"`` — ``registry.all()`` is empty; the loader's
+      startup integrity check (S2-03) is the canonical place to fail-fast
+      on this, but the resolver raises belt-and-braces if invoked anyway.
+
+    Exit code 4 — Phase-3 ADR-0002 §Consequences. The spanning-event
+    emission for this exception is S6-01's concern; this story only
+    raises the typed exception.
+    """
+
+    reason: Literal["missing_universal", "empty_registry"]
+    exit_code: ClassVar[int] = 4
+
+    def __init__(self, reason: Literal["missing_universal", "empty_registry"]) -> None:
+        self.reason = reason
+        super().__init__(f"plugin registry corrupted: {reason}")
 
 
 # --- :data:`PluginRejected` tagged-union (S2-03 — ADR-0010 §Decision 3) -----

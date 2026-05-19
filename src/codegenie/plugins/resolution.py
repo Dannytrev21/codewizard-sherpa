@@ -1,16 +1,28 @@
-"""Placeholder for the S2-04 :class:`PluginResolution` sum type.
+"""S2-04 :class:`PluginResolution` re-export shim.
 
-S2-04 expands this module to the ``ConcreteResolution |
-UniversalFallbackResolution`` sum type per Phase-3 ADR-0003. Until then,
-the empty class lets the registry's ``resolve()`` return annotation
-resolve under ``mypy --strict`` today (Phase-3 ADR-0010 §1 — kernel-tier
-types are landed by the kernel-introducing story; the surface tightens
-as later stories ship).
+The real definition (and the
+:class:`ConcreteResolution | UniversalFallbackResolution` discriminated
+union it aliases) lives in :mod:`codegenie.plugins.resolver`. This
+module preserves the S2-01 import path
+(``from codegenie.plugins.resolution import PluginResolution``) so
+older callers keep importing the alias from the same place; new
+consumers should import directly from :mod:`codegenie.plugins.resolver`.
 """
 
 from __future__ import annotations
 
+from codegenie.plugins.resolver import (
+    ConcreteResolution as ConcreteResolution,
+)
+from codegenie.plugins.resolver import (
+    PluginResolution as PluginResolution,
+)
+from codegenie.plugins.resolver import (
+    UniversalFallbackResolution as UniversalFallbackResolution,
+)
 
-class PluginResolution:
-    """Placeholder; S2-04 expands to ``ConcreteResolution |
-    UniversalFallbackResolution`` sum type."""
+__all__ = [
+    "ConcreteResolution",
+    "PluginResolution",
+    "UniversalFallbackResolution",
+]

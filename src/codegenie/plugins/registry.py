@@ -59,6 +59,7 @@ from codegenie.plugins.errors import (
 )
 from codegenie.plugins.protocols import Plugin
 from codegenie.plugins.resolution import PluginResolution
+from codegenie.plugins.resolver import resolve as _resolver_resolve
 from codegenie.types.identifiers import PluginId
 
 if TYPE_CHECKING:
@@ -153,16 +154,19 @@ class PluginRegistry:
         return tuple(self._plugins.values())
 
     def resolve(self, scope: PluginScope) -> PluginResolution:
-        """**Stub — S2-04 ships the resolver.**
+        """Resolve ``scope`` to a typed :data:`PluginResolution`.
 
-        The specificity / precedence / ``extends``-walk / universal-fallback
-        algorithm lives in S2-04 (Phase-3 ADR-0003). The S2-04 executor
-        greps for the literal substring ``"S2-04"`` in this stub's
-        message — do not remove it from the raise site.
+        Delegates to :func:`codegenie.plugins.resolver.resolve` — the
+        full algorithm, ``extends``-walker, sort, and universal-fallback
+        narrowing live in ``resolver.py`` (S2-04; ADR-0003 §Decision).
+        The resolver import is at module level (no cycle: ``resolver``
+        only references :class:`PluginRegistry` under ``TYPE_CHECKING``);
+        the module-level bind avoids the class-identity drift that a
+        lazy ``from codegenie.plugins import resolver`` would suffer
+        when a fence test pops ``codegenie.plugins.*`` from
+        ``sys.modules`` mid-session and re-imports the package.
         """
-        raise NotImplementedError(
-            "resolve() lands in S2-04; the universal-fallback algorithm is not yet implemented"
-        )
+        return _resolver_resolve(self, scope)
 
 
 default_registry: Final[PluginRegistry] = PluginRegistry()
