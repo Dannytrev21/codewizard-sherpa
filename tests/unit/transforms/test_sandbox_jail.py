@@ -103,11 +103,17 @@ def test_no_export_annotated_as_typing_any() -> None:
 def test_subprocess_jail_is_protocol_not_runtime_checkable() -> None:
     assert inspect.isclass(SubprocessJail)
     assert getattr(SubprocessJail, "_is_protocol", False) is True
-    # Protocol member discovery: ``__protocol_attrs__`` (CPython 3.12+).
-    # Plain Protocols leave ``__abstractmethods__`` empty unless members are
-    # explicitly decorated with ``@abstractmethod``; the protocol-attr set is
-    # the canonical structural-conformance handle.
-    assert getattr(SubprocessJail, "__protocol_attrs__", frozenset()) == {"run"}
+    # Protocol member discovery — cross-version (3.11 lacks
+    # ``__protocol_attrs__``, which arrived in 3.12). Walk ``vars()`` and
+    # collect the public callables declared directly on the class. Plain
+    # Protocols leave ``__abstractmethods__`` empty unless members are
+    # explicitly decorated with ``@abstractmethod``.
+    declared = {
+        name
+        for name, value in vars(SubprocessJail).items()
+        if callable(value) and not name.startswith("_")
+    }
+    assert declared == {"run"}
     # Not ``@runtime_checkable`` — ``isinstance(jail, SubprocessJail)`` is a
     # Protocol foot-gun (ignores method signatures). Enforce structural typing.
     assert getattr(SubprocessJail, "_is_runtime_protocol", False) is False
