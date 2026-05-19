@@ -95,9 +95,7 @@ class VulnParseException(Exception):
     """
 
     def __init__(self, model: VulnParseError) -> None:
-        super().__init__(
-            f"VulnParseError: reason={model.reason!r} details={model.details!r}"
-        )
+        super().__init__(f"VulnParseError: reason={model.reason!r} details={model.details!r}")
         self.model: VulnParseError = model
 
 
@@ -124,9 +122,7 @@ def _safe_json_load(raw: bytes) -> Result[object, VulnParseError]:
     try:
         value: object = json.loads(raw)
     except json.JSONDecodeError as exc:
-        return Err(
-            error=VulnParseError(reason="bad_json", details={"message": str(exc)})
-        )
+        return Err(error=VulnParseError(reason="bad_json", details={"message": str(exc)}))
     return Ok(value=value)
 
 
@@ -167,5 +163,3 @@ def canonical_raw_payload(record_dict: dict[str, Any]) -> bytes:
     other non-JSON-primitive fields via ``.isoformat()`` etc.
     """
     return json.dumps(record_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
-
-

@@ -72,9 +72,7 @@ def ingest_records(
         elif isinstance(item, VulnerabilityRecord):
             successes.append(item)
         else:  # pragma: no cover — defensive
-            raise TypeError(
-                f"ingest_records: unexpected type {type(item).__name__}"
-            )
+            raise TypeError(f"ingest_records: unexpected type {type(item).__name__}")
     conn = idx._require_open()  # noqa: SLF001 — intentional test seam
     rows = (_record_to_row_with_blob(r) for r in successes)
     inserted, skipped = _persist(conn, rows)

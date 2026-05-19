@@ -21,9 +21,9 @@ precedence.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
-from typing import Any, ClassVar, Final, Mapping
+from typing import Any, ClassVar, Final
 
 from codegenie.errors import VulnFeedFetchError
 from codegenie.result import Err, Ok, Result
@@ -71,9 +71,7 @@ class GhsaFeed:
         record = env.value
         if not isinstance(record, dict):
             return Err(
-                error=VulnParseError(
-                    reason="missing_required_field", details={"field": "advisory"}
-                )
+                error=VulnParseError(reason="missing_required_field", details={"field": "advisory"})
             )
         return _parse_ghsa_record(record)
 
@@ -103,9 +101,7 @@ def _parse_ghsa_record(
     cve_value = record.get("cve_id") or record.get("ghsa_id")
     if not isinstance(cve_value, str) or not cve_value:
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "cve_id"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "cve_id"})
         )
     if cve_value.startswith("CVE-"):
         cve_result = smart_construct_cve_id(cve_value)
@@ -115,28 +111,20 @@ def _parse_ghsa_record(
     elif cve_value.startswith("GHSA-"):
         cve_id = cve_value
     else:
-        return Err(
-            error=VulnParseError(
-                reason="bad_cve_id", details={"value": cve_value}
-            )
-        )
+        return Err(error=VulnParseError(reason="bad_cve_id", details={"value": cve_value}))
     published_result = extract_published_at(record.get("published_at"))
     if isinstance(published_result, Err):
         return published_result
     sev_raw = record.get("severity")
     if not isinstance(sev_raw, str) or sev_raw.lower() not in _SEVERITY_TO_LITERAL:
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "severity"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "severity"})
         )
     severity = _SEVERITY_TO_LITERAL[sev_raw.lower()]
     pkg_obj = record.get("package")
     if not isinstance(pkg_obj, dict):
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "package"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "package"})
         )
     eco_raw = pkg_obj.get("ecosystem")
     if not isinstance(eco_raw, str):
@@ -153,9 +141,7 @@ def _parse_ghsa_record(
         return pkg_name_result
     # GHSA does not always carry a structured introduced version; default
     # to "0.0.0" (open-from-genesis) when fixed_version is the only signal.
-    intro_result = smart_construct_semver(
-        record.get("introduced", "0.0.0"), field="introduced"
-    )
+    intro_result = smart_construct_semver(record.get("introduced", "0.0.0"), field="introduced")
     if isinstance(intro_result, Err):
         return intro_result
     fixed: str | None = None

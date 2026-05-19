@@ -32,9 +32,9 @@ ADRs: phase-3 ADR-0010 (Open/Closed seam — registered via decorator).
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
-from typing import Any, ClassVar, Final, Mapping
+from typing import Any, ClassVar, Final
 
 from codegenie.errors import VulnFeedFetchError
 from codegenie.result import Err, Ok, Result
@@ -84,9 +84,7 @@ class NvdFeed:
         record = env.value
         if not isinstance(record, dict):
             return Err(
-                error=VulnParseError(
-                    reason="missing_required_field", details={"field": "cve"}
-                )
+                error=VulnParseError(reason="missing_required_field", details={"field": "cve"})
             )
         return _parse_nvd_record(record)
 
@@ -114,11 +112,7 @@ def _parse_nvd_record(
 ) -> Result[VulnerabilityRecord, VulnParseError]:
     cve_obj = record.get("cve")
     if not isinstance(cve_obj, dict):
-        return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "cve"}
-            )
-        )
+        return Err(error=VulnParseError(reason="missing_required_field", details={"field": "cve"}))
     cve_result = smart_construct_cve_id(cve_obj.get("id"))
     if isinstance(cve_result, Err):
         return cve_result
@@ -135,9 +129,7 @@ def _parse_nvd_record(
     affected_obj = record.get("affected")
     if not isinstance(affected_obj, dict):
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "affected"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "affected"})
         )
     eco_raw = affected_obj.get("ecosystem")
     if not isinstance(eco_raw, str):

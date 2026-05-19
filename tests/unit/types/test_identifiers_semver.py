@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from codegenie.result import Err, Ok
-from codegenie.types.identifiers import SemverVersion, _NEWTYPE_REGISTRY
+from codegenie.types.identifiers import _NEWTYPE_REGISTRY, SemverVersion
 from codegenie.types.parsers import parse_semver
 
 

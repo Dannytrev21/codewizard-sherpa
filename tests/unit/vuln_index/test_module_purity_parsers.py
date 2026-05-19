@@ -73,6 +73,4 @@ def test_no_subprocess_anywhere_in_vuln_index() -> None:
     for py in VULN_INDEX_DIR.rglob("*.py"):
         tree = ast.parse(py.read_text())
         for imp in _collect_imports(tree):
-            assert "subprocess" not in imp, (
-                f"AC-N2 violation: subprocess import in {py}: {imp!r}"
-            )
+            assert "subprocess" not in imp, f"AC-N2 violation: subprocess import in {py}: {imp!r}"

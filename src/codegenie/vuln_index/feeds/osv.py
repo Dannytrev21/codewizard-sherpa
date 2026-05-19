@@ -26,9 +26,9 @@ the first ``introduced``/``fixed``/``last_affected`` triple into one
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
-from typing import Any, ClassVar, Final, Mapping
+from typing import Any, ClassVar, Final
 
 from codegenie.errors import VulnFeedFetchError
 from codegenie.result import Err, Ok, Result
@@ -76,9 +76,7 @@ class OsvFeed:
         record = env.value
         if not isinstance(record, dict):
             return Err(
-                error=VulnParseError(
-                    reason="missing_required_field", details={"field": "record"}
-                )
+                error=VulnParseError(reason="missing_required_field", details={"field": "record"})
             )
         return _parse_osv_record(record)
 
@@ -120,9 +118,7 @@ def _parse_osv_record(
         osv_id = record.get("id")
         if not isinstance(osv_id, str) or not osv_id:
             return Err(
-                error=VulnParseError(
-                    reason="missing_required_field", details={"field": "id"}
-                )
+                error=VulnParseError(reason="missing_required_field", details={"field": "id"})
             )
         cve_id = osv_id
     published_result = extract_published_at(record.get("published"))
@@ -143,16 +139,12 @@ def _parse_osv_record(
     affected = record.get("affected")
     if not isinstance(affected, list) or not affected:
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "affected"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "affected"})
         )
     head = affected[0]
     if not isinstance(head, dict):
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "affected[0]"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "affected[0]"})
         )
     pkg_obj = head.get("package")
     if not isinstance(pkg_obj, dict):
@@ -217,16 +209,12 @@ def _collapse_osv_events(
 ) -> Result[tuple[str, str | None, str | None], VulnParseError]:
     if not isinstance(ranges, list) or not ranges:
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "ranges"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "ranges"})
         )
     head = ranges[0]
     if not isinstance(head, dict):
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "ranges[0]"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "ranges[0]"})
         )
     events = head.get("events")
     if not isinstance(events, list) or not events:

@@ -143,9 +143,7 @@ def test_update_feed_digest_is_order_independent(fresh_index: VulnIndex) -> None
 
 # AC-D6 — digest changes under content change
 @pytest.mark.parametrize("mutation", ["add", "remove", "mutate_severity", "mutate_range"])
-def test_digest_changes_under_content_change(
-    fresh_index: VulnIndex, mutation: str
-) -> None:
+def test_digest_changes_under_content_change(fresh_index: VulnIndex, mutation: str) -> None:
     base = [
         _record(cve="CVE-2024-11111", pkg="lodash"),
         _record(cve="CVE-2024-22222", pkg="express"),

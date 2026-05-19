@@ -25,9 +25,7 @@ from codegenie.vuln_index.parsers import (
 )
 from codegenie.vuln_index.registry import default_feed_registry
 
-CASSETTES_DIR: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
-)
+CASSETTES_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
 
 
 # ---------------------------------------------------------------------------

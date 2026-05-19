@@ -5,7 +5,6 @@ Covers AC-X1..X10, AC-R6 (Open/Closed observable through --help output).
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -16,14 +15,12 @@ import structlog
 from click.testing import CliRunner
 
 from codegenie.cli import cli
-from codegenie.result import Err, Ok, Result
+from codegenie.result import Err, Result
 from codegenie.vuln_index import VulnIndex, default_feed_registry
 from codegenie.vuln_index.models import VulnerabilityRecord
 from codegenie.vuln_index.parsers import VulnParseError
 
-CASSETTES_DIR: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
-)
+CASSETTES_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +112,7 @@ def _make_broken_feed(source: str) -> type:
             timeout_s: float = 30.0,
         ) -> Iterator[bytes]:
             raise VulnFeedFetchError("simulated network failure")
-            yield b""  # noqa: never-reached
+            yield b""  # unreachable; keeps the generator signature honest
 
     _Broken.source = source  # type: ignore[attr-defined]
     return _Broken
@@ -250,9 +247,7 @@ def test_partial_parse_error_exits_4(
 
 
 # AC-X7 — existing-unmigrated DB → exit 7
-def test_existing_unmigrated_db_exits_7(
-    tmp_path: Path, runner: CliRunner
-) -> None:
+def test_existing_unmigrated_db_exits_7(tmp_path: Path, runner: CliRunner) -> None:
     db = tmp_path / "vi.sqlite"
     db.touch()
     result = runner.invoke(
@@ -269,7 +264,9 @@ def test_cli_flag_wins_over_env(
     tmp_path: Path,
     runner: CliRunner,
 ) -> None:
-    register_test_feed("cas", _make_cassette_feed("cas", [CASSETTES_DIR / "nvd" / "express-min.json"]))
+    register_test_feed(
+        "cas", _make_cassette_feed("cas", [CASSETTES_DIR / "nvd" / "express-min.json"])
+    )
     env_db = tmp_path / "env.sqlite"
     flag_db = tmp_path / "flag.sqlite"
     monkeypatch.setenv("CODEGENIE_VULN_INDEX_PATH", str(env_db))
@@ -288,7 +285,9 @@ def test_env_used_when_no_flag(
     tmp_path: Path,
     runner: CliRunner,
 ) -> None:
-    register_test_feed("cas", _make_cassette_feed("cas", [CASSETTES_DIR / "nvd" / "express-min.json"]))
+    register_test_feed(
+        "cas", _make_cassette_feed("cas", [CASSETTES_DIR / "nvd" / "express-min.json"])
+    )
     env_db = tmp_path / "env.sqlite"
     monkeypatch.setenv("CODEGENIE_VULN_INDEX_PATH", str(env_db))
     result = runner.invoke(cli, ["vuln-index", "refresh", "--source", "cas"])

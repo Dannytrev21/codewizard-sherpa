@@ -76,9 +76,7 @@ class FeedRegistry:
             origin = f"{cls.__module__}.{cls.__qualname__}"
             if source in self._classes:
                 prior = self._origins[source]
-                raise FeedRegistryError(
-                    f"duplicate feed source {source!r}: {prior} and {origin}"
-                )
+                raise FeedRegistryError(f"duplicate feed source {source!r}: {prior} and {origin}")
             self._classes[source] = cls
             self._origins[source] = origin
             _log.debug("vuln_index.feed.registered", source=source, origin=origin)

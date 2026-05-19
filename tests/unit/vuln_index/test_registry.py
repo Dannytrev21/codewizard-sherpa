@@ -110,6 +110,7 @@ def test_duplicate_registration_raises_with_both_origins(
             yield from ()
 
     with pytest.raises(FeedRegistryError) as exc_info:
+
         @isolated_registry.register("dup")
         class SecondFeed:
             source = "dup"
@@ -149,9 +150,7 @@ def test_omitting_one_feed_import_drops_one_source() -> None:
         print(",".join(default_feed_registry.feed_sources()))
         """
     )
-    proc = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=30
-    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     sources = proc.stdout.strip().split("\n")[-1]
     assert sources == "nvd,osv"

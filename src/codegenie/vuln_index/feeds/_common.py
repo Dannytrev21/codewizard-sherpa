@@ -34,9 +34,7 @@ __all__ = [
 # Closed-set membership for the parametric ``unsupported_ecosystem``
 # rejection (AC-P2). Same set as :data:`Ecosystem` Literal; identity check
 # rather than redefining the Literal.
-ECOSYSTEMS: Final[frozenset[str]] = frozenset(
-    {"npm", "pypi", "maven", "rubygems", "gomod"}
-)
+ECOSYSTEMS: Final[frozenset[str]] = frozenset({"npm", "pypi", "maven", "rubygems", "gomod"})
 
 
 def parse_record_envelope(raw: bytes) -> Result[object, VulnParseError]:
@@ -61,35 +59,23 @@ def parse_record_envelope(raw: bytes) -> Result[object, VulnParseError]:
 def smart_construct_cve_id(value: object) -> Result[str, VulnParseError]:
     """Run the S1-01 ``parse_cve_id`` smart constructor (AC-P1)."""
     if not isinstance(value, str):
-        return Err(
-            error=VulnParseError(
-                reason="bad_cve_id", details={"value": repr(value)[:64]}
-            )
-        )
+        return Err(error=VulnParseError(reason="bad_cve_id", details={"value": repr(value)[:64]}))
     parsed = parse_cve_id(value)
     if isinstance(parsed, Ok):
         return Ok(value=str(parsed.value))
-    return Err(
-        error=VulnParseError(reason="bad_cve_id", details={"value": value})
-    )
+    return Err(error=VulnParseError(reason="bad_cve_id", details={"value": value}))
 
 
 def smart_construct_package_name(value: object) -> Result[PackageName, VulnParseError]:
     """Wrap the package-name smart constructor (used after CPE / ecosystem map)."""
     if not isinstance(value, str):
         return Err(
-            error=VulnParseError(
-                reason="missing_required_field", details={"field": "package"}
-            )
+            error=VulnParseError(reason="missing_required_field", details={"field": "package"})
         )
     parsed = parse_package_name(value)
     if isinstance(parsed, Ok):
         return Ok(value=parsed.value)
-    return Err(
-        error=VulnParseError(
-            reason="missing_required_field", details={"field": "package"}
-        )
-    )
+    return Err(error=VulnParseError(reason="missing_required_field", details={"field": "package"}))
 
 
 def smart_construct_semver(value: object, *, field: str) -> Result[SemverVersion, VulnParseError]:
@@ -102,11 +88,7 @@ def smart_construct_semver(value: object, *, field: str) -> Result[SemverVersion
     parsed = parse_semver(value)
     if isinstance(parsed, Ok):
         return Ok(value=parsed.value)
-    return Err(
-        error=VulnParseError(
-            reason="bad_semver", details={"value": value, "field": field}
-        )
-    )
+    return Err(error=VulnParseError(reason="bad_semver", details={"value": value, "field": field}))
 
 
 def extract_published_at(value: object) -> Result[datetime, VulnParseError]:
@@ -116,21 +98,13 @@ def extract_published_at(value: object) -> Result[datetime, VulnParseError]:
     (UTC marker) on the input.
     """
     if not isinstance(value, str):
-        return Err(
-            error=VulnParseError(
-                reason="missing_tz", details={"value": repr(value)[:64]}
-            )
-        )
+        return Err(error=VulnParseError(reason="missing_tz", details={"value": repr(value)[:64]}))
     try:
         dt = datetime.fromisoformat(value)
     except ValueError:
-        return Err(
-            error=VulnParseError(reason="missing_tz", details={"value": value})
-        )
+        return Err(error=VulnParseError(reason="missing_tz", details={"value": value}))
     if dt.tzinfo is None:
-        return Err(
-            error=VulnParseError(reason="missing_tz", details={"value": value})
-        )
+        return Err(error=VulnParseError(reason="missing_tz", details={"value": value}))
     return Ok(value=dt)
 
 
@@ -138,8 +112,6 @@ def assert_ecosystem_registered(value: str) -> Result[Ecosystem, VulnParseError]
     """AC-P2 — closed-set membership check, parametric over :data:`ECOSYSTEMS`."""
     if value not in ECOSYSTEMS:
         return Err(
-            error=VulnParseError(
-                reason="unsupported_ecosystem", details={"ecosystem": value}
-            )
+            error=VulnParseError(reason="unsupported_ecosystem", details={"ecosystem": value})
         )
     return Ok(value=value)  # type: ignore[arg-type]

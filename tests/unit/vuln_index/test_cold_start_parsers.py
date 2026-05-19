@@ -16,12 +16,8 @@ import sys
 
 
 def _run(code: str) -> str:
-    proc = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=30
-    )
-    assert proc.returncode == 0, (
-        f"subprocess failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
-    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, f"subprocess failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
     return proc.stdout.strip().splitlines()[-1]
 
 

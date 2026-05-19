@@ -16,9 +16,7 @@ from hypothesis import strategies as st
 
 from codegenie.vuln_index.registry import default_feed_registry
 
-CASSETTES_DIR: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
-)
+CASSETTES_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "fixtures" / "cve-feeds"
 
 
 def _all_cassette_records() -> list[tuple[bytes, str]]:
