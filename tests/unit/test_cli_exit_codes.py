@@ -38,14 +38,28 @@ def tmp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_dispatch_table_snapshot() -> None:
     """AC-9 — locks the dispatch table contents. Adding a code requires
-    a story amendment + this snapshot's update — prevents silent drift."""
+    a story amendment + this snapshot's update — prevents silent drift.
+
+    S3-03 extends the snapshot with three new typed exceptions
+    (``VulnRefreshPartialError`` → 4, ``VulnFeedFetchError`` → 5,
+    ``VulnIndexMigrationNotApplied`` → 7) wired through the documented
+    additive-extension contract.
+    """
     from codegenie.cli import _EXIT_CODE_DISPATCH
+    from codegenie.errors import (
+        VulnFeedFetchError,
+        VulnIndexMigrationNotApplied,
+        VulnRefreshPartialError,
+    )
 
     assert _EXIT_CODE_DISPATCH == {
         AllProbesFailedError: 2,
         SchemaValidationError: 3,
+        VulnRefreshPartialError: 4,
         SymlinkRefusedError: 5,
         SecretLikelyFieldNameError: 6,
+        VulnFeedFetchError: 5,
+        VulnIndexMigrationNotApplied: 7,
     }
 
 

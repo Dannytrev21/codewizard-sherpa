@@ -227,6 +227,8 @@ PHASE3_NAMES = {
     "ErrorId",
     # S3-02 additive — VulnIndex kernel-tier additions.
     "PackageName",
+    # S3-03 additive — semver-2.0.0 newtype for AffectedRange parsing.
+    "SemverVersion",
 }
 # Closed-set ``Literal[...]`` aliases — counted in ``__all__`` but not in the
 # NewType-specific assertions (``__name__``, ``isinstance``, distinctness).

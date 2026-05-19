@@ -27,9 +27,10 @@ the exit-code dispatch table without exercising the full pipeline.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import click
 
@@ -39,6 +40,9 @@ from codegenie.errors import (
     SchemaValidationError,
     SecretLikelyFieldNameError,
     SymlinkRefusedError,
+    VulnFeedFetchError,
+    VulnIndexMigrationNotApplied,
+    VulnRefreshPartialError,
 )
 from codegenie.version import __version__
 
@@ -65,8 +69,11 @@ __all__ = ["cli"]
 _EXIT_CODE_DISPATCH: dict[type[CodegenieError], int] = {
     AllProbesFailedError: 2,
     SchemaValidationError: 3,
+    VulnRefreshPartialError: 4,
     SymlinkRefusedError: 5,
     SecretLikelyFieldNameError: 6,
+    VulnFeedFetchError: 5,
+    VulnIndexMigrationNotApplied: 7,
 }
 
 
@@ -910,3 +917,203 @@ def cache_gc() -> None:
     structlog = importlib.import_module("structlog")
     structlog.get_logger(__name__).info("cache.gc.stub")
     sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# vuln-index — Phase 3 S3-03 NVD/GHSA/OSV refresh CLI surface.
+#
+# Exit codes (threaded through ``_EXIT_CODE_DISPATCH``):
+#   - 0 — refresh completed (including the empty-feed clean-run case).
+#   - 4 — partial refresh (at least one parse error AND at least one success).
+#   - 5 — every registered feed's ``fetch()`` failed.
+#   - 7 — schema not migrated on an existing ``--index-path`` file.
+# ---------------------------------------------------------------------------
+
+
+_VULN_INDEX_PATH_ENV: Final[str] = "CODEGENIE_VULN_INDEX_PATH"
+
+
+def _vuln_index_default_path() -> Path:
+    """Default ``--index-path``: env override, else ``<cwd>/.codegenie/cache/...``."""
+    env_value = os.environ.get(_VULN_INDEX_PATH_ENV)
+    if env_value:
+        return Path(env_value)
+    return Path.cwd() / ".codegenie" / "cache" / "vuln-index.sqlite"
+
+
+def _refresh_source_choices() -> list[str]:
+    """Read CLI ``--source`` choices from the live feed registry (AC-X1)."""
+    registry = importlib.import_module("codegenie.vuln_index.registry")
+    return ["all", *registry.default_feed_registry.feed_sources()]
+
+
+def _apply_migrations(db_path: Path) -> None:
+    """Lazy-imported Alembic upgrade — cold-start fence (AC-N4)."""
+    from alembic import command  # noqa: PLC0415 — cold-start budget
+    from alembic.config import Config  # noqa: PLC0415
+
+    cfg = Config()
+    cfg.set_main_option(
+        "script_location",
+        str(Path(__file__).parent / "vuln_index" / "migrations"),
+    )
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    command.upgrade(cfg, "head")
+
+
+def _has_alembic_version(db_path: Path) -> bool:
+    """True iff ``db_path`` exists, opens, and has an ``alembic_version`` row."""
+    import sqlite3  # noqa: PLC0415 — already loaded by ``VulnIndex``; minor
+
+    try:
+        conn = sqlite3.connect(str(db_path), isolation_level=None)
+    except sqlite3.DatabaseError:
+        return False
+    try:
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'"
+        ).fetchone()
+        if row is None:
+            return False
+        rev = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+        return rev is not None
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        conn.close()
+
+
+@cli.group(name="vuln-index")
+def vuln_index() -> None:
+    """Vulnerability-index management subcommands (Phase 3 S3-03)."""
+
+
+@vuln_index.command(name="refresh")
+@click.option(
+    "--source",
+    "source",
+    default="all",
+    show_default=True,
+    help="Feed source to refresh; one of the registered sources or ``all``.",
+)
+@click.option(
+    "--index-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Path to the sqlite vuln-index file (default: $CODEGENIE_VULN_INDEX_PATH "
+        "or <cwd>/.codegenie/cache/vuln-index.sqlite)."
+    ),
+)
+def vuln_index_refresh(source: str, index_path: Path | None) -> None:
+    """Fetch + parse + idempotent UPSERT for one (or all) CVE feed source(s).
+
+    \b
+    Exit codes (per ``_EXIT_CODE_DISPATCH``):
+    - 0 — refresh succeeded (including the empty-delta case).
+    - 4 — at least one parse error AND at least one success (partial).
+    - 5 — every registered feed's ``fetch()`` raised.
+    - 7 — schema is not migrated (existing path without ``alembic_version``).
+    """
+    try:
+        _vuln_index_refresh_body(source=source, index_path=index_path)
+    except CodegenieError as exc:
+        exit_code = _EXIT_CODE_DISPATCH.get(type(exc), 1)
+        sys.exit(exit_code)
+    sys.exit(0)
+
+
+def _vuln_index_refresh_body(*, source: str, index_path: Path | None) -> None:
+    """Body of :func:`vuln_index_refresh`; raises typed exceptions instead of
+    invoking :func:`sys.exit`. Click adapter catches + maps via
+    :data:`_EXIT_CODE_DISPATCH`."""
+    structlog_mod = importlib.import_module("structlog")
+    registry_mod = importlib.import_module("codegenie.vuln_index.registry")
+    ingest_mod = importlib.import_module("codegenie.vuln_index.ingest")
+    index_mod = importlib.import_module("codegenie.vuln_index.index")
+    result_mod = importlib.import_module("codegenie.result")
+
+    log = structlog_mod.get_logger(__name__)
+    resolved_path = index_path if index_path is not None else _vuln_index_default_path()
+    registry = registry_mod.default_feed_registry
+
+    valid_choices = _refresh_source_choices()
+    if source not in valid_choices:
+        raise click.BadParameter(
+            f"--source must be one of {valid_choices}; got {source!r}",
+            param_hint="--source",
+        )
+
+    # AC-X7 / AC-X9 — migration gate.
+    if resolved_path.exists():
+        if not _has_alembic_version(resolved_path):
+            log.info("vuln_index.refresh.migration_missing", path=str(resolved_path))
+            raise VulnIndexMigrationNotApplied(str(resolved_path))
+    else:
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        _apply_migrations(resolved_path)
+
+    sources_to_run = list(registry.feed_sources()) if source == "all" else [source]
+
+    total_inserted = 0
+    total_skipped = 0
+    total_errors = 0
+    fetch_attempts = 0
+    fetch_failures = 0
+
+    idx = index_mod.VulnIndex(resolved_path)
+    try:
+        digest_before = idx.digest()
+        for src in sources_to_run:
+            feed = registry.get_feed(src)
+            fetch_attempts += 1
+            successes: list[Any] = []
+            errors: list[Any] = []
+            try:
+                chunks = list(feed.fetch())
+            except VulnFeedFetchError:
+                log.info("vuln_index.fetch_failed", source=src)
+                fetch_failures += 1
+                continue
+            for chunk in chunks:
+                result = feed.parse_one(chunk)
+                if isinstance(result, result_mod.Ok):
+                    successes.append(result.value)
+                else:
+                    errors.append(result.error)
+            stats = ingest_mod.ingest_records(idx, [*successes, *errors])
+            total_inserted += stats.inserted
+            total_skipped += stats.skipped
+            total_errors += len(stats.errors) + stats.errors_truncated
+            ingest_mod._update_feed_digest(idx, src, successes)  # noqa: SLF001
+        digest_after = idx.digest()
+        digest_changed = digest_after != digest_before
+    finally:
+        idx.close()
+
+    if sources_to_run and fetch_failures == fetch_attempts:
+        log.info(
+            "vuln_index.refresh.completed",
+            source=sources_to_run,
+            inserted=0,
+            skipped=0,
+            errors=0,
+            exit_code=5,
+            digest_changed=False,
+        )
+        raise VulnFeedFetchError("all feeds failed HTTP")
+
+    exit_code = 4 if (total_errors > 0 and total_inserted > 0) else 0
+    log.info(
+        "vuln_index.refresh.completed",
+        source=sources_to_run,
+        inserted=total_inserted,
+        skipped=total_skipped,
+        errors=total_errors,
+        exit_code=exit_code,
+        digest_changed=digest_changed,
+    )
+    if exit_code == 4:
+        raise VulnRefreshPartialError(
+            f"partial refresh: inserted={total_inserted} errors={total_errors}"
+        )

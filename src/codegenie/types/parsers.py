@@ -37,6 +37,7 @@ from codegenie.types.identifiers import (
     PrimitiveName,
     RecipeId,
     RegistryUrl,
+    SemverVersion,
     SignalKind,
     TransformId,
     TransformKind,
@@ -56,6 +57,7 @@ __all__ = [
     "parse_primitive_name",
     "parse_recipe_id",
     "parse_registry_url",
+    "parse_semver",
     "parse_signal_kind",
     "parse_transform_id",
     "parse_transform_kind",
@@ -83,6 +85,16 @@ _PACKAGE_NAME_RX: Final[re.Pattern[str]] = re.compile(
 # Ecosystem closed set — same membership as the ``Ecosystem`` Literal.
 _ECOSYSTEMS: Final[frozenset[str]] = frozenset({"npm", "pypi", "maven", "rubygems", "gomod"})
 _PINNED_SEMVER_RX: Final[re.Pattern[str]] = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.+-]+)?$")
+# Canonical semver-2.0.0 (https://semver.org/#spec-item-2). No-leading-zero
+# numeric identifiers; dot-separated pre-release with no-leading-zero rule on
+# purely numeric tokens; build-metadata is ``[0-9A-Za-z-]+`` dot-separated.
+# S3-03 ingest boundary — :func:`parse_semver` is the only call site.
+_SEMVER_RX: Final[re.Pattern[str]] = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+)
 _HOST_RX: Final[re.Pattern[str]] = re.compile(
     r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$"
 )
@@ -129,6 +141,7 @@ _npm_name_match = _regex_parser(_NPM_NAME_RX, max_len=214, name="PackageId.name"
 _package_name_match = _regex_parser(_PACKAGE_NAME_RX, max_len=214, name="PackageName")
 _pinned_semver_match = _regex_parser(_PINNED_SEMVER_RX, max_len=128, name="PackageId.version")
 _host_match = _regex_parser(_HOST_RX, max_len=253, name="RegistryUrl.host")
+_semver_match = _regex_parser(_SEMVER_RX, max_len=256, name="SemverVersion")
 
 
 def _is_ascii(s: str) -> bool:
@@ -327,3 +340,9 @@ def parse_attempt_number(n: int) -> Result[AttemptNumber, ParseError]:
     if n < 1 or n > 1024:
         return Err(error=ParseError(message="AttemptNumber: must be in 1..1024", value=repr(n)))
     return Ok(value=AttemptNumber(n))
+
+
+def parse_semver(s: str) -> Result[SemverVersion, ParseError]:
+    """External boundary: CVE-feed version string. semver-2.0.0 grammar. ADR-0010."""
+    r = _semver_match(s)
+    return Ok(value=SemverVersion(r.value)) if isinstance(r, Ok) else r

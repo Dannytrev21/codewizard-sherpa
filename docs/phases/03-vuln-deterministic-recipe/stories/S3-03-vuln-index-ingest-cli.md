@@ -1,7 +1,7 @@
 # Story S3-03 — NVD 2.0 / GHSA / OSV feed-registry kernel + size/depth caps + `codegenie vuln-index refresh` CLI
 
 **Step:** Step 3 — TCCM, BundleBuilder, VulnIndex, content-addressed cache
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S3-03.md`](_attempts/S3-03.md) for the per-AC evidence table + gate log)
 **Effort:** L
 **Depends on:** S3-02
 **ADRs honored:** Phase 3 ADR-0008 (`vuln_index.digest` participates in Bundle cache key — feed digests update on refresh, **deterministically across fetch order**), Phase 3 ADR-0010 (sum-type / newtype discipline — closed `Literal` reasons + `SemverVersion` newtype), Phase 0 ADR-0001 (BLAKE3 chokepoint via `codegenie.hashing`), production ADR-0005 (no LLM SDK in this loop — pure parsers; cold-start budget — `import codegenie.vuln_index.parsers` does NOT load `alembic` or `urllib.request`), production ADR-0033 (newtype identifiers + smart constructors)

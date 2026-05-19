@@ -38,6 +38,8 @@ make clean
 python -m codegenie --help
 python -m codegenie gather ./path/to/repo
 python -m codegenie audit verify --runs-dir .codegenie/context/runs --cache-dir .codegenie/cache --yaml-path .codegenie/context/repo-context.yaml
+# Phase-3 S3-03 — NVD/GHSA/OSV refresh into the sqlite VulnIndex
+python -m codegenie vuln-index refresh --source nvd --index-path .codegenie/cache/vuln-index.sqlite
 
 # Running a single test / test file / test module
 .venv/bin/pytest tests/unit/probes/layer_b/test_node_reflection.py -v

@@ -85,6 +85,18 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # recipe/ADRs/0011-honest-framing-capability-sandboxedpath-pluginslock.md
         # §Consequences (Phase 11 substitution seam exposed as ``PluginVerifier``).
         Path("src/codegenie/hashing.py"),
+        # S3-03 — additive ``vuln-index refresh`` CLI subgroup + three new
+        # typed-exception entries in ``_EXIT_CODE_DISPATCH`` (codes 4/5/7).
+        # adr: docs/phases/03-vuln-deterministic-recipe/ADRs/
+        # 0010-domain-modeling-discipline-scope-sum-type-and-newtypes.md
+        # §Consequences (markers-only exception subclasses + dispatch table
+        # extension is purely additive).
+        Path("src/codegenie/cli.py"),
+        # S3-03 — three new markers-only ``CodegenieError`` subclasses
+        # (``VulnRefreshPartialError`` / ``VulnFeedFetchError`` /
+        # ``VulnIndexMigrationNotApplied``) extending the typed-exception
+        # taxonomy. adr: same as ``cli.py`` above.
+        Path("src/codegenie/errors.py"),
     }
 )
 

@@ -43,6 +43,15 @@ PHASE2_NEW = {
     "DepGraphRegistryError",
 }
 
+# Phase 3 — S3-03 ``vuln-index refresh`` CLI markers. Threaded into the
+# ``_EXIT_CODE_DISPATCH`` table (codes 4/5/7); markers-only per existing
+# discipline.
+PHASE3_NEW = {
+    "VulnRefreshPartialError",
+    "VulnFeedFetchError",
+    "VulnIndexMigrationNotApplied",
+}
+
 EXPECTED_SUBCLASSES = (
     {
         # Phase 0 — eleven (corrected count; the prior draft of S1-01 listed 9).
@@ -60,6 +69,7 @@ EXPECTED_SUBCLASSES = (
     }
     | PHASE1_NEW
     | PHASE2_NEW
+    | PHASE3_NEW
 )
 
 DOCUMENTED_MODULE_SLUGS = {
@@ -81,6 +91,9 @@ DOCUMENTED_MODULE_SLUGS = {
     "tccm",
     # Phase 2 additions (S1-10) — depgraph strategy registry slug.
     "depgraph",
+    # Phase 3 additions (S3-03) — vuln-index refresh CLI raise sites.
+    "vuln-index",
+    "vuln_index",
 }
 MARKER_ALLOWED_DICT_KEYS = {
     "__module__",

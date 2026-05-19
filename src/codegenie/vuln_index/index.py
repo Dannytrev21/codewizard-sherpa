@@ -199,10 +199,19 @@ class VulnIndex:
                 )
             )
         # Coalesce empty-string sentinel → None at the read boundary
-        # (mirrors :func:`_row_to_record`; same reason).
+        # (mirrors :func:`_row_to_record`; same reason). The values originated
+        # from rows that already passed the SemverVersion field-validator on
+        # insert; the runtime ``mode="before"`` validator re-coerces strings
+        # so the typed annotation stays honest.
         fixed_out = row[1] if row[1] not in (None, "") else None
         last_affected_out = row[2] if row[2] not in (None, "") else None
-        return AffectedRange(introduced=row[0], fixed=fixed_out, last_affected=last_affected_out)
+        return AffectedRange.model_validate(
+            {
+                "introduced": row[0],
+                "fixed": fixed_out,
+                "last_affected": last_affected_out,
+            }
+        )
 
     def digest(self) -> BlobDigest:
         """Return ``BlobDigest`` (64-hex, no prefix) summarizing the meta inputs."""
@@ -330,10 +339,12 @@ def _row_to_record(row: tuple[object, ...]) -> VulnerabilityRecord:
         cve_id=CveId(str(cve_id)),
         ecosystem=_narrow_ecosystem(str(ecosystem)),
         package=PackageName(str(package)),
-        affected_range=AffectedRange(
-            introduced=str(introduced),
-            fixed=fixed_out,
-            last_affected=last_affected_out,
+        affected_range=AffectedRange.model_validate(
+            {
+                "introduced": str(introduced),
+                "fixed": fixed_out,
+                "last_affected": last_affected_out,
+            }
         ),
         severity=_narrow_severity(str(severity)),
         published_at=datetime.fromisoformat(str(published_at)),

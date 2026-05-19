@@ -106,6 +106,16 @@ PackageName = NewType("PackageName", str)
 # ``severity`` / ``source`` Literal-discipline on ``VulnerabilityRecord``).
 Ecosystem = Literal["npm", "pypi", "maven", "rubygems", "gomod"]
 
+# --- Phase-3 catalog (S3-03 additive — semver parsing boundary) -----------
+
+# Canonical semver-2.0.0 version string. The smart constructor
+# :func:`codegenie.types.parsers.parse_semver` is the only sanctioned way to
+# build a :data:`SemverVersion` from external input. S3-03's CVE-feed
+# parsers route ``AffectedRange.introduced / fixed / last_affected`` through
+# it at the ingest boundary. Production ADR-0033 §1 (primitive obsession)
+# names version strings explicitly as a "review-blocker" raw-``str`` site.
+SemverVersion = NewType("SemverVersion", str)
+
 
 __all__ = [
     "AttemptNumber",
@@ -127,6 +137,7 @@ __all__ = [
     "ProbeId",
     "RecipeId",
     "RegistryUrl",
+    "SemverVersion",
     "SignalKind",
     "SkillId",
     "TaskClassId",
@@ -173,6 +184,11 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     ),
     "Ecosystem": (
         "Phase-3 closed-set ecosystem tag (ADR-0010); S3-02 VulnIndex.lookup ecosystem filter."
+    ),
+    # Phase-3 (S3-03 — CVE-feed ingest additive).
+    "SemverVersion": (
+        "Phase-3 semver-2.0.0 version string (ADR-0010, ADR-0033); "
+        "S3-03 AffectedRange parse boundary."
     ),
 }
 

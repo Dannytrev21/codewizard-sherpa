@@ -54,6 +54,10 @@ __all__ = [
     "TCCMLoadError",
     # Phase 2 (Layers B–G) — S1-10.
     "DepGraphRegistryError",
+    # Phase 3 — S3-03 vuln-index refresh CLI.
+    "VulnRefreshPartialError",
+    "VulnFeedFetchError",
+    "VulnIndexMigrationNotApplied",
 ]
 
 
@@ -166,6 +170,32 @@ class TCCMLoadError(CodegenieError):
     ``"unknown_query_primitive: …"``. Marker only: no ``__init__``, no
     class state. Consumers parse the prefix; the structured reason lives at
     the catch site (mirrors ``MalformedYAMLError`` / ``CatalogLoadError``)."""
+
+
+# --- Phase 3 (S3-03) — vuln-index refresh markers ----------------------------
+
+
+class VulnRefreshPartialError(CodegenieError):
+    """Raised by the ``vuln-index refresh`` CLI when ingest produced at least
+    one successfully-parsed record AND at least one ``VulnParseError`` —
+    operator sees a non-zero exit (``4``) so the cron alerts on partial
+    refresh. Marker only — the structured counts live on the emitted
+    ``vuln_index.refresh.completed`` event (S3-03 AC-X10)."""
+
+
+class VulnFeedFetchError(CodegenieError):
+    """Raised by the ``vuln-index refresh`` CLI when every registered feed's
+    ``fetch()`` raised (e.g., simulated ``URLError``). Exit ``5``. Marker
+    only — per-feed failure details land on ``vuln_index.fetch_failed``
+    structured log lines (S3-03 AC-X6)."""
+
+
+class VulnIndexMigrationNotApplied(CodegenieError):
+    """Raised by the ``vuln-index refresh`` CLI when ``--index-path`` points
+    at an existing-but-unmigrated sqlite file (no ``alembic_version`` row).
+    Exit ``7`` (6 is taken by :class:`SecretLikelyFieldNameError`). Operator
+    must run ``codegenie vuln-index migrate`` (S3-02) or remove the file so
+    the CLI's auto-apply path can recreate it (S3-03 AC-X7 / AC-X9)."""
 
 
 class DepGraphRegistryError(CodegenieError):

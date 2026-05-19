@@ -70,10 +70,20 @@ def multi_seeded_index(tmp_path: Path, alembic_upgrade) -> Iterator[VulnIndex]: 
 
 
 def test_all_excludes_test_seams() -> None:
-    """AC-A2 — _raw_insert / _raw_set_meta NOT in __all__."""
+    """AC-A2 — _raw_insert / _raw_set_meta NOT in __all__.
+
+    S3-03 extends the public surface additively with the feed-registry kernel
+    (``Feed`` protocol, ``FeedRegistry``, decorator) + ingest pipeline
+    (``IngestStats``, ``ingest_records``) + the parse-error model
+    (``VulnParseError`` / ``VulnParseException``). The invariant this test
+    guards is still ``_raw_*`` test seams stay OUT of ``__all__`` — checked
+    as a subset assertion rather than an equality so the surface can grow
+    additively per the "Extension by addition" commitment in CLAUDE.md.
+    """
     import codegenie.vuln_index as pkg
 
-    assert set(pkg.__all__) == {
+    public = set(pkg.__all__)
+    assert public >= {
         "AffectedRange",
         "VulnIndex",
         "VulnIndexConfigError",
@@ -81,6 +91,9 @@ def test_all_excludes_test_seams() -> None:
         "VulnIndexLookupError",
         "VulnerabilityRecord",
     }
+    # S3-02 invariant — internal seams remain private.
+    assert "_raw_insert" not in public
+    assert "_raw_set_meta" not in public
 
 
 def test_raw_insert_rejects_non_record(fresh_index: VulnIndex) -> None:
