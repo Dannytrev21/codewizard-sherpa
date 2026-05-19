@@ -126,9 +126,10 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
     # they emit ``ScannerSkipped(reason="upstream_unavailable")``. Phase 2
     # S6-05 added ``ownership`` (Layer E CODEOWNERS parser) — universal,
     # emits ``OwnershipSlice(source_path=None, entries=())`` with
-    # ``errors=["codeowners_absent"]`` when no CODEOWNERS file is present;
+    # ``warnings=["codeowners_absent"]`` when no CODEOWNERS file is present;
     # the schema slice still lands in the envelope (a Planner-actionable
-    # low-information observation, not a probe crash).
+    # low-information observation, not a probe error). Phase-shakedown F-06
+    # moved this from ``errors`` to ``warnings``.
     expected = {
         "language_detection",
         "ci",

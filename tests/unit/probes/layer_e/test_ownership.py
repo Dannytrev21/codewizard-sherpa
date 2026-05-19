@@ -147,7 +147,11 @@ def test_ownership_absent_yields_low_confidence_no_raise(
     slice_ = op.OwnershipSlice.model_validate(output.schema_slice)
     assert slice_.entries == ()
     assert slice_.source_path is None
-    assert "codeowners_absent" in output.errors
+    # codeowners_absent is a benign typed observation, not a probe error
+    # (phase-shakedown F-06 moved it from errors to warnings so smoke runs
+    # on fixtures without a CODEOWNERS file don't land exit_status='error').
+    assert "codeowners_absent" in output.warnings
+    assert output.errors == []
 
 
 def test_ownership_size_cap_enforced(

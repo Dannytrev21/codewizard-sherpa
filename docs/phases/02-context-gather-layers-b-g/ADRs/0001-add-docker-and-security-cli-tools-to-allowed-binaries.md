@@ -30,6 +30,8 @@ Adopt **Option C — one Phase-2 omnibus ADR**. `exec.ALLOWED_BINARIES` is exten
 
 The total Phase-2 addition is therefore **ten** entries, taking `ALLOWED_BINARIES` from Phase 1's `{"git", "node"}` (size 2) to the Phase-2-end closed set of size 12. All other paragraphs of this ADR (Pattern fit, Consequences, Reversibility, Evidence/sources) apply to the ten-entry set unchanged.
 
+**Correction (2026-05-19, phase-shakedown F-06):** the 2026-05-15 amendment named `ripgrep` — the **package name** (homebrew / apt). Every other entry in `ALLOWED_BINARIES` is a **binary name** (the value matched against `argv[0]` by `run_allowlisted`). `ripgrep` installs the binary `rg`; the curated-pattern probe (`localv2.md §5.6 G3`) invokes `rg` and was failing `DisallowedSubprocessError` on every smoke run because `"ripgrep" != "rg"`. Allowlist entry corrected to `rg`; the named-trigger probe and governance rationale are unchanged. This is a name-correction, not a new admission — the size-12 / size-16 closed-set claims stand.
+
 ## Tradeoffs
 
 | Gain | Cost |

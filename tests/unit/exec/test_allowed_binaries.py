@@ -3,7 +3,7 @@
 This module pins the Phase-2 closed-set frozen at:
 
     {"git", "node", "semgrep", "syft", "grype", "gitleaks",
-     "scip-typescript", "ast-grep", "ripgrep", "tree-sitter",
+     "scip-typescript", "ast-grep", "rg", "tree-sitter",
      "docker", "strace"}
 
 — exactly twelve entries — and verifies the sensitive-env-strip defense
@@ -43,13 +43,19 @@ EXPECTED_NEW_BINARIES: frozenset[str] = frozenset(
         "gitleaks",
         "scip-typescript",
         "ast-grep",
-        "ripgrep",
+        "rg",
         "tree-sitter",
         "docker",
         "strace",
     }
 )
-EXPECTED_TOTAL: frozenset[str] = frozenset({"git", "node"}) | EXPECTED_NEW_BINARIES
+# Phase 3 ratchet (03-ADR-0012): the closed set extends with the four Phase-3
+# additions. This test file is the Phase-2 family — exact-equality assertions
+# below use the ratchet-extended union so a Phase-3-aware codepath survives.
+_PHASE_3_NEW_BINARIES: frozenset[str] = frozenset({"npm", "bwrap", "sandbox-exec", "jq"})
+EXPECTED_TOTAL: frozenset[str] = (
+    frozenset({"git", "node"}) | EXPECTED_NEW_BINARIES | _PHASE_3_NEW_BINARIES
+)
 
 SENSITIVE_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_API_KEY",
@@ -80,16 +86,19 @@ def _make_spawn_spy(monkeypatch: pytest.MonkeyPatch) -> mock.AsyncMock:
 # ───────────────────────────────────────────────────────────────────────────
 
 
-def test_allowed_binaries_is_exact_twelve_entry_set() -> None:
-    """AC-1 — strict equality. A silent addition (e.g. ``"bash"``) or a
-    silent deletion (e.g. dropping ``"git"``) fails this test."""
+def test_allowed_binaries_is_exact_sixteen_entry_set() -> None:
+    """AC-1 (Phase-3-ratcheted) — strict equality. Phase 2 12-baseline +
+    Phase 3 03-ADR-0012's four additions (``npm``, ``bwrap``,
+    ``sandbox-exec``, ``jq``) = sixteen-entry closed set. A silent
+    addition (e.g. ``"bash"``) or silent deletion (e.g. dropping ``"git"``)
+    fails this test."""
     assert ALLOWED_BINARIES == EXPECTED_TOTAL
-    assert len(ALLOWED_BINARIES) == 12
+    assert len(ALLOWED_BINARIES) == 16
 
 
 def test_every_new_binary_is_present() -> None:
     """AC-2 (code-side) — every named-trigger entry from 02-ADR-0001 (eight)
-    + the two Layer G additions (``ast-grep``, ``ripgrep``; 02-ADR-0001
+    + the two Layer G additions (``ast-grep``, ``rg``; 02-ADR-0001
     amendment per AC-10) is registered."""
     for name in EXPECTED_NEW_BINARIES:
         assert name in ALLOWED_BINARIES, f"missing from ALLOWED_BINARIES: {name!r}"

@@ -37,6 +37,9 @@ or ``subprocess.run``.
 Phase 2 (02-ADR-0001) extends :data:`ALLOWED_BINARIES` with the ten Layer B/C/G
 tools listed in
 ``docs/phases/02-context-gather-layers-b-g/ADRs/0001-add-docker-and-security-cli-tools-to-allowed-binaries.md``.
+Phase 3 (03-ADR-0012) extends with four binaries (``npm``, ``bwrap``,
+``sandbox-exec``, ``jq``) — see
+``docs/phases/03-vuln-deterministic-recipe/ADRs/0012-amend-allowed-binaries-npm-bwrap-sandbox-exec-jq.md``.
 Future additions are ADR-amend or new-phase-ADR; no silent expansion.
 
 Sources:
@@ -90,9 +93,15 @@ __all__ = [
 # Phase 0 allowlist was ``{"git"}``; Phase 1 ADR-0001 added ``node``; Phase 2
 # 02-ADR-0001 (and its AC-10 amendment) extends with ten Layer B/C/G tools
 # listed in ``docs/phases/02-context-gather-layers-b-g/ADRs/0001-add-docker-
-# and-security-cli-tools-to-allowed-binaries.md``. Every addition is a
-# deliberate-PR change with mandatory review (ADR-0012 §Decision); future
-# additions are ADR-amend or new-phase-ADR — no silent expansion.
+# and-security-cli-tools-to-allowed-binaries.md``. Phase 3 (03-ADR-0012,
+# ``docs/phases/03-vuln-deterministic-recipe/ADRs/0012-amend-allowed-binaries-
+# npm-bwrap-sandbox-exec-jq.md``) extends with ``npm`` (recipe engine + Stage-6
+# validate), ``bwrap`` (Linux SubprocessJail adapter — wrapper-pattern flips to
+# allowlisted; the BwrapAdapter goes through ``run_external_cli`` rather than
+# bypassing the chokepoint), ``sandbox-exec`` (macOS SubprocessJail adapter),
+# and ``jq`` (operator-tooling adjunct). Every addition is a deliberate-PR
+# change with mandatory review (Phase 0 ADR-0012 §Decision); future additions
+# are ADR-amend or new-phase-ADR — no silent expansion.
 ALLOWED_BINARIES: frozenset[str] = frozenset(
     {
         "git",
@@ -103,10 +112,20 @@ ALLOWED_BINARIES: frozenset[str] = frozenset(
         "gitleaks",
         "scip-typescript",
         "ast-grep",
-        "ripgrep",
+        # ``rg`` is the actual binary name; ``ripgrep`` is the package name
+        # (homebrew / apt). Every other entry in this allowlist is a binary
+        # name. Was ``"ripgrep"`` until phase-shakedown F-06 surfaced the
+        # ``DisallowedSubprocessError`` it caused on every smoke run. See
+        # 02-ADR-0001 §Correction (2026-05-19).
+        "rg",
         "tree-sitter",
         "docker",
         "strace",
+        # Phase 3 03-ADR-0012 additions:
+        "npm",  # recipe engine + Stage-6 validate (npm install / npm test)
+        "bwrap",  # Linux SubprocessJail adapter (ADR-0006 / S4-02)
+        "sandbox-exec",  # macOS SubprocessJail adapter (ADR-0006 / S4-03)
+        "jq",  # operator-tooling adjunct for audit verify / integration tests
     }
 )
 
@@ -291,10 +310,13 @@ async def _spawn_with_invariants(
       calling this helper.
     - :func:`run_external_cli` allowlist-checks the **inner** ``argv[0]`` at
       its boundary, then calls this helper on the bwrap path with a
-      ``bwrap``-prefixed argv (``bwrap`` itself is intentionally NOT in
-      ``ALLOWED_BINARIES`` per 02-ADR-0001 §Consequences last bullet; the
-      wrapper-pattern exception is structural — the spawn lives inside this
-      module, same trust tier as the chokepoint itself).
+      ``bwrap``-prefixed argv. Phase 3 (03-ADR-0012) flipped ``bwrap`` into
+      ``ALLOWED_BINARIES`` so the Phase-3 ``BwrapAdapter`` (S4-02) can route
+      through :func:`run_allowlisted` without bypassing the chokepoint; the
+      Phase-2 ``run_external_cli`` bwrap path remains structural — the spawn
+      still lives inside this module, same trust tier as the chokepoint.
+      ``bubblewrap`` (the canonical long name) intentionally stays out of
+      ``ALLOWED_BINARIES``; operators must invoke as ``bwrap``.
     """
     binary = argv[0]
     loop = asyncio.get_event_loop()
@@ -361,15 +383,15 @@ async def _spawn_with_invariants(
 #
 # Adds optional ``bubblewrap`` egress containment, a 64 MB stdout/stderr cap
 # with tail preservation, env-strip to the Phase 0 baseline, and warn-once
-# behavior. ``bwrap``/``bubblewrap`` are *intentionally* NOT in
-# ``ALLOWED_BINARIES`` (02-ADR-0001 §Consequences last bullet; pinned by the
-# closed-set regression test
-# ``tests/unit/test_exec.py::test_allowed_binaries_closed_set_regression``):
-# the bwrap spawn lives **inside this module** via :func:`_spawn_bwrap_wrapped`
-# / :func:`_spawn_with_invariants` (same file, same trust tier as
-# :func:`run_allowlisted`). The wrapper-pattern exception is the recorded
-# decision; the inner probe binary (``argv[0]`` of the caller's argv) is what
-# gets allowlist-checked at the boundary of :func:`run_external_cli`.
+# behavior. Phase 3 (03-ADR-0012) flipped ``bwrap`` into ``ALLOWED_BINARIES``
+# so the Phase-3 ``BwrapAdapter`` (S4-02) routes through
+# :func:`run_allowlisted`; the Phase-2 ``run_external_cli`` bwrap path still
+# spawns inside this module via :func:`_spawn_with_invariants` (same trust
+# tier as :func:`run_allowlisted`). The canonical long name ``bubblewrap``
+# remains intentionally OUT of ``ALLOWED_BINARIES`` (closed-set regression
+# guard in ``tests/unit/test_exec.py``) — operators must invoke as ``bwrap``.
+# The inner probe binary (``argv[0]`` of the caller's argv) is what gets
+# allowlist-checked at the boundary of :func:`run_external_cli`.
 #
 # See:
 # - ``docs/phases/02-context-gather-layers-b-g/phase-arch-design.md``
@@ -556,8 +578,10 @@ async def run_external_cli(
     )
     try:
         if status == "wrapped":
-            # bwrap path: spawn directly inside this module (bwrap NOT in
-            # ALLOWED_BINARIES; wrapper-pattern exception per 02-ADR-0001).
+            # bwrap path: spawn directly inside this module. Phase 3 03-ADR-0012
+            # admits ``bwrap`` to ALLOWED_BINARIES for S4-02's BwrapAdapter;
+            # for the Phase-2 ``run_external_cli`` path the wrapper-pattern
+            # still spawns in-module (same trust tier as the chokepoint).
             result = await _spawn_with_invariants(
                 wrapped_argv,
                 cwd=resolved_cwd,

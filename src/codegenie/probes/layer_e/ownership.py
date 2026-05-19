@@ -118,13 +118,20 @@ class OwnershipProbe(Probe):
         t0 = time.perf_counter()
         found: list[Path] = [repo.root / loc for loc in _LOCATIONS if (repo.root / loc).exists()]
         if not found:
+            # CODEOWNERS-absent is a benign typed observation (most repos
+            # don't have one). It IS information worth surfacing — hence
+            # confidence='low' + the warning — but it is NOT a probe error.
+            # Landing it under ``errors`` previously caused the coordinator
+            # to record ``exit_status='error'`` for every smoke run on
+            # fixtures without a CODEOWNERS file, masking real probe errors
+            # downstream (phase-shakedown F-06).
             return ProbeOutput(
                 schema_slice=OwnershipSlice(source_path=None, entries=()).model_dump(mode="json"),
                 raw_artifacts=[],
                 confidence="low",
                 duration_ms=int((time.perf_counter() - t0) * 1000),
-                warnings=[],
-                errors=["codeowners_absent"],
+                warnings=["codeowners_absent"],
+                errors=[],
             )
 
         primary = found[0]

@@ -589,25 +589,33 @@ def test_probe_no_subprocess_calls() -> None:
 
 
 def test_allowed_binaries_invariant_phase2() -> None:
-    """AC-37. Phase-2-end invariant: ``ALLOWED_BINARIES`` is the twelve-entry
-    closed set under Phase 2 02-ADR-0001 (Phase 0 + Phase 1 ADR-0001 ``node``
-    + the ten Layer B/C/G tools). Pinning the full set at the deployment
-    boundary protects against silent additions outside an ADR."""
+    """AC-37 (Phase-3-ratcheted). The Phase-2 twelve-entry closed set
+    under 02-ADR-0001 + Phase 3's four additions under 03-ADR-0012
+    (``npm``, ``bwrap``, ``sandbox-exec``, ``jq``) = sixteen entries.
+    Pinning the full set at the deployment boundary protects against
+    silent additions outside an ADR."""
     from codegenie.exec import ALLOWED_BINARIES
 
     assert ALLOWED_BINARIES == {
+        # Phase 0 + Phase 1 ADR-0001 baseline.
         "git",
         "node",
+        # Phase 2 02-ADR-0001 ten Layer B/C/G tools.
         "semgrep",
         "syft",
         "grype",
         "gitleaks",
         "scip-typescript",
         "ast-grep",
-        "ripgrep",
+        "rg",
         "tree-sitter",
         "docker",
         "strace",
+        # Phase 3 03-ADR-0012 additions.
+        "npm",
+        "bwrap",
+        "sandbox-exec",
+        "jq",
     }
 
 

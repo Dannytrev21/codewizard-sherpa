@@ -314,7 +314,11 @@ async def test_env_extra_drops_sensitive_keys(
 # tools). Earlier history: Phase 0 = ``{"git"}``; Phase 1 added ``node``.
 # ───────────────────────────────────────────────────────────────────────────
 
-_PHASE_2_EXPECTED_BINARIES: frozenset[str] = frozenset(
+# Phase 3 (03-ADR-0012) ratchet: extends the Phase-2 baseline with ``npm``,
+# ``bwrap``, ``sandbox-exec``, ``jq``. The expected set is the union of the
+# Phase-2 baseline plus the Phase-3 additions. Test_node_in_allowed_binaries
+# below uses the union — the equality assertion still catches silent drift.
+_PHASE_2_BASELINE_BINARIES: frozenset[str] = frozenset(
     {
         "git",
         "node",
@@ -324,20 +328,23 @@ _PHASE_2_EXPECTED_BINARIES: frozenset[str] = frozenset(
         "gitleaks",
         "scip-typescript",
         "ast-grep",
-        "ripgrep",
+        "rg",
         "tree-sitter",
         "docker",
         "strace",
     }
 )
+_PHASE_3_NEW_BINARIES: frozenset[str] = frozenset({"npm", "bwrap", "sandbox-exec", "jq"})
+_PHASE_2_EXPECTED_BINARIES: frozenset[str] = _PHASE_2_BASELINE_BINARIES | _PHASE_3_NEW_BINARIES
 
 
 def test_node_in_allowed_binaries() -> None:
-    """Phase 2 02-ADR-0001: ``ALLOWED_BINARIES`` is the twelve-entry set
-    above. The equality assertion catches a mutant that silently widens
-    the set (e.g. adds ``"bash"``) or drops an entry. ``node`` (Phase 1
-    ADR-0001) remains pinned by ``in`` for the historical-precedent
-    rationale.
+    """Phase 3 ratchet: Phase 2 02-ADR-0001's twelve-entry baseline plus
+    Phase 3 03-ADR-0012's four additions (``npm``, ``bwrap``,
+    ``sandbox-exec``, ``jq``) = sixteen-entry closed set. The equality
+    assertion catches a mutant that silently widens the set (e.g. adds
+    ``"bash"``) or drops an entry. ``node`` (Phase 1 ADR-0001) remains
+    pinned by ``in`` for the historical-precedent rationale.
     """
     from codegenie.exec import ALLOWED_BINARIES
 
@@ -355,11 +362,14 @@ def test_node_in_allowed_binaries() -> None:
         "curl",
         "wget",
         "ssh",
-        # Phase 2 S1-06 / AC-15 additions:
-        # `bwrap`/`bubblewrap` is the wrapper-pattern exception
-        # (02-ADR-0001 §Consequences). The other seven are adjacent dangerous
-        # binaries Phase 2 calls out as never-allowlisted.
-        "bwrap",
+        # Phase 2 S1-06 / AC-15 additions — adjacent dangerous binaries
+        # Phase 2 calls out as never-allowlisted. Note: ``bwrap`` was
+        # removed by 03-ADR-0012 (Phase 3 S4-02 BwrapAdapter — now
+        # allowlisted). ``bubblewrap`` (canonical full name) STAYS in this
+        # list: 03-ADR-0012 admits only ``"bwrap"`` (the short symlink);
+        # operators must invoke as ``"bwrap"``, so an operator whose distro
+        # packages the tool as ``bubblewrap``-only must still fail the
+        # allowlist check.
         "bubblewrap",
         "eval",
         "exec",
@@ -372,13 +382,28 @@ def test_node_in_allowed_binaries() -> None:
 )
 def test_allowed_binaries_closed_set_regression(denied: str) -> None:
     """Open/Closed regression: a PR that adds any of these binaries MUST land
-    a Phase ADR first (Phase 0 ADR-0012 + Phase 1 ADR-0001 + Phase 2 02-ADR-0001).
-    This test is the structural guard pinning the closed-set discipline
-    against drift.
+    a Phase ADR first (Phase 0 ADR-0012 + Phase 1 ADR-0001 + Phase 2 02-ADR-0001
+    + Phase 3 03-ADR-0012). This test is the structural guard pinning the
+    closed-set discipline against drift. The symmetric ratchet: ``bwrap`` was
+    removed when 03-ADR-0012 admitted it; ``bubblewrap`` stays — the policy
+    on the long-name companion is structurally pinned at two locations
+    (this parametrize + the dedicated assertion below).
     """
     from codegenie.exec import ALLOWED_BINARIES
 
     assert denied not in ALLOWED_BINARIES
+
+
+def test_bubblewrap_long_name_remains_disallowed() -> None:
+    """03-ADR-0012 admits only the short ``"bwrap"`` symlink to
+    ``ALLOWED_BINARIES``. The canonical long name ``"bubblewrap"`` MUST
+    stay out — operators must invoke as ``"bwrap"`` so the closed-set
+    discipline survives the polarity flip on the short name.
+    """
+    from codegenie.exec import ALLOWED_BINARIES
+
+    assert "bubblewrap" not in ALLOWED_BINARIES
+    assert "bwrap" in ALLOWED_BINARIES  # paired assertion — the short name IS allowlisted
 
 
 async def test_node_invocation_env_keyset_subset_of_safe_baseline(

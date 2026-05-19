@@ -35,7 +35,15 @@ def _walk_phase3_packages(packages: Iterable[str]) -> None:
     """Eagerly import every submodule of each Phase 3 package.
 
     A syntax / import error here surfaces as ``ImportError`` with the failing
-    module name — fix the module before re-running the fence (Rule 12)."""
+    module name — fix the module before re-running the fence (Rule 12).
+
+    Calls :func:`importlib.invalidate_caches` first so the planted-positive
+    tests reliably surface new files written after Python's ``FileFinder``
+    cached the package directory. Without this, sub-second-mtime writes
+    (the common case in pytest) leave the importer with a stale directory
+    listing — the walker would not discover the planted module and the
+    scanner would silently return an empty set (phase-shakedown F-01)."""
+    importlib.invalidate_caches()
     for pkg_name in packages:
         pkg = importlib.import_module(pkg_name)
         for mod_info in pkgutil.walk_packages(pkg.__path__, prefix=f"{pkg_name}."):
