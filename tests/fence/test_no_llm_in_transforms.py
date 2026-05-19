@@ -114,13 +114,23 @@ def test_scanner_catches_each_planted_sdk_under_phase3(
         encoding="utf-8",
     )
 
-    # 3. Ensure the Phase 3 packages are re-imported fresh so the walker
-    #    actually picks up the new submodule.
+    # 3. Snapshot — and clear — only codegenie.plugins.* in sys.modules so
+    #    the walker re-imports them fresh and picks up the planted submodule.
+    #    Crucially we do NOT pop ``codegenie.transforms.*`` — after S4-04
+    #    ``codegenie.transforms._forward`` re-exports
+    #    ``codegenie.plugins.sandbox_path.SandboxedPath``; popping plugins
+    #    forces a re-import that creates a NEW ``SandboxedPath`` class
+    #    identity. ``codegenie.transforms.sandbox_jail.JailedSubprocessSpec``
+    #    (already loaded by other tests at collection time) has its
+    #    ``cwd: SandboxedPath`` field bound to the OLD class; consumers
+    #    constructing a NEW ``SandboxedPath`` then trigger Pydantic
+    #    ``model_type`` validation errors downstream. Restoring the OLD
+    #    plugins modules from snapshot keeps identity stable.
+    snapshot: dict[str, object] = {}
     for mod_name in list(sys.modules.keys()):
         if mod_name == "codegenie.plugins" or mod_name.startswith("codegenie.plugins."):
-            sys.modules.pop(mod_name, None)
-        if mod_name == sdk:
-            sys.modules.pop(mod_name, None)
+            snapshot[mod_name] = sys.modules.pop(mod_name)
+    sys.modules.pop(sdk, None)
 
     try:
         leaked = _scan_phase3_runtime_closure()
@@ -132,11 +142,14 @@ def test_scanner_catches_each_planted_sdk_under_phase3(
         if planted_path.exists():
             planted_path.unlink()
         sys.modules.pop(sdk, None)
-        # Re-import so subsequent tests see a clean Phase 3 closure.
+        # Drop the freshly-imported (post-scan) plugins modules and restore
+        # the snapshot — subsequent tests see the SAME class identities they
+        # had at collection time.
         for mod_name in list(sys.modules.keys()):
             if mod_name == "codegenie.plugins" or mod_name.startswith("codegenie.plugins."):
                 sys.modules.pop(mod_name, None)
-        importlib.import_module("codegenie.plugins")
+        for mod_name, mod in snapshot.items():
+            sys.modules[mod_name] = mod  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------

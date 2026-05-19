@@ -1,15 +1,18 @@
-"""Phase-3-Step-1 forward-reference shim — S1-04 AC-5 / AC-5a / AC-5b.
+"""Phase-3-Step-1 forward-reference shim — S1-04 AC-5 / AC-5a / AC-5b
+(post-S4-04 substitution).
 
 ``CapabilityBundle`` and ``SandboxedPath`` are *eventually* owned by their
-respective S4-05 / S4-04 modules. Until those stories land, this shim is the
+respective S4-05 / S4-04 modules. Until S4-05 lands, this shim is the
 single import site every Step-1 contract-surface module reaches for. The
-direction is strictly one-way: ``codegenie.transforms.*`` modules import
-``codegenie.transforms._forward``, never the inverse — there is no
-``codegenie.plugins.*`` import here.
+direction is one-way: ``codegenie.transforms.*`` modules import
+``codegenie.transforms._forward``; the inverse (``plugins.* → transforms``)
+remains forbidden. S4-04 admitted one re-export from
+``codegenie.plugins.sandbox_path`` (ADR-0001 amendment, fenced by
+``tests/fence/test_transforms_module_purity.py``).
 
-When S4-04 / S4-05 land:
+When S4-05 lands:
 
-* S4-04 — Replace the ``SandboxedPath`` ``TypeAlias`` with a re-export of
+* S4-04 — Replaced the ``SandboxedPath`` ``TypeAlias`` with a re-export of
   ``codegenie.plugins.sandbox_path.SandboxedPath``. Every consumer keeps
   importing from ``codegenie.transforms``; the import path stays stable.
 * S4-05 — Move ``CapabilityBundle`` to ``codegenie.plugins.capabilities``
@@ -18,33 +21,21 @@ When S4-04 / S4-05 land:
 
 Both transitions are extension-by-addition. The Phase-3-Step-1 shape is
 ``class CapabilityBundle(BaseModel): pass`` plus ``model_config`` —
-intentionally empty, intentionally frozen / extra-forbid. ADR-0011 frames
-this as honest-framing: Phase 3 does not pretend to have a real sandboxed
-path until S4-04 ships ``O_NOFOLLOW``.
+intentionally empty, intentionally frozen / extra-forbid.
 
-Module imports are limited to ``{__future__, pathlib, typing, pydantic}`` —
-fenced by ``tests/fence/test_transforms_module_purity.py``.
+Module imports are limited to the allowlist
+``{__future__, pathlib, typing, pydantic, codegenie.plugins.sandbox_path}``
+— fenced by ``tests/fence/test_transforms_module_purity.py`` (subset
+check, so pathlib/typing are admitted-but-unused after the S4-04 flip).
 """
 
 from __future__ import annotations
 
-import pathlib
-from typing import TypeAlias
-
 from pydantic import BaseModel, ConfigDict
 
+from codegenie.plugins.sandbox_path import SandboxedPath
+
 __all__ = ["CapabilityBundle", "SandboxedPath"]
-
-
-SandboxedPath: TypeAlias = pathlib.Path
-"""Phase-3-Step-1 alias for :class:`pathlib.Path`.
-
-Substituted by S4-04 with a re-export of
-``codegenie.plugins.sandbox_path.SandboxedPath`` (which carries the
-``O_NOFOLLOW`` jail check). Every consumer keeps importing
-``SandboxedPath`` from ``codegenie.transforms`` — the import path is
-stable across the substitution.
-"""
 
 
 class CapabilityBundle(BaseModel):

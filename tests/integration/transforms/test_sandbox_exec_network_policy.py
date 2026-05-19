@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from codegenie.transforms import SandboxedPath
 from codegenie.transforms.sandbox.sandbox_exec import SandboxExecAdapter
 from codegenie.transforms.sandbox_jail import (
     Completed,
@@ -60,7 +61,7 @@ async def test_sandbox_exec_allows_allowlisted_host(tmp_path: Path) -> None:
             "-s",
             "https://registry.npmjs.org/",
         ),
-        cwd=tmp_path,
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=_registry_allowlist(),
         time_budget_s=15.0,
@@ -89,7 +90,7 @@ async def test_sandbox_exec_denies_non_allowlisted_host(tmp_path: Path) -> None:
             "-s",
             "https://github.com/",
         ),
-        cwd=tmp_path,
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=_registry_allowlist(),
         time_budget_s=15.0,

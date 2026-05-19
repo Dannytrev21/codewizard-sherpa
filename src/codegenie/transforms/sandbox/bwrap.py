@@ -241,9 +241,11 @@ class BwrapAdapter:
             env_extra: dict[str, str] = dict(spec.env.to_env_mapping())
 
             try:
+                # Unwrap the SandboxedPath capability to its underlying
+                # Path at the OS-call boundary (S4-04 flip).
                 process_result = await run_allowlisted(
                     argv,
-                    cwd=spec.cwd,
+                    cwd=spec.cwd.absolute,
                     timeout_s=spec.time_budget_s,
                     env_extra=env_extra,
                 )

@@ -30,6 +30,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from codegenie.exec import ProcessResult
+from codegenie.transforms import SandboxedPath
 from codegenie.transforms.sandbox import bwrap, sandbox_exec
 from codegenie.transforms.sandbox._classify import classify_outcome
 from codegenie.transforms.sandbox.sandbox_exec import (
@@ -74,7 +75,7 @@ def _make_spec(
 ) -> JailedSubprocessSpec:
     return JailedSubprocessSpec(
         cmd=cmd,
-        cwd=tmp_path,
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=network if network is not None else DenyAll(),
         time_budget_s=time_budget_s,

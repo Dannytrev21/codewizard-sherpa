@@ -181,12 +181,11 @@ class TestConcurrencyEnv:
 def test_init_cache_dir_annotation_is_sandboxedpath() -> None:
     # ``from __future__ import annotations`` keeps the annotation as a string;
     # we pin the source-text spelling so a regression that replaces it with
-    # ``pathlib.Path`` is loud. ``SandboxedPath`` is currently
-    # ``TypeAlias = pathlib.Path`` — name-pinning is what AC-8 guards.
+    # ``pathlib.Path`` is loud. After S4-04 the alias resolves to the real
+    # Pydantic BaseModel at ``codegenie.plugins.sandbox_path.SandboxedPath``.
     annotation = BundleBuilder.__init__.__annotations__["cache_dir"]
     assert annotation == "SandboxedPath"
-    # And the imported name resolves to the canonical alias.
-    assert SandboxedPath.__name__ == "Path"  # identity-equal to pathlib.Path today
+    assert SandboxedPath.__name__ == "SandboxedPath"
 
 
 # ---------------------------------------------------------------------------

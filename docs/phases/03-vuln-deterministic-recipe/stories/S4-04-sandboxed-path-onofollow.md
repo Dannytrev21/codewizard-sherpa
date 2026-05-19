@@ -1,7 +1,7 @@
 # Story S4-04 — `SandboxedPath.create` (Result) + `open()` always `O_NOFOLLOW` + TOCTOU defense
 
 **Step:** Step 4 — SubprocessJail Port + Bwrap + sandbox-exec + ALLOWED_BINARIES amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S4-04.md`](_attempts/S4-04.md) for the per-AC evidence table + gate log)
 **Effort:** S → S/M (hardening added `_forward.py` substitution + fence amendment + Pydantic-consumer compat — still small, but the seam-wiring scope grew)
 **Depends on:** S4-01 (`JailedSubprocessSpec.cwd: SandboxedPath` is consumed here; the Port commits to this typename); the Phase-3-Step-1 `_forward.py` shim (S1-04 AC-5/AC-5b) — this story flips its `SandboxedPath: TypeAlias = pathlib.Path` to a re-export of `codegenie.plugins.sandbox_path.SandboxedPath`.
 **ADRs honored:** 03-ADR-0011 (honest framing — `SandboxedPath` is "in-jail at construction, second-line defense at `open()` via `O_NOFOLLOW`"; NOT "in-jail forever"; NOT "makes illegal states unrepresentable"; NOT "unforgeable"; consumers handle `OSError(errno=ELOOP)` and emit `FilesystemRaceDetected`); 03-ADR-0010 (Pydantic frozen + `extra="forbid"` for value types + closed `Literal` sum on `PathEscape.reason`); 03-ADR-0001 (one-way `transforms → transforms._forward` direction is amended by this story to admit one re-export from `codegenie.plugins.sandbox_path`).

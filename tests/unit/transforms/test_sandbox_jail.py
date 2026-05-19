@@ -48,7 +48,7 @@ def _spec(**overrides: object) -> JailedSubprocessSpec:
     """Minimal valid spec, override fields per-test."""
     base: dict[str, object] = dict(
         cmd=("npm", "install", "--ignore-scripts"),
-        cwd=SandboxedPath(pathlib.Path("/tmp/jail")),
+        cwd=SandboxedPath(absolute=pathlib.Path("/tmp/jail")),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=60.0,

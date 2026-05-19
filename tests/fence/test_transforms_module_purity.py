@@ -26,7 +26,9 @@ import codegenie.transforms.transform as transform_mod
 # Adding to any allowlist requires an ADR amendment (see ADR-0001).
 # ---------------------------------------------------------------------------
 
-_FORWARD_ALLOWED: frozenset[str] = frozenset({"__future__", "pathlib", "typing", "pydantic"})
+_FORWARD_ALLOWED: frozenset[str] = frozenset(
+    {"__future__", "pathlib", "typing", "pydantic", "codegenie.plugins.sandbox_path"}
+)
 
 _TRANSFORM_ALLOWED: frozenset[str] = frozenset(
     {
@@ -69,9 +71,13 @@ def _imported_module_names(source: str) -> set[str]:
 
 
 def test_forward_module_imports_only_allowed() -> None:
-    """AC-5b — ``_forward.py`` must not reach into ``codegenie.plugins.*`` at
-    Phase-3-Step-1 time; the one-way ``transforms → transforms._forward``
-    direction is the cycle-avoidance contract of ADR-0001."""
+    """AC-5b / S4-04 AC-Sub-2 — ``_forward.py`` import set is the closed
+    allowlist. S4-04 flipped the ``SandboxedPath`` ``TypeAlias`` to a
+    re-export of :mod:`codegenie.plugins.sandbox_path`; the one-way
+    ``transforms → transforms._forward`` direction (cycle-avoidance
+    contract of ADR-0001) still holds — the inverse direction
+    (``plugins.sandbox_path → transforms``) is fenced separately by
+    :mod:`tests.fence.test_plugins_sandbox_path_purity`."""
     src = inspect.getsource(forward_mod)
     imported = _imported_module_names(src)
     extra = imported - _FORWARD_ALLOWED

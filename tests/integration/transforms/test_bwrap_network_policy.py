@@ -75,7 +75,7 @@ async def test_allowlist_permits_npm_registry(
     )
     spec = JailedSubprocessSpec(
         cmd=("node", "-e", script),
-        cwd=SandboxedPath(tmp_path),
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=RegistryAllowlist(hosts=_REGISTRY_HOSTS),
         time_budget_s=10.0,
@@ -95,7 +95,7 @@ async def test_allowlist_denies_github(_linux_bwrap_node_or_fail: None, tmp_path
     script = "fetch('https://github.com/').then(r => process.exit(0)).catch(() => process.exit(1))"
     spec = JailedSubprocessSpec(
         cmd=("node", "-e", script),
-        cwd=SandboxedPath(tmp_path),
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=RegistryAllowlist(hosts=_REGISTRY_HOSTS),
         time_budget_s=10.0,

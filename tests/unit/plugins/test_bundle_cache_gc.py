@@ -110,7 +110,7 @@ class TestConstructorAndRun:
     def test_constructor_does_no_io(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC-26 — invalid env must NOT raise at ``__init__``."""
         monkeypatch.setenv("CODEGENIE_BUNDLE_CACHE_TTL_DAYS", "not-an-int")
-        gc = BundleCacheGc(SandboxedPath(tmp_path))
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path))
         with pytest.raises(BundleCacheRaise) as exc:
             gc.run()
         assert exc.value.model.reason == "invalid_ttl_env"
@@ -128,7 +128,7 @@ class TestConstructorAndRun:
         os.utime(old, (time.time() - 8 * 86_400,) * 2)
         fresh = bundles / ("b" * 64 + ".json")
         fresh.write_text('{"x":1}')
-        result = BundleCacheGc(SandboxedPath(tmp_path)).run()
+        result = BundleCacheGc(SandboxedPath(absolute=tmp_path)).run()
         assert not old.exists() and fresh.exists()
         assert result.entries_evicted == 1
         assert result.bytes_reclaimed == size_old
@@ -137,12 +137,12 @@ class TestConstructorAndRun:
 
     def test_run_on_missing_bundles_dir_returns_zero(self, tmp_path: Path) -> None:
         """AC-28 — missing ``bundles/`` does not raise."""
-        result = BundleCacheGc(SandboxedPath(tmp_path)).run()
+        result = BundleCacheGc(SandboxedPath(absolute=tmp_path)).run()
         assert result.entries_evicted == 0 and result.bytes_reclaimed == 0
 
     def test_run_on_empty_bundles_dir_returns_zero(self, tmp_path: Path) -> None:
         (tmp_path / "bundles").mkdir(parents=True)
-        result = BundleCacheGc(SandboxedPath(tmp_path)).run()
+        result = BundleCacheGc(SandboxedPath(absolute=tmp_path)).run()
         assert result.entries_evicted == 0 and result.bytes_reclaimed == 0
 
     def test_run_skips_non_hex_files_and_special_paths(self, tmp_path: Path) -> None:
@@ -159,7 +159,7 @@ class TestConstructorAndRun:
         for p in bundles.iterdir():
             if p.is_file():
                 os.utime(p, (stale, stale))
-        BundleCacheGc(SandboxedPath(tmp_path)).run()
+        BundleCacheGc(SandboxedPath(absolute=tmp_path)).run()
         for p in [
             bundles / ".lock",
             bundles / "README.md",
@@ -179,7 +179,7 @@ class TestConstructorAndRun:
         stale = time.time() - 100 * 86_400
         os.utime(real, (stale, stale))
         os.utime(link, (stale, stale), follow_symlinks=False)
-        BundleCacheGc(SandboxedPath(tmp_path)).run()
+        BundleCacheGc(SandboxedPath(absolute=tmp_path)).run()
         assert link.is_symlink(), "symlinks must not be unlinked"
         assert real.exists()
 
@@ -192,14 +192,14 @@ class TestConstructorAndRun:
 class TestEventEmission:
     def test_event_emitter_called_exactly_once(self, tmp_path: Path) -> None:
         seen: list[CacheGcCompletedEvent] = []
-        gc = BundleCacheGc(SandboxedPath(tmp_path), event_emitter=seen.append)
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path), event_emitter=seen.append)
         gc.run()
         assert len(seen) == 1
         assert seen[0].trigger == "amortized"
         assert seen[0].event_type == "cache_gc_completed"
 
     def test_event_emitter_none_emits_zero(self, tmp_path: Path) -> None:
-        gc = BundleCacheGc(SandboxedPath(tmp_path), event_emitter=None)
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path), event_emitter=None)
         result = gc.run()
         assert isinstance(result, CacheGcResult)
 
@@ -209,7 +209,7 @@ class TestEventEmission:
         def bad(_event: CacheGcCompletedEvent) -> None:
             raise RuntimeError("emitter blew up")
 
-        gc = BundleCacheGc(SandboxedPath(tmp_path), event_emitter=bad)
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path), event_emitter=bad)
         with pytest.raises(RuntimeError, match="emitter blew up"):
             gc.run()
 
@@ -223,7 +223,7 @@ class TestAmortization:
     def test_first_call_writes_stamp(self, tmp_path: Path) -> None:
         """AC-34 + AC-36 — first call runs and writes the stamp."""
         t_before = time.time()
-        result = BundleCacheGc(SandboxedPath(tmp_path)).run_amortized()
+        result = BundleCacheGc(SandboxedPath(absolute=tmp_path)).run_amortized()
         t_after = time.time()
         stamp_path = tmp_path / ".gc-stamp"
         assert result is not None
@@ -233,7 +233,7 @@ class TestAmortization:
     def test_within_24h_is_noop_and_does_not_emit(self, tmp_path: Path) -> None:
         """AC-32 (no-op branch) + AC-41."""
         seen: list[CacheGcCompletedEvent] = []
-        gc = BundleCacheGc(SandboxedPath(tmp_path), event_emitter=seen.append)
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path), event_emitter=seen.append)
         first = gc.run_amortized()
         second = gc.run_amortized()
         assert first is not None and second is None
@@ -241,7 +241,7 @@ class TestAmortization:
 
     def test_24h_elapsed_runs_again(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC-40 — monkeypatch the module-bound ``time`` to avoid recursion."""
-        gc = BundleCacheGc(SandboxedPath(tmp_path))
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path))
         assert gc.run_amortized() is not None
         stamp_before = float((tmp_path / ".gc-stamp").read_text())
         real_time = time.time
@@ -259,7 +259,7 @@ class TestAmortization:
 
     def test_stamp_atomic_no_tmp_residue(self, tmp_path: Path) -> None:
         """AC-35 — atomic stamp write leaves no tmp residue."""
-        BundleCacheGc(SandboxedPath(tmp_path)).run_amortized()
+        BundleCacheGc(SandboxedPath(absolute=tmp_path)).run_amortized()
         tmps = list(tmp_path.glob(".gc-stamp.*.tmp"))
         assert not (tmp_path / ".gc-stamp.tmp").exists()
         assert tmps == []
@@ -269,21 +269,21 @@ class TestAmortization:
         """AC-37 — non-float content raises ``BundleCacheRaise``."""
         (tmp_path / ".gc-stamp").write_text("not-a-float")
         with pytest.raises(BundleCacheRaise) as exc:
-            BundleCacheGc(SandboxedPath(tmp_path)).run_amortized()
+            BundleCacheGc(SandboxedPath(absolute=tmp_path)).run_amortized()
         assert exc.value.model.reason == "corrupt_gc_stamp"
 
     def test_future_dated_stamp_treated_as_stale(self, tmp_path: Path) -> None:
         """AC-38 — clock-skew resilience: future stamp ⇒ run + rewrite."""
         future = time.time() + 86_400
         (tmp_path / ".gc-stamp").write_text(str(future))
-        result = BundleCacheGc(SandboxedPath(tmp_path)).run_amortized()
+        result = BundleCacheGc(SandboxedPath(absolute=tmp_path)).run_amortized()
         assert result is not None
         new_stamp = float((tmp_path / ".gc-stamp").read_text())
         assert new_stamp < future, "future-dated stamp must be rewritten to time.time()"
 
     def test_concurrent_callers_serialized(self, tmp_path: Path) -> None:
         """AC-39 — only one of two concurrent calls runs the GC."""
-        gc = BundleCacheGc(SandboxedPath(tmp_path))
+        gc = BundleCacheGc(SandboxedPath(absolute=tmp_path))
         results: list[CacheGcResult | None] = []
 
         def call() -> None:
@@ -309,7 +309,7 @@ class TestResultAndEventModels:
         result = CacheGcResult(
             entries_evicted=0,
             bytes_reclaimed=0,
-            cache_dir=SandboxedPath(tmp_path),
+            cache_dir=SandboxedPath(absolute=tmp_path),
             ttl_days=7,
             duration_ms=0,
             wall_clock_iso="2026-05-19T00:00:00.000Z",
@@ -322,7 +322,7 @@ class TestResultAndEventModels:
         result = CacheGcResult(
             entries_evicted=3,
             bytes_reclaimed=512,
-            cache_dir=SandboxedPath(tmp_path),
+            cache_dir=SandboxedPath(absolute=tmp_path),
             ttl_days=7,
             duration_ms=12,
             wall_clock_iso="2026-05-19T00:00:00.000Z",

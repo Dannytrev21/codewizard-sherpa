@@ -58,7 +58,7 @@ async def test_postinstall_canary_blocked_with_flag_and_env(tmp_path: Path) -> N
 
     spec = JailedSubprocessSpec(
         cmd=("npm", "install", "--ignore-scripts", "--package-lock-only"),
-        cwd=SandboxedPath(work),
+        cwd=SandboxedPath(absolute=work),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=30.0,
@@ -87,7 +87,7 @@ async def test_postinstall_canary_blocked_with_env_only(tmp_path: Path) -> None:
 
     spec = JailedSubprocessSpec(
         cmd=("npm", "install", "--package-lock-only"),
-        cwd=SandboxedPath(work),
+        cwd=SandboxedPath(absolute=work),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=30.0,

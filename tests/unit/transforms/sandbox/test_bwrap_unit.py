@@ -134,7 +134,9 @@ async def test_argv_no_extra_flags_between_prefix_and_cmd(
 async def test_run_allowlisted_kwargs_match(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-2: ``cwd`` is the SandboxedPath, ``timeout_s`` is the spec budget,
+    """AC-2: ``cwd`` is the unwrapped Path from ``spec.cwd.absolute`` (S4-04
+    flipped the SandboxedPath alias to a Pydantic BaseModel; adapters unwrap
+    to Path at the OS-call boundary), ``timeout_s`` is the spec budget,
     ``env_extra`` is the dict from ``spec.env.to_env_mapping()``."""
     captured: dict[str, Any] = {}
 
@@ -153,7 +155,7 @@ async def test_run_allowlisted_kwargs_match(
     monkeypatch.setattr("codegenie.transforms.sandbox.bwrap.run_allowlisted", fake)
     spec = make_spec(tmp_path, time_budget_s=12.5)
     await BwrapAdapter().run(spec)
-    assert captured["cwd"] == spec.cwd
+    assert captured["cwd"] == spec.cwd.absolute
     assert captured["timeout_s"] == 12.5
     assert captured["env_extra"] == {"npm_config_ignore_scripts": "true"}
 

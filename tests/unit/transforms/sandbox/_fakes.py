@@ -33,7 +33,7 @@ def make_spec(tmp_path: pathlib.Path, **overrides: Any) -> JailedSubprocessSpec:
     """Minimum-valid spec rooted at *tmp_path*; override fields per-test."""
     base: dict[str, Any] = dict(
         cmd=("/bin/echo", "hi"),
-        cwd=SandboxedPath(tmp_path),
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=5.0,

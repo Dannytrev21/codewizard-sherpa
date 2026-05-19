@@ -960,7 +960,9 @@ def cache_prune(cache_dir: Path | None) -> None:
         finally:
             os.close(fd)
 
-    gc = cache_gc_mod.BundleCacheGc(resolved_cache_dir)
+    sandbox_path_mod = importlib.import_module("codegenie.plugins.sandbox_path")
+    sandboxed_cache_dir = sandbox_path_mod.SandboxedPath(absolute=resolved_cache_dir)
+    gc = cache_gc_mod.BundleCacheGc(sandboxed_cache_dir)
     result = gc.run()
     event = cache_gc_mod.CacheGcCompletedEvent.from_result(result, trigger="operator_cli")
     _emit(event)

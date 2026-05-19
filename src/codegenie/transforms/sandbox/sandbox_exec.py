@@ -330,8 +330,12 @@ class SandboxExecAdapter:
 
             # Write profile to per-call tempfile under spec.cwd; AC-20
             # ensures uniqueness so concurrent runs never share a path.
+            # Unwrap the SandboxedPath capability to its underlying Path
+            # at the OS-call boundary (S4-04 flipped the alias from
+            # ``pathlib.Path`` to a Pydantic ``BaseModel``).
+            cwd_path = spec.cwd.absolute
             try:
-                profile_path = _write_profile(spec.cwd, rendered)
+                profile_path = _write_profile(cwd_path, rendered)
             except OSError as exc:
                 return JailSetupFailed(
                     kind="jail_setup_failed",
@@ -345,7 +349,7 @@ class SandboxExecAdapter:
             try:
                 process_result = await run_allowlisted(
                     argv,
-                    cwd=spec.cwd,
+                    cwd=cwd_path,
                     timeout_s=spec.time_budget_s,
                     env_extra=env_extra,
                 )

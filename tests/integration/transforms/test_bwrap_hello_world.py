@@ -48,7 +48,7 @@ async def test_bwrap_hello_world(tmp_path: Path) -> None:
             "job, the test xpasses; removing the install step then turns "
             "this into a loud fail per ADR-0006 §Consequences."
         )
-    sp: SandboxedPath = SandboxedPath(tmp_path)
+    sp: SandboxedPath = SandboxedPath(absolute=tmp_path)
     spec = JailedSubprocessSpec(
         cmd=("/bin/echo", "hello"),
         cwd=sp,

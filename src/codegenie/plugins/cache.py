@@ -46,6 +46,7 @@ import json
 import os
 import re
 import secrets
+from pathlib import Path
 from typing import Final, Literal
 
 import structlog
@@ -222,7 +223,7 @@ def _key_to_filename(key: BundleCacheKey) -> str:
 # --- BundleCacheStore -------------------------------------------------------
 
 
-def _atomic_write_bytes(target: SandboxedPath, data: bytes) -> None:
+def _atomic_write_bytes(target: Path, data: bytes) -> None:
     """Write ``data`` to ``target`` via per-writer tmp + fsync + ``os.replace``.
 
     Mirrors :func:`codegenie.cache.store._atomic_write_bytes` (Phase-0
@@ -254,7 +255,9 @@ class BundleCacheStore:
     def __init__(self, cache_dir: SandboxedPath) -> None:
         self.cache_dir: SandboxedPath = cache_dir
 
-    def _bundles_dir(self) -> SandboxedPath:
+    def _bundles_dir(self) -> Path:
+        # Path arithmetic against a SandboxedPath returns a bare Path —
+        # the child path has not passed the jail check again.
         return self.cache_dir / _BUNDLES_DIRNAME
 
     def put(self, key: BundleCacheKey, bundle: Bundle) -> None:

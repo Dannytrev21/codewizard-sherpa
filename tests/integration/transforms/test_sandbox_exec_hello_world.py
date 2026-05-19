@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from codegenie.transforms import SandboxedPath
 from codegenie.transforms.sandbox.sandbox_exec import SandboxExecAdapter
 from codegenie.transforms.sandbox_jail import (
     Completed,
@@ -44,7 +45,7 @@ async def test_sandbox_exec_hello_world(tmp_path: Path) -> None:
         )
     spec = JailedSubprocessSpec(
         cmd=("/bin/echo", "hello"),
-        cwd=tmp_path,
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=5.0,

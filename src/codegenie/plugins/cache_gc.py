@@ -46,6 +46,7 @@ import secrets
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, field_serializer
@@ -142,7 +143,7 @@ class CacheGcResult(BaseModel):
 
     @field_serializer("cache_dir")
     def _serialise_cache_dir(self, value: SandboxedPath) -> str:
-        return str(value)
+        return str(value.absolute)
 
 
 class CacheGcCompletedEvent(BaseModel):
@@ -193,7 +194,7 @@ class CacheGcCompletedEvent(BaseModel):
 # --- BundleCacheGc ----------------------------------------------------------
 
 
-def _atomic_write_text(target: SandboxedPath, content: str) -> None:
+def _atomic_write_text(target: Path, content: str) -> None:
     """Write ``content`` to ``target`` via tmp + fsync + ``os.replace``.
 
     Mirrors :func:`codegenie.cache.store._atomic_write_bytes`. The
@@ -311,7 +312,7 @@ class BundleCacheGc:
         resilience). A corrupt stamp raises :class:`BundleCacheRaise`
         with ``reason="corrupt_gc_stamp"`` (Rule 12).
         """
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.absolute.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.cache_dir, _DIR_MODE)
         except (FileNotFoundError, PermissionError):
@@ -336,7 +337,7 @@ class BundleCacheGc:
                 os.close(lock_fd)
 
     @staticmethod
-    def _read_stamp(stamp_path: SandboxedPath) -> float:
+    def _read_stamp(stamp_path: Path) -> float:
         """Return the float seconds in ``.gc-stamp``, or ``0.0`` if absent.
 
         A non-parseable body raises :class:`BundleCacheRaise` with

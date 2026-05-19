@@ -53,7 +53,7 @@ def sample_bundle() -> Bundle:
 
 class TestPutGetRoundTrip:
     def test_put_then_get_round_trips(self, tmp_path: Path, sample_bundle: Bundle) -> None:
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         store.put(_VALID_KEY, sample_bundle)
         got = store.get(_VALID_KEY)
         assert got == sample_bundle
@@ -62,13 +62,15 @@ class TestPutGetRoundTrip:
 
     def test_get_missing_returns_none(self, tmp_path: Path) -> None:
         assert (
-            BundleCacheStore(SandboxedPath(tmp_path)).get(BundleCacheKey("blake3:" + "b" * 64))
+            BundleCacheStore(SandboxedPath(absolute=tmp_path)).get(
+                BundleCacheKey("blake3:" + "b" * 64)
+            )
             is None
         )
 
     def test_get_on_missing_cache_dir_returns_none(self, tmp_path: Path) -> None:
         nowhere = tmp_path / "does-not-exist"
-        assert BundleCacheStore(SandboxedPath(nowhere)).get(_VALID_KEY) is None
+        assert BundleCacheStore(SandboxedPath(absolute=nowhere)).get(_VALID_KEY) is None
 
 
 class TestPutAtomicityAndMode:
@@ -76,7 +78,7 @@ class TestPutAtomicityAndMode:
         self, tmp_path: Path, sample_bundle: Bundle
     ) -> None:
         """AC-16 — no ``*.tmp`` lingers in ``bundles/`` after a successful put."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         store.put(_VALID_KEY, sample_bundle)
         assert list((tmp_path / "bundles").glob("*.tmp")) == []
 
@@ -84,7 +86,7 @@ class TestPutAtomicityAndMode:
         self, tmp_path: Path, sample_bundle: Bundle
     ) -> None:
         """AC-16 — Phase-0 ADR-0011 cache-permission discipline."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         store.put(_VALID_KEY, sample_bundle)
         blob = tmp_path / "bundles" / ("a" * 64 + ".json")
         assert blob.stat().st_mode & 0o777 == 0o600
@@ -92,7 +94,7 @@ class TestPutAtomicityAndMode:
 
     def test_idempotent_put_same_bundle(self, tmp_path: Path, sample_bundle: Bundle) -> None:
         """AC-17 — identical ``(key, bundle)`` twice → byte-identical content."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         store.put(_VALID_KEY, sample_bundle)
         blob = tmp_path / "bundles" / ("a" * 64 + ".json")
         first = blob.read_bytes()
@@ -101,7 +103,7 @@ class TestPutAtomicityAndMode:
 
     def test_overwrite_with_different_bundle(self, tmp_path: Path, sample_bundle: Bundle) -> None:
         """AC-17 — same key, different Bundle ⇒ clean overwrite."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         store.put(_VALID_KEY, sample_bundle)
         other = Bundle(
             entries=(),
@@ -116,7 +118,7 @@ class TestPutAtomicityAndMode:
 class TestCorruptSurvives:
     def test_corrupt_file_returns_none_and_file_survives(self, tmp_path: Path) -> None:
         """AC-18 — corrupt-on-read does NOT delete the file (operator inspection)."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         (tmp_path / "bundles").mkdir(parents=True)
         corrupt = tmp_path / "bundles" / ("c" * 64 + ".json")
         corrupt.write_text("{not valid json")
@@ -125,7 +127,7 @@ class TestCorruptSurvives:
 
     def test_partial_json_returns_none(self, tmp_path: Path) -> None:
         """AC-18 — schema-mismatching JSON triggers Pydantic ValidationError path."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         (tmp_path / "bundles").mkdir(parents=True)
         bad = tmp_path / "bundles" / ("e" * 64 + ".json")
         bad.write_text('{"not": "a bundle"}')
@@ -152,13 +154,13 @@ class TestKeyValidation:
         self, tmp_path: Path, bad_key: str, sample_bundle: Bundle
     ) -> None:
         """AC-15 — path-traversal + uppercase + length variants rejected."""
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         with pytest.raises(BundleCacheRaise) as exc:
             store.put(BundleCacheKey(bad_key), sample_bundle)
         assert exc.value.model.reason == "invalid_key"
 
     def test_get_rejects_malformed(self, tmp_path: Path, bad_key: str) -> None:
-        store = BundleCacheStore(SandboxedPath(tmp_path))
+        store = BundleCacheStore(SandboxedPath(absolute=tmp_path))
         with pytest.raises(BundleCacheRaise) as exc:
             store.get(BundleCacheKey(bad_key))
         assert exc.value.model.reason == "invalid_key"
@@ -183,4 +185,7 @@ class TestAnnotations:
     def test_cache_dir_annotation_is_sandboxed_path(self) -> None:
         annotation = BundleCacheStore.__init__.__annotations__["cache_dir"]
         assert annotation == "SandboxedPath"
-        assert SandboxedPath.__name__ == "Path"
+        # S4-04 flipped the TypeAlias: SandboxedPath is now the real
+        # Pydantic BaseModel from codegenie.plugins.sandbox_path
+        # (re-exported via codegenie.transforms._forward).
+        assert SandboxedPath.__name__ == "SandboxedPath"

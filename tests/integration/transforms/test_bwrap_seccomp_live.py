@@ -53,7 +53,7 @@ async def test_bwrap_seccomp_blocks_unshare(tmp_path: Path) -> None:
 
     spec = JailedSubprocessSpec(
         cmd=cmd,
-        cwd=SandboxedPath(tmp_path),
+        cwd=SandboxedPath(absolute=tmp_path),
         env=NpmEnv(),
         network=DenyAll(),
         time_budget_s=5.0,
