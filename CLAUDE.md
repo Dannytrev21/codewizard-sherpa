@@ -149,6 +149,7 @@ These appear across every doc and constrain implementation. Do not violate witho
 - **Warning + error IDs** match `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$` (Phase 1 ADR-0007). Each probe declares a module-level `_WARNING_IDS: Final[frozenset[str]]` validated at import time via `raise AssertionError(...)` (bare `assert` is forbidden by the `forbidden-patterns` hook).
 - **Functional core / imperative shell.** Pure helpers carry the logic; `run()` is the only impure code. AST-walking tests enforce this in several probes.
 - **Newtype identifiers** (`ProbeId`, `IndexName`, `PackageManager`) under `codegenie.types.identifiers` — never raw `str` for domain IDs.
+- **Structural defenses live under `tests/fence/`.** New ctx attribute, new `src/codegenie/` submodule, or new probe ⇒ the corresponding fence (probe-context conformance, per-submodule cold-start, smoke no-probe-errors) must stay green. The suite is fast enough to run on every PR. See `docs/contributing.md §"Structural defense tests"` for the rules.
 - **`pyright` is not used; `mypy --strict`** is the bar. `[tool.mypy.overrides]` carries per-module relaxations only when an upstream lacks stubs.
 - **Match the existing convention** when in doubt. If two patterns disagree, pick the more recent and surface the older as cleanup.
 

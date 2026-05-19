@@ -208,6 +208,38 @@ code, never by editing the spec**. If you must widen the contract:
 3. Open a PR using the repo's PR template at `templates/adr-amendment.md`.
 4. Regenerate the snapshot using `scripts/regen_probe_contract_snapshot.py`.
 
+### Structural defense tests (`tests/fence/`)
+
+Three fences pin invariants of the *composition*, not behaviours of a
+single module. They catch classes of bugs that unit tests routinely miss
+because unit tests verify one module at a time against its declared
+interface, not against what the runtime composition actually wires up.
+
+- **Adding a new submodule under `src/codegenie/`?**
+  `tests/fence/test_per_submodule_cold_start.py` spawns a fresh subprocess
+  for every importable submodule. A new circular import — even one that
+  pytest never trips because its shared interpreter has primed sys.modules
+  — fires this fence. If your new module is in the
+  `_KNOWN_BROKEN_PRE_FIX` skip set, it's blocked on a tracked fix; do not
+  add to that set without an explicit reason.
+- **Adding a new attribute to `ProbeContext`?**
+  `tests/fence/test_probe_context_conformance.py` asserts the
+  coordinator-built ctx (`BudgetingContext`) carries every attribute on
+  the frozen `ProbeContext` surface. Forget to thread your new attribute
+  through `_make_probe_context` and the fence fires before a probe
+  silently `AttributeError`s at runtime.
+- **Modifying a probe to read a new ctx attribute or use a new code
+  path?** The smoke test `test_no_probe_errors_in_smoke_run_record` runs
+  a real gather against the `polyglot` fixture and asserts no probe
+  reports `exit_status="error"`. Coordinator failure-isolation otherwise
+  hides AttributeError-class drift; this assertion surfaces it.
+
+These three were added 2026-05-19 after a probe-context drift and a
+plugins.manifest circular-import surfaced in end-to-end testing. The
+discipline: **structural defenses are cheap to add and cheap to run; the
+moment a class of bug shows up in production, write the fence that would
+have caught it.**
+
 ### ADR lifecycle
 
 Production ADR statuses are `Proposed`, `Accepted`, `Provisional Accepted`, `Deferred`, and `Superseded`.

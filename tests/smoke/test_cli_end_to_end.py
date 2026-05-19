@@ -395,3 +395,52 @@ def test_audit_verify_smoke_run(tmp_path: Path) -> None:
     assert verify_result.exit_code == 0, (
         f"audit verify exited {verify_result.exit_code}; output={verify_result.output!r}"
     )
+
+
+# --------------------------------------------------------------------------
+# Structural defense — no probe is allowed to silently AttributeError
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Today, three probes (scip_index, tree_sitter_import_graph, slo) AttributeError "
+        "on `ctx.output_dir` because BudgetingContext drifted from ProbeContext. The "
+        "coordinator's failure-isolation translates them to exit_status='error' silently. "
+        "Spawned task 'Fix BudgetingContext missing output_dir' owns the fix; once it "
+        "lands this xfail flips to XPASS and strict=True fails CI until the marker is "
+        "removed. NOTE: this xfail may pass today if the polyglot fixture doesn't "
+        "exercise the failing probes — that's a separate fixture-coverage follow-up."
+    ),
+)
+def test_no_probe_errors_in_smoke_run_record(tmp_path: Path) -> None:
+    """Every probe in the smoke run record exits ``ok`` or ``skipped`` — never ``error``.
+
+    ``skipped`` (with a typed reason) is a first-class outcome. ``error`` is
+    always a bug — either an unhandled exception during ``probe.run`` or a
+    shape mismatch between the coordinator-built ctx and what the probe
+    reads. Either way it should never reach a smoke gather without somebody
+    noticing.
+
+    Catches the BudgetingContext ``output_dir`` drift class — and any future
+    drift where a probe reads a ctx attribute the coordinator forgot to
+    populate. Pairs with the structural ctx-conformance fence at
+    ``tests/fence/test_probe_context_conformance.py``.
+    """
+    fixture = _copy_fixture("polyglot", tmp_path)
+    result = _invoke_gather(fixture)
+    assert result.exit_code == 0, result.output
+
+    runs_dir = fixture / ".codegenie" / "context" / "runs"
+    run_records = list(runs_dir.glob("*.json"))
+    assert len(run_records) == 1, f"expected 1 run-record; got {[p.name for p in run_records]}"
+    record = json.loads(run_records[0].read_text())
+
+    errored = [p for p in record.get("probes", []) if p.get("exit_status") == "error"]
+    assert not errored, (
+        f"{len(errored)} probe(s) returned exit_status='error' on the polyglot smoke "
+        f"fixture — coordinator failure-isolation hid them but they produced no useful "
+        f"output. Probes: {[p.get('name') for p in errored]}. Inspect the run record at "
+        f"{run_records[0]} for the failure details."
+    )

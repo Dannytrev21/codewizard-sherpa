@@ -803,6 +803,16 @@ The Phase 0 test surface is small, but the *shape* of testing is contract for ev
 
 What's **not** unit-tested in Phase 0: `cli.py`'s click parsing (smoke covers it; coverage exempts `cli.py`); the `mkdocs build` output (CI covers it).
 
+### Structural defenses (`tests/fence/`)
+
+Structural-defense tests pin invariants of the *composition*, not behaviours of individual modules. Three classes live in `tests/fence/`:
+
+- **Protocol / contract freezes** (`test_plugin_protocol_frozen.py`, `test_kernel_frozen.py`) — assert that a frozen surface (a `Protocol`, an ABC field set, an exception hierarchy) has not drifted byte-for-byte from the doc that defines it.
+- **Probe-context conformance** (`test_probe_context_conformance.py`, retrofit 2026-05-19) — runtime check that every attribute declared on the frozen ADR-0007 `ProbeContext` dataclass is readable on the concrete ctx the coordinator constructs (today: `BudgetingContext`). Catches drift where the coordinator forgets to thread a new ctx attribute and probes silently `AttributeError` at runtime — coordinator failure-isolation otherwise hides it. **Rule:** adding a new attribute to `ProbeContext` requires updating the coordinator-built ctx in the same PR or this fence fires.
+- **Per-submodule cold-start** (`test_per_submodule_cold_start.py`, retrofit 2026-05-19) — spawns a fresh Python subprocess for every importable `codegenie.*` submodule and asserts `import {module}` exits 0. Catches static circular imports that pytest's shared interpreter hides (every test in the suite already has `codegenie.probes` in sys.modules by collection time, so cycles short-circuit). **Rule:** adding a new submodule under `src/codegenie/` requires that the cold-start fence stay green.
+
+In addition, the smoke test `test_no_probe_errors_in_smoke_run_record` (in `tests/smoke/test_cli_end_to_end.py`) asserts that no probe in the run record reports `exit_status="error"` on a real gather — the runtime witness for the conformance fence above. `skipped` (with a typed reason) is a first-class outcome; `error` is always a bug.
+
 ### Property tests
 
 None in Phase 0. Justification: the surface (one probe, one walker) has too small an input space; property tests pay back when there's combinatorial logic worth fuzzing (`design-best-practices.md §4.3`). Phase 5's trust gates (`roadmap.md` §"Phase 5") are the first phase where property tests earn their keep.
