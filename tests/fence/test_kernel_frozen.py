@@ -106,7 +106,16 @@ _KERNEL_SCOPE_DIRS: Final[tuple[Path, ...]] = (
     Path("src/codegenie/conventions"),
     Path("src/codegenie/types"),
 )
-_TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset({"plugins", "transforms"})
+_TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset(
+    {
+        "plugins",
+        "transforms",
+        # S3-02 — content-addressed sqlite VulnIndex (Phase-3 ADR-0008 +
+        # ADR-0005 staleness predicate). Additive Phase-3 surface; not part
+        # of the Phase-0/1/2 kernel scope.
+        "vuln_index",
+    }
+)
 
 
 def _is_in_kernel_scope(path: Path) -> bool:
