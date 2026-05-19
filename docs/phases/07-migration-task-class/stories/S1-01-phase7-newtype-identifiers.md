@@ -1,10 +1,30 @@
 # Story S1-01 — Phase 7 newtype identifiers + smart constructors
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** M
 **Depends on:** —
 **ADRs honored:** ADR-0004 (the primitive lives at `src/codegenie/primitives/vuln_provenance/`; this story lands the typed vocabulary it imports), ADR-0006 (`ProvenanceAdapterId = tuple[Layer, Ecosystem]` is the registry key the dispatch tuple iterates), Phase 3 ADR-0010 / production ADR-0033 (newtype-every-domain-identifier discipline this story extends to Phase 7)
+
+## Validation notes (2026-05-19 — phase-story-validator HARDENED pass)
+
+Edits relative to the as-written story, with rationale:
+
+- **Resolved an `Ecosystem` symbol collision (Consistency / block).** Phase 3 already ships `Ecosystem = Literal["npm", "pypi", "maven", "rubygems", "gomod"]` in `codegenie.types.identifiers` (S3-02 — vuln-index lookup filter); Phase 7 will ship a *different* `Ecosystem(str, Enum)` in `primitives/vuln_provenance/registry.py` (S2-01 — dispatch key). The two symbols intentionally have different membership sets, live in different modules, and serve different purposes. The story now (a) declares this collision explicitly in `Notes for the implementer`, (b) requires the `TYPE_CHECKING`-guarded import of the Phase 7 `Ecosystem` to come from `codegenie.primitives.vuln_provenance.registry`, NOT from `codegenie.types.identifiers`, and (c) adds AC-11 — a structural test asserting the two `Ecosystem` symbols are distinct objects so cross-module accidents fail loudly.
+- **Pinned the `ProvenanceAdapterId` declaration shape (Consistency / harden).** The original Implementation Outline left the runtime alias shape ambiguous (string forward refs vs. `TYPE_CHECKING` import + plain tuple). AC-1 now mandates the exact pattern: a module-level `ProvenanceAdapterId: TypeAlias = tuple["Layer", "Ecosystem"]` with the `TYPE_CHECKING`-guarded import resolving the forward references to the Phase 7 enums from `primitives/vuln_provenance/registry`.
+- **Tightened the `ImageDigest` rejection matrix (Coverage / harden).** Added whitespace + DEL contamination cases (leading space, trailing newline, embedded `\x00`, `\x7f`). These are common SBOM contamination patterns and the smart-constructor boundary is the place to reject them.
+- **Strengthened the `parse_image_ref` floor (Coverage / harden).** Added DEL (`\x7f`) and `\x00` to the explicit rejection set; renamed "control chars" to a precise `\x00..\x1f` + `\x7f` set; added a max-length boundary test (256 accepted, 257 rejected); added an empty-tag happy case and a multi-`:` rejection.
+- **Made AC-8 docstring requirements concrete (Coverage / harden).** Phase 3's `_NEWTYPE_REGISTRY` precedent already requires both an ADR cite AND a consumer name (e.g. "Phase-3 MITRE CVE id (ADR-0010); S5-04 lockfile recipe input."). The validator changed AC-8's "or" to "and" — every entry cites at least one Phase 7 ADR (`ADR-0004` or `ADR-0006`) AND names the immediate Phase 7 consumer (e.g., `BaseImage variant`, `assemble_provenance`, `_REGISTRY`).
+- **Replaced the brittle f-string template in the mypy-negative TDD snippet (Test-Quality / harden).** Phase 3 already solved this with a `_ctor_arg(name)` helper; the validator ported the same shape to Phase 7. The conditional-inside-f-string was both fragile (Python operator-precedence trap) and didn't generalise to `RuntimeId` / `DockerStageName` swaps.
+- **Added a negative-control test (Test-Quality / harden).** The mypy-negative test now also asserts that *correct* usage type-checks (`test_mypy_accepts_correct_usage_phase7`). Without this, a CI environment that silently fails to find `mypy` could make every swap test pass for the wrong reason. Mirrors Phase 3's precedent.
+- **Made the `__init__.py` re-export explicit as an AC (Coverage / harden).** Originally only in Implementation Outline; promoted to AC-10's identity-passthrough check + a parametrized test entry.
+- **Surfaced three design-pattern observations to `Notes for the implementer` (Design-Patterns / harden, not lifted to ACs per Rule 2 — they are contextual implementation guidance, not user-observable contract).**
+  1. `parse_image_digest` / `parse_layer_digest` share the regex but instantiate separate `_regex_parser` closures so error messages name the correct newtype (mirrors Phase 3's catalog of `_match` closures).
+  2. `parse_image_ref`'s explicit non-regex checks are a deliberate departure from the rule-of-three regex helper (full Distribution-spec validation is deferred); the floor exists to reject obvious contamination, not to validate.
+  3. The Phase 7 `Ecosystem` enum's value strings (`"apk"`, `"dpkg"`, `"npm"`, ...) will become the *sort key* for within-layer dispatch order per ADR-0006. S1-01 doesn't ship the enum, but its values must be chosen with that in mind when S2-01 lands them.
+- **Explicit out-of-scope (Consistency / nit).** Added that no edits to `src/codegenie/primitives/vuln_provenance/` land in this story (S1-02+ territory).
+
+**Verdict:** HARDENED. Full audit log at `_validation/S1-01-phase7-newtype-identifiers.md`.
 
 ## Context
 
@@ -40,15 +60,29 @@ Extend `codegenie.types.identifiers` with the six Phase 7 newtypes (`ImageRef`, 
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — Newtype catalog.** `src/codegenie/types/identifiers.py` exports the six Phase 7 newtypes: `ImageRef = NewType("ImageRef", str)`, `ImageDigest = NewType("ImageDigest", str)`, `LayerDigest = NewType("LayerDigest", str)`, `RuntimeId = NewType("RuntimeId", str)`, `DockerStageName = NewType("DockerStageName", str)`. `ProvenanceAdapterId` is a `type` alias of `tuple["Layer", "Ecosystem"]` declared with `TYPE_CHECKING`-guarded forward references (the `Layer` / `Ecosystem` enums land in S2-01 — this story declares only the alias shape with string forward refs so Phase 7 modules can import `ProvenanceAdapterId` without a circular dependency). `__all__` is updated to the exact sorted superset.
+- [ ] **AC-1 — Newtype catalog + `ProvenanceAdapterId` alias shape.** `src/codegenie/types/identifiers.py` exports the six Phase 7 newtypes: `ImageRef = NewType("ImageRef", str)`, `ImageDigest = NewType("ImageDigest", str)`, `LayerDigest = NewType("LayerDigest", str)`, `RuntimeId = NewType("RuntimeId", str)`, `DockerStageName = NewType("DockerStageName", str)`. `ProvenanceAdapterId` is declared as a module-level `TypeAlias`:
+  ```python
+  if TYPE_CHECKING:  # pragma: no cover — forward refs for S2-01 enums
+      from codegenie.primitives.vuln_provenance.registry import Ecosystem as _PhVnEcosystem
+      from codegenie.primitives.vuln_provenance.registry import Layer as _PhVnLayer
+
+  ProvenanceAdapterId: TypeAlias = tuple["_PhVnLayer", "_PhVnEcosystem"]
+  ```
+  Underscored aliases keep the Phase 7 `Ecosystem` distinct from the Phase 3 `codegenie.types.identifiers.Ecosystem` Literal at the symbol level (Validation Notes — Consistency / block). At runtime the alias resolves to `tuple[ForwardRef("_PhVnLayer"), ForwardRef("_PhVnEcosystem")]`; once S2-01 lands the real enums the alias resolves to `tuple[Layer, Ecosystem]` (Phase 7 registry-module `Ecosystem`, *not* the Phase 3 `types.identifiers.Ecosystem`). `__all__` is updated to the exact sorted superset (the six new Phase 7 names).
 - [ ] **AC-2 — `CveId` / `PackageId` reused, not redefined.** Phase 3's existing `CveId` and `PackageId` at the same module are referenced verbatim by Phase 7 — no shadowing, no module-level rebinding, no parallel newtype. A test asserts `getattr(ids, "CveId") is the already-shipped Phase 3 NewType` (same `__name__` identity).
 - [ ] **AC-3 — Smart constructors.** `src/codegenie/types/parsers.py` exports five new smart constructors, one per `str`-backed Phase 7 newtype, all pure functions returning `Result[<X>, ParseError]`:
-  - `parse_image_ref(s)` — non-empty; max 256 chars; rejects whitespace; rejects ASCII control chars (`\x00-\x1f`); accepts both `registry/name[:tag]` and `name[:tag]` shapes (full validation is left to a future story — this parser is a tight floor, not full Distribution-spec validation).
+  - `parse_image_ref(s)` — non-empty; max 256 chars (257 rejected, 256 accepted); rejects any whitespace character (per `str.isspace`); rejects all ASCII control chars `\x00..\x1f` AND `\x7f` (DEL); accepts both `registry/name[:tag]` and `name[:tag]` shapes including empty-tag (`"node:"` is *rejected*; `"node"` is accepted; multi-`:` like `"node:20:foo"` is rejected — exactly zero or one `:` allowed in the final path segment). Full Distribution-spec validation is left to a future story — this parser is a tight floor, not full grammar.
   - `parse_image_digest(s)` — `^sha256:[0-9a-f]{64}$` (lowercase hex only; **the `sha256:` prefix is asserted**); rejects uppercase, rejects other algorithms (sha512, blake3) at the type level — those would require an additive parser amendment.
-  - `parse_layer_digest(s)` — same regex as `parse_image_digest` (OCI layer digests share the `sha256:` prefix grammar with image digests at the type level; semantic difference is provenance, not shape).
-  - `parse_runtime_id(s)` — `^[a-z][a-z0-9_-]{0,63}$` (snake/kebab; ≤ 64 chars; e.g. `node20`, `python3-11`, `openjdk21`). Lowercase only.
-  - `parse_docker_stage_name(s)` — `^[a-z][a-z0-9_-]{0,63}$` (Dockerfile `AS <stage>` grammar; matches the Docker reference's "stage name" production; rejects leading digit, rejects uppercase per BuildKit normalisation).
-- [ ] **AC-4 — `ImageDigest` rejects non-`sha256:` prefixes.** Parametrized test covers the load-bearing invariant: `"sha512:..." `, `"md5:..."`, `"SHA256:..."` (uppercase prefix), `"sha256:ABCDEF..."` (uppercase hex), `"sha256:" + "0" * 63` (wrong length), `"sha256:" + "g" * 64` (non-hex), `""` (empty), `"0" * 64` (missing prefix) all return `Err(ParseError(value=...))`. Every variant has an entry in the matrix.
+  - `parse_layer_digest(s)` — same regex as `parse_image_digest` (OCI layer digests share the `sha256:` prefix grammar with image digests at the type level; semantic difference is provenance, not shape). Implementation reuses the same compiled regex but instantiates a separate `_regex_parser(...)` closure so the `Err.message` names `LayerDigest` (mirrors Phase 3's `_match`-closure-per-newtype catalog).
+  - `parse_runtime_id(s)` — `^[a-z][a-z0-9_-]{0,63}$` (snake/kebab; ≤ 64 chars; e.g. `node20`, `python3-11`, `openjdk21`). Lowercase only. Boundary tests: 64-char input accepted, 65-char input rejected.
+  - `parse_docker_stage_name(s)` — `^[a-z][a-z0-9_-]{0,63}$` (Dockerfile `AS <stage>` grammar; matches the Docker reference's "stage name" production; rejects leading digit, rejects uppercase per BuildKit normalisation). Boundary tests: 64-char input accepted, 65-char input rejected.
+- [ ] **AC-4 — `ImageDigest` rejects non-`sha256:` prefixes + contamination.** Parametrized test covers the load-bearing invariant. Every variant has an entry in the matrix and all return `Err(ParseError(value=...))`:
+  - Algorithm: `"sha512:" + "0"*128`, `"md5:" + "0"*32`, `"blake3:" + "0"*64` (other algorithms rejected at the type level).
+  - Casing: `"SHA256:" + "0"*64` (uppercase prefix), `"sha256:" + "A"*64` (uppercase hex).
+  - Length: `"sha256:" + "0"*63` (too short), `"sha256:" + "0"*65` (too long).
+  - Charset: `"sha256:" + "g"*64` (non-hex).
+  - Structure: `""` (empty), `"0"*64` (missing prefix), `":" + "0"*64` (missing algorithm), `"sha256:"` (missing hex).
+  - **Contamination (added by validator — SBOM read-back patterns):** `" sha256:" + "0"*64` (leading space), `"sha256:" + "0"*64 + " "` (trailing space), `"sha256:" + "0"*64 + "\n"` (trailing newline), `"sha256:" + "0"*64 + "\x00"` (trailing NUL), `"sha256:" + "0"*32 + "\x7f" + "0"*31` (embedded DEL).
 - [ ] **AC-5 — Family-symmetric closures** (mirroring Phase 3 S1-01 hardening):
   - **Round-trip:** every parser, every happy input → `Ok(value=<X>(s))`.
   - **Pairwise distinctness:** parametrized over the Phase 7 newtypes plus the existing Phase 0/1/2/3 names — every pair `(A, B)` with `A != B` satisfies `A is not B`.
@@ -56,11 +90,20 @@ Extend `codegenie.types.identifiers` with the six Phase 7 newtypes (`ImageRef`, 
   - **Exact-set `__all__`:** `set(codegenie.types.identifiers.__all__) == EXPECTED_FULL_SET` including Phase 7's five new str-backed names.
   - **Identity passthrough via `__init__`:** `codegenie.types.ImageDigest is codegenie.types.identifiers.ImageDigest` (etc., parametrized).
   - **`isinstance` runtime `TypeError` pin:** `with pytest.raises(TypeError): isinstance("foo", ImageDigest)` (parametrized over the five new str newtypes).
-- [ ] **AC-6 — Subprocess-`mypy --strict` cross-newtype rejection.** `tests/unit/types/test_identifiers_phase7_mypy_negative.py` (new) writes a temp `.py` file containing a deliberately swapped call (e.g., `def _accept_image_digest(_x: ImageDigest) -> None: ...; _accept_image_digest(LayerDigest("sha256:..."))`) and asserts `mypy --strict` exits non-zero with an "incompatible type" message. Parametrized over at least the swaps `(ImageDigest, LayerDigest)`, `(ImageRef, ImageDigest)`, `(RuntimeId, DockerStageName)`, `(ImageDigest, str)` — every Phase 7 newtype appears in at least one swap pair.
+- [ ] **AC-6 — Subprocess-`mypy --strict` cross-newtype rejection + negative control.** `tests/unit/types/test_identifiers_phase7_mypy_negative.py` (new) writes a temp `.py` file containing a deliberately swapped call (e.g., `def _accept_image_digest(_x: ImageDigest) -> None: ...; _accept_image_digest(LayerDigest("sha256:..."))`) and asserts `mypy --strict` exits non-zero AND the stdout contains `"incompatible type"` or `"argument"`. Parametrized over at least: `(ImageDigest, LayerDigest)`, `(LayerDigest, ImageDigest)`, `(ImageRef, ImageDigest)`, `(ImageDigest, ImageRef)`, `(RuntimeId, DockerStageName)`, `(DockerStageName, RuntimeId)` — every Phase 7 newtype appears in at least one swap pair. Constructor arguments come from a `_ctor_arg(name)` helper that returns the syntactically-correct string literal per newtype (mirrors Phase 3's `_ctor_arg`; replaces a brittle inline f-string conditional). A companion test `test_mypy_accepts_correct_usage_phase7` writes a file where each newtype is called with its own type and asserts `mypy --strict` exits zero — without this negative-control, a broken mypy installation would cause every swap test to pass for the wrong reason.
 - [ ] **AC-7 — Hypothesis totality + determinism + round-trip-identity** (`tests/unit/types/test_parsers_phase7_properties.py`): for any `s: str` drawn from `hypothesis.strategies.text(max_size=300)`, every Phase 7 parser returns `isinstance(r, (Ok, Err))` and never raises; `parse_<x>(s) == parse_<x>(s)`; for `s` drawn from `hypothesis.strategies.from_regex(parser_rx, fullmatch=True)`, `parse_<x>(s).unwrap() == <X>(s)`.
-- [ ] **AC-8 — Docstring registry extended.** Phase 3's `_NEWTYPE_REGISTRY` mapping gains one entry per Phase 7 newtype, each value names ADR-0004 + the Phase 7 consumer (e.g. `"# ImageDigest — Phase 7 ADR-0004 + ADR-0006; sha256:<64-hex>; consumed by BaseImage variant + assemble_provenance."`). Test asserts the registry keys equal `__all__` and every Phase 7 value names `ADR-0004` or `ADR-0006`.
-- [ ] **AC-9 — `ProvenanceAdapterId` alias shape.** A static-only test asserts `ProvenanceAdapterId` evaluates (under `typing.get_type_hints` with `include_extras=True`) to `tuple[Layer, Ecosystem]` at runtime (or, if the enums are stubbed as forward references, that the alias is a `typing.TupleType` whose args are the string names `"Layer"` and `"Ecosystem"`). A `# TODO(S2-01)` comment names the follow-up: once the real enums land, the test tightens to identity equality.
-- [ ] **AC-10 — Gates.** `mypy --strict src/codegenie/types/` clean; `ruff check`, `ruff format --check` clean on touched files; `make lint-imports` green; Phase 3 + Phase 0/1/2 regression suite green (no existing test weakened or skipped).
+- [ ] **AC-8 — Docstring registry extended.** Phase 3's `_NEWTYPE_REGISTRY` mapping gains one entry per Phase 7 newtype. Each Phase 7 entry **must** cite at least one Phase 7 ADR (`ADR-0004` or `ADR-0006`) **and** name the immediate Phase 7 consumer (mirrors Phase 3's precedent: `"Phase-3 MITRE CVE id (ADR-0010); S5-04 lockfile recipe input."`). Suggested values:
+  - `"ImageRef": "Phase-7 OCI image reference (ADR-0004); BaseImageStage.ref + Dockerfile recipes."`
+  - `"ImageDigest": "Phase-7 sha256:<64-hex> image digest (ADR-0004 + ADR-0006); BaseImage variant + BaseImageStage.digest."`
+  - `"LayerDigest": "Phase-7 sha256:<64-hex> OCI layer digest (ADR-0004); BaseImage variant + SyftSbom layer-attribution."`
+  - `"RuntimeId": "Phase-7 runtime identifier (ADR-0004); RuntimeBundled variant + runtime-bundled adapter."`
+  - `"DockerStageName": "Phase-7 Dockerfile AS-stage name (ADR-0004); BaseImageStage.name + Dockerfile recipes."`
+
+  Test asserts (a) `_NEWTYPE_REGISTRY` keys equal `__all__`, (b) every Phase 7 value names at least one Phase 7 ADR (`ADR-0004` or `ADR-0006`), AND (c) every Phase 7 value contains *some* Phase 7 consumer reference (`"BaseImage"`, `"RuntimeBundled"`, `"BaseImageStage"`, `"Dockerfile"`, `"SyftSbom"`, `"adapter"`, `"assemble_provenance"`, or `"_REGISTRY"`). The "and" between (b) and (c) is load-bearing — Phase 3 precedent enforces both.
+- [ ] **AC-9 — `ProvenanceAdapterId` alias shape.** A static-only test asserts `ProvenanceAdapterId` is a `typing.TypeAlias` whose runtime `__origin__` is `tuple` and whose `__args__` are the two `ForwardRef("_PhVnLayer")` / `ForwardRef("_PhVnEcosystem")` sentinels (the underscored aliases break the name collision with the Phase 3 `Ecosystem` Literal — see AC-11). A `# TODO(S2-01)` comment in the test names the follow-up: once S2-01 lands `primitives/vuln_provenance/registry.py`, the test tightens to import those real symbols and assert `typing.get_type_hints(...)` resolves to `tuple[Layer, Ecosystem]` where `Ecosystem is codegenie.primitives.vuln_provenance.registry.Ecosystem`. Until then the test must NOT import from `primitives/vuln_provenance/` (the module does not yet exist; importing would error).
+- [ ] **AC-10 — Package-level re-export discipline.** `src/codegenie/types/__init__.py` re-exports the six new Phase 7 names; `__all__` in `codegenie.types` is the exact sorted union of the prior set + Phase 7. A parametrized test asserts `getattr(codegenie.types, name) is getattr(codegenie.types.identifiers, name)` for each of `{"ImageRef", "ImageDigest", "LayerDigest", "RuntimeId", "DockerStageName", "ProvenanceAdapterId"}` (identity passthrough — already covered piecewise in AC-5, lifted here so the package-level surface is contract).
+- [ ] **AC-11 — `Ecosystem` symbol-collision sentinel.** The Phase 3 `codegenie.types.identifiers.Ecosystem` Literal and the Phase 7 `codegenie.primitives.vuln_provenance.registry.Ecosystem` Enum (lands in S2-01) are *intentionally distinct symbols* with non-overlapping responsibilities. A static-only test in `tests/unit/types/test_identifiers_phase7.py` asserts that (a) `codegenie.types.identifiers.Ecosystem` exists today and is a `typing.Literal` (not an Enum), and (b) carries a `# TODO(S2-01)` comment naming the follow-up: once S2-01 lands the Phase 7 enum, the test is extended to import the Phase 7 `Ecosystem` and assert `codegenie.types.identifiers.Ecosystem is not codegenie.primitives.vuln_provenance.registry.Ecosystem`. This sentinel makes accidental cross-module imports fail loudly (Rule 12 — fail loud) and documents the collision for future readers.
+- [ ] **AC-12 — Gates.** `mypy --strict src/codegenie/types/` clean; `ruff check`, `ruff format --check` clean on touched files; `make lint-imports` green; Phase 3 + Phase 0/1/2 regression suite green (no existing test weakened or skipped).
 - [ ] The TDD plan's red test exists, was committed, and is green.
 - [ ] `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest` all pass on the touched files.
 
@@ -157,10 +200,31 @@ def test_image_digest_rejects_non_sha256(bad):
 
 # --- ImageRef floor (AC-3) ---------------------------------------------------
 
-@pytest.mark.parametrize("bad", ["", " ", "image\x00name", "a" * 257, "image name"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",                       # empty
+        " ",                      # single space
+        "image name",             # embedded whitespace
+        "image\tname",            # embedded tab
+        "image\nname",            # embedded newline
+        "image\x00name",          # embedded NUL
+        "image\x7fname",          # embedded DEL
+        "image\x1fname",          # embedded unit-separator (last C0 control char)
+        "a" * 257,                # 257 chars — one over the floor
+        "node:20:foo",            # multi-`:` — multi-tag is rejected
+        "node:",                  # trailing `:` (empty tag) — rejected per AC-3
+    ],
+)
 def test_image_ref_rejects(bad):
     r = parse_image_ref(bad)
     assert isinstance(r, Err)
+
+
+def test_image_ref_max_length_boundary_accepted():
+    """256 chars (the floor) is accepted; 257 is rejected (covered above)."""
+    r = parse_image_ref("a" * 256)
+    assert isinstance(r, Ok)
 
 
 # --- Phase 3 newtypes still importable from same home (AC-2) -----------------
@@ -227,23 +291,46 @@ def test_phase7_registry_entries_cite_adr():
 
 State why it fails: `ImportError` — the five Phase 7 newtypes and their parsers don't exist yet in `codegenie.types.identifiers` / `codegenie.types.parsers`.
 
-The subprocess-mypy meta-test goes in `tests/unit/types/test_identifiers_phase7_mypy_negative.py`:
+The subprocess-mypy meta-test goes in `tests/unit/types/test_identifiers_phase7_mypy_negative.py`. The pattern mirrors Phase 3's `test_identifiers_phase3_mypy_negative.py` — a `_ctor_arg(name)` helper provides the syntactically-correct literal per newtype, and a separate `test_mypy_accepts_correct_usage_phase7` negative-control ensures the harness itself isn't broken:
 
 ```python
+from __future__ import annotations
 import subprocess, sys, textwrap
 from pathlib import Path
 import pytest
 
-SWAP_PAIRS = [
+PHASE7_STR_NEWTYPES = ("ImageRef", "ImageDigest", "LayerDigest", "RuntimeId", "DockerStageName")
+
+# Every Phase-7 newtype appears as either A or B in ≥ 1 pair.
+SWAP_PAIRS: list[tuple[str, str]] = [
     ("ImageDigest", "LayerDigest"),
+    ("LayerDigest", "ImageDigest"),
     ("ImageRef", "ImageDigest"),
+    ("ImageDigest", "ImageRef"),
     ("RuntimeId", "DockerStageName"),
     ("DockerStageName", "RuntimeId"),
-    ("ImageDigest", "ImageRef"),
 ]
 
 
-@pytest.mark.parametrize("a,b", SWAP_PAIRS)
+def _ctor_arg(name: str) -> str:
+    """Return a syntactically-correct literal-string for ``name(...)``.
+
+    NewType constructors do NOT validate at runtime; this only needs to be a
+    string. Choosing inputs that resemble each newtype's grammar keeps the
+    intent of the test readable for a human reviewer.
+    """
+    if name in ("ImageDigest", "LayerDigest"):
+        return f'"sha256:{"0" * 64}"'
+    if name == "ImageRef":
+        return '"node:20-alpine"'
+    if name == "RuntimeId":
+        return '"node20"'
+    if name == "DockerStageName":
+        return '"builder"'
+    raise AssertionError(f"unknown Phase-7 newtype {name!r}")
+
+
+@pytest.mark.parametrize("a,b", SWAP_PAIRS, ids=lambda v: v if isinstance(v, str) else "")
 def test_mypy_rejects_phase7_swap(tmp_path: Path, a: str, b: str) -> None:
     src = textwrap.dedent(
         f"""
@@ -251,17 +338,39 @@ def test_mypy_rejects_phase7_swap(tmp_path: Path, a: str, b: str) -> None:
 
         def _accept_{a.lower()}(_x: {a}) -> None: ...
 
-        _accept_{a.lower()}({b}("sha256:" + "0" * 64 if "Digest" in {b!r} else "x"))
+        _accept_{a.lower()}({b}({_ctor_arg(b)}))
         """
     )
     tmp = tmp_path / "swap.py"
     tmp.write_text(src)
     result = subprocess.run(
         [sys.executable, "-m", "mypy", "--strict", str(tmp)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
-    assert result.returncode != 0
-    assert "incompatible" in result.stdout.lower() or "argument" in result.stdout.lower()
+    assert result.returncode != 0, (
+        f"mypy --strict accepted {a} <- {b}; stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    out = result.stdout.lower()
+    assert "incompatible type" in out or "argument" in out, (
+        f"mypy rejected but not for the expected reason; stdout:\n{result.stdout}"
+    )
+
+
+def test_mypy_accepts_correct_usage_phase7(tmp_path: Path) -> None:
+    """Negative control — without this, a broken mypy harness would make every swap pass."""
+    lines = ["from codegenie.types.identifiers import (", *(f"    {n}," for n in PHASE7_STR_NEWTYPES), ")", ""]
+    for n in PHASE7_STR_NEWTYPES:
+        lines.append(f"def _accept_{n.lower()}(_x: {n}) -> None: ...")
+        lines.append(f"_accept_{n.lower()}({n}({_ctor_arg(n)}))")
+    tmp = tmp_path / "ok.py"
+    tmp.write_text("\n".join(lines) + "\n")
+    result = subprocess.run(
+        [sys.executable, "-m", "mypy", "--strict", str(tmp)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, (
+        f"mypy --strict rejected correct usage; stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 ```
 
 Property tests in `tests/unit/types/test_parsers_phase7_properties.py`:
@@ -325,13 +434,15 @@ def test_image_digest_round_trip(s):
 
 ## Out of scope
 
-- **The `Layer` / `Ecosystem` enums** — landed by S2-01 (this story declares `ProvenanceAdapterId` with `TYPE_CHECKING` forward refs so S2-01 lands cleanly without a circular dependency).
+- **The `Layer` / `Ecosystem` enums** — landed by S2-01 in `src/codegenie/primitives/vuln_provenance/registry.py` (this story declares `ProvenanceAdapterId` with `TYPE_CHECKING` forward refs so S2-01 lands cleanly without a circular dependency).
 - **`DistroPackage` Pydantic model** — landed by S1-02 (this story is newtypes-only).
 - **`Provenance` discriminated union** — landed by S1-03.
 - **`VulnProvenanceAdapter` Protocol** — landed by S1-04.
 - **`SyftSbom` reader** — landed by S1-05.
 - **The Phase 7 import-linter / no-`Any` fences** — landed by S1-06.
-- **Full Distribution-spec `ImageRef` validation** — deferred to a future hardening story; `parse_image_ref` ships as a tight floor (control chars, whitespace, length).
+- **Full Distribution-spec `ImageRef` validation** — deferred to a future hardening story; `parse_image_ref` ships as a tight floor (control chars, whitespace, length, single-`:` rule).
+- **Any edits under `src/codegenie/primitives/vuln_provenance/`** — that tree does not yet exist; S1-02 creates the directory + `__init__.py`. This story touches only `codegenie/types/identifiers.py`, `codegenie/types/parsers.py`, `codegenie/types/__init__.py`, and the three new test modules.
+- **Renaming the Phase 3 `Ecosystem` Literal** — the Phase 3 and Phase 7 `Ecosystem` symbols intentionally coexist in different modules with different membership; the validator AC-11 sentinel test documents the collision but does not migrate either symbol. A future refactor (e.g., "vuln-index migrates to the Phase 7 enum") would need its own ADR.
 
 ## Notes for the implementer
 
@@ -342,3 +453,13 @@ def test_image_digest_round_trip(s):
 - **Mirror Phase 3's `_NEWTYPE_REGISTRY` discipline.** Each entry is a one-line docstring naming the ADR + the immediate Phase 7 consumer. The test in AC-8 enforces that every new entry cites Phase 7 ADR-0004 or ADR-0006 — drift here is silent docstring rot.
 - **`mypy --strict` is the bar.** The subprocess-mypy meta-test (AC-6) catches the swap class of bugs that line-comment prose cannot. Phase 3 S1-05's validation explicitly closed this trap; do not regress to commented-out swap lines.
 - **Phase 3 + Phase 0/1/2 regression suite must stay green.** This story is additive to `identifiers.py`, but any change to the Phase 3 `_NEWTYPE_REGISTRY` test fixtures or `__all__` discipline could ripple. Run `pytest tests/unit/types/ -x` after the green pass — any pre-existing test must still pass unchanged.
+
+### Design-pattern observations (from the validator's design-patterns critic)
+
+These are *implementation guidance* — they're not promoted to ACs because they describe internal shape (Rule 2 — three similar lines is better than premature abstraction) but they materially affect extensibility:
+
+- **Shared regex, separate `_regex_parser` closures.** `parse_image_digest` and `parse_layer_digest` share `_SHA256_DIGEST_RX` but each instantiates its own `_image_digest_match = _regex_parser(_SHA256_DIGEST_RX, max_len=71, name="ImageDigest")` and `_layer_digest_match = _regex_parser(_SHA256_DIGEST_RX, max_len=71, name="LayerDigest")` so the `Err.message` distinguishes the two newtypes at the error boundary. This mirrors Phase 3's `_match`-closure-per-newtype catalog (`parsers.py` lines 131-144). Don't collapse them into one closure that downcasts on the calling parser.
+- **`parse_image_ref` deliberately bypasses `_regex_parser`.** The floor checks (length, whitespace, control chars, `:`-count) are *not* a single regex — `parse_image_ref` is intentionally permissive and the only one of the five parsers that lives outside the regex-helper pattern. This is documented in the Implementation Outline; do not "harmonise" it by inventing a giant Distribution-spec regex (that's a deferred follow-up).
+- **`Ecosystem` enum value strings become the within-layer dispatch sort key (ADR-0006).** When S2-01 lands `class Ecosystem(str, Enum): NPM = "npm"; YARN_BERRY = "yarn-berry"; PNPM = "pnpm"; APK = "apk"; DPKG = "dpkg"; RPM = "rpm"`, alphabetic sorting of the *values* produces the dispatch order `apk < dpkg < npm < pnpm < rpm < yarn-berry`. The Phase 7 npm adapter therefore dispatches *after* apk/dpkg within the BASE_IMAGE layer (irrelevant — they're in different layer-sets) but *before* yarn-berry within the APP layer (load-bearing for polyglot tiebreakers). S1-01 doesn't ship the enum, but flag this for the S2-01 implementer: the *string values*, not the declaration order, determine routing. If a different dispatch order is desired, ADR-0006 must be amended.
+- **`ProvenanceAdapterId` is a `TypeAlias`, NOT a `NewType`.** `NewType` over a generic tuple is unsupported in mypy strict mode (see [mypy docs §NewType limitations](https://mypy.readthedocs.io/en/stable/more_types.html#newtypes)). The arch + ADR-0006 specify a `TypeAlias` for exactly this reason.
+- **Open/Closed at the parsers boundary.** Adding a sixth Phase 7 newtype later (e.g., a hypothetical `SbomDigest`) is a *one-row* edit: `NewType` declaration + `_NEWTYPE_REGISTRY` row + smart constructor + `__all__` entry + re-export — zero edits to existing parsers, zero edits to existing tests. The existing rule-of-three regex catalog pattern (`_recipe_match`, `_signal_match`, ...) is the precedent; mirror it.
