@@ -1009,6 +1009,10 @@ Pinned at p99 (CI fail above):
 - `tests/adversarial/test_red_team_prompts.py` — 50+ curated scenarios; target 0 successes (any `PlanProposal` outside `SandboxedPath` is a failure).
 - `tests/adversarial/test_canary_bypass_via_truncation.py` — payload with injection past truncation byte; assert canary fires (because scan runs on untruncated).
 
+### Cross-cutting test-architecture additions
+
+Per `docs/roadmap.md §"Test architecture evolution"`, Phase 4 extends the Phase-3 scaffolding (`tests/e2e/`, `tests/property/test_cache_invariant.py`, parameterized portfolio sweep, `tests/contract/`) with: (a) **Phase 4 rows added to `tests/e2e/scenarios.yaml`** — recipe → RAG → LLM-fallback slice exercised against `node_typescript_helm`, `node_yarn_berry_pnp`, and the four `fixtures/vuln-major-bump/*` examples; (b) **`tests/golden/events/`** — pins `AttemptAnchor` JSONL (ADR-04-0017) + the two-stream Phase 4 / Phase 5 event log so downstream consumers (operator portal, future critic training, replay debugging) cannot be silently broken by in-place schema mutation; `schema_version` checked alongside byte equality; (c) **`tsc` in `tests/contract/`** — version-pinned subprocess contract for the `typecheck.typescript` SignalKind; (d) `FallbackTier`-scope determinism property is already covered by [S6-07](stories/S6-07-determinism-cassette-replay-property.md); workflow-scope generalization waits for Phase 6.
+
 ---
 
 ## Integration with Phase 5 (Sandbox + Trust-Aware gates)

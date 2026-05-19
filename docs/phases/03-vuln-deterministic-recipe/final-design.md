@@ -813,6 +813,17 @@ Numbers against `fixtures/vuln-repos/express-cve-2024-21501` (~800 files, npm v1
 - Symlink TOCTOU: deliberate symlink-swap fixture; assert `O_NOFOLLOW` raises `ELOOP`.
 - Capability fence: `tests/static/test_capability_fence.py` runs ruff custom rule against the codebase.
 
+### Cross-cutting test-architecture additions
+
+Per `docs/roadmap.md §"Test architecture evolution"`, Phase 3 is the first phase to exercise the cache + portfolio + real-binary surface at scale, so four foundational test-architecture pieces land here once and Phases 4–7 add rows rather than new test architectures:
+
+- **`tests/property/test_cache_invariant.py`** — Hypothesis property over random `(gather, edit-tracked-input, gather, edit-untracked-file, gather)` sequences; asserts outputs match iff `declared_inputs` content is byte-identical. Wider scope than the per-key `BundleCacheKey` round-trip above; this one stresses the *invalidation* boundary across the whole probe set.
+- **Parameterized portfolio sweep** — extends `tests/integration/portfolio/test_portfolio_sweep.py` to a parameterized matrix `{cold-cache, warm-cache, mid-run-cache-corruption, concurrent-multi-fixture}` × fixture portfolio. Each mode is a real operational scenario that today's single-mode sweep cannot catch.
+- **`tests/e2e/` slice harness** — table-driven `(task_class, fixture, expected_outcome)` rows. Phase 3 ships the harness scaffolding (`tests/e2e/conftest.py`, `scenarios.yaml`, `test_e2e_vuln_remediation.py`) and the first row (`vuln-remediation`, `express-cve-2024-21501`, `branch_created + lockfile_diff matches golden`). Subsequent phases add rows in `scenarios.yaml`, not new top-level test files.
+- **`tests/contract/` real-binary tier** — new tier; pins the contract for `npm`, `pnpm`, `yarn`, and `jq` at exact versions. Excluded from `make test` by default; runs nightly in CI and on every `pyproject.toml` change. Catches silent behavior drift when an allowlisted binary is upgraded.
+
+These four are foundational, not Phase-3-specific concerns. They land here because the cost-of-delay grows with the seam count.
+
 ### Fence-CI
 
 - **No LLM SDK** under `plugins/vulnerability-remediation--node--npm/`, `plugins/universal--*--*/`, `src/codegenie/plugins/`, `src/codegenie/transforms/` — `import_linter` contract.

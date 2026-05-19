@@ -927,6 +927,10 @@ test_inventory:
 - `tests/adversarial/test_audit_chain_tamper.py` — manually edit `attempts.jsonl` to drop an entry; restart `GateRunner`; chain verification fails; refuses to serve.
 - `tests/adversarial/test_phase4_chain_head_mismatch.py` — corrupted Phase 4 chain head; `RetryLedger.__init__` raises `AuditChainCorrupted`.
 
+### Cross-cutting test-architecture additions
+
+Per `docs/roadmap.md §"Test architecture evolution"`, Phase 5 introduces the first operational-failure surface (sandbox timeout, gate-retry exhaustion, partial-failure semantics) that the fence + adversarial tiers do not catch as a behavior cluster. Two additions: (a) **Phase 5 rows added to `tests/e2e/scenarios.yaml`** (extends the Phase-3 harness) — sandbox + trust-gate slice with at least one row per outcome class (`success-on-attempt-1`, `success-on-attempt-2`, `failure-after-3`); (b) **new `tests/resilience/` tier** — timeout exhaustion, retry-exhaustion-with-prior-attempts, partial-failure under strict-AND (one signal fails while others pass → verdict names the failing signal), and `GateRunner` restart-mid-attempt (kill mid-attempt-2, restart, `attempts.jsonl` is recoverable). Each is a behavioral slice across the gate runner + Phase 4's `FallbackTier` retry envelope, not a unit-level mock.
+
 ## Integration with Phase 6 (next phase)
 
 Phase 6 wraps the deterministic + LLM + sandbox loop as a LangGraph state machine with a Pydantic-typed state ledger and SQLite checkpointer. Phase 6's `interrupt()` fires when trust gates fail twice in a row.

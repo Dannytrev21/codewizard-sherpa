@@ -534,6 +534,13 @@ Order-of-magnitude figures. Single-machine M-series Mac developer or 4-vCPU Linu
 
 - `tests/e2e/test_remediate_with_sandbox.py` — runs `codegenie remediate ./tests/fixtures/repos/cve-fixture/ --cve CVE-2024-FAKE-NPM --sandbox-backend did` (reuses Phase 3's CVE fixture). Asserts exit 0, remediation branch exists, report references `gates/stage6_validate/`, `attempts.jsonl` has exactly 1 attempt.
 
+### Cross-cutting test-architecture additions
+
+Per `docs/roadmap.md §"Test architecture evolution"`, Phase 5 introduces the first operational-failure surface (sandbox timeout, gate-retry exhaustion, partial-failure semantics) that the existing fence + adversarial tiers do not catch as a behavior cluster. Two additions:
+
+- **Phase 5 rows added to `tests/e2e/scenarios.yaml`** (extends the Phase-3 harness) — sandbox + trust-gate slice exercised end-to-end against a fixture that requires retry-1 failure and retry-2 recovery (mirrors the phase's own exit criterion). At least one row per `(success-on-attempt-1, success-on-attempt-2, failure-after-3)` outcome class.
+- **New `tests/resilience/` tier** — operational-regression behavior assertions: (a) sandbox timeout exhaustion (`SubprocessJail.timeout_seconds` exceeded → `GateRunner` returns `Refused(reason="SANDBOX_TIMEOUT")`); (b) retry-exhaustion-with-prior-attempts (three retries each with the previous attempt's `AttemptSummary` → escalation, not silent loop); (c) partial-failure under strict-AND (one signal fails while others pass → gate rejects with the failing signal named in the verdict); (d) `GateRunner` restart-mid-attempt (kill process during attempt 2, restart, assert chain head reads back and `attempts.jsonl` has the partial entry recoverable). Each is a behavioral slice across the gate runner + Phase 4's `FallbackTier` retry envelope, not a unit-level mock.
+
 ---
 
 ## Risks (top 5)

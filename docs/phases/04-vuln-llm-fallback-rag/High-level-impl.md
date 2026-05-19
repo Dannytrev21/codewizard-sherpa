@@ -213,6 +213,10 @@ This sequence is dictated by **pattern dependencies, fence-CI invariants, and Ph
 - `tests/integration/test_phase4_e2e_replay_lands_rag.py` (roadmap exit criterion #2) — no operator step between runs; `LlmCostAccrued` delta asserted (second run materially cheaper).
 - `tests/integration/test_phase4_provenance_short_circuits.py` — asserts no `LeafInvoked` event.
 - Adversarial: `tests/adversarial/{test_injection_corpus,test_rag_poisoning_chain_orphan,test_rag_poisoning_runtime_inject,test_plan_path_escape,test_red_team_prompts}.py`.
+- **Cross-cutting test-architecture additions** (per `docs/roadmap.md §"Test architecture evolution"`; extends Phase 3's foundational scaffolding):
+  - Add Phase 4 rows to `tests/e2e/scenarios.yaml` — recipe → RAG → LLM-fallback slice rows for `node_typescript_helm`, `node_yarn_berry_pnp`, and each of the four `fixtures/vuln-major-bump/*` examples. Each row asserts pipeline outcome + audit-anchor written.
+  - `tests/golden/events/` — new directory; pins `tests/golden/events/attempt_anchor.{success,refusal}.jsonl` (ADR-04-0017) + `tests/golden/events/two_stream.express-cve.{spanning,internal}.jsonl`. Byte equality + `schema_version` checked.
+  - Add `tsc` to `tests/contract/` alongside Phase 3's `npm`/`pnpm`/`yarn`/`jq` — version-pinned subprocess contract for the `typecheck.typescript` SignalKind.
 
 **Done criteria:**
 - [ ] **Roadmap exit criterion #1:** `test_phase4_e2e_breaking_change.py` — express major-bump CVE end-to-end: Phase 3 recipe returns `NotApplicable` → Phase 4 LLM-replan succeeds → Stage 6 strict-AND (build, install, tests, lockfile_policy, cve_delta, **typecheck.typescript**) passes → outcome harvested into store. Green under cassette replay.
@@ -223,6 +227,9 @@ This sequence is dictated by **pattern dependencies, fence-CI invariants, and Ph
 - [ ] `tests/property/test_plan_outcome_no_recipe_outcome_widening.py` still green — Phase 3 `RecipeOutcome` variants unchanged.
 - [ ] `tests/fixtures/fallback_tier_callable.py` published as the contract Phase 6 reads to lift `FallbackTier.run` into a LangGraph node.
 - [ ] Documentation: `docs/operations/{secrets.md, cassettes.md, embeddings.md}` runbooks landed.
+- [ ] Phase 4 rows present in `tests/e2e/scenarios.yaml`; `pytest tests/e2e/` green.
+- [ ] `tests/golden/events/` populated; `tests/golden/test_event_stream_golden.py` byte-equality + `schema_version` checks green.
+- [ ] `tsc` row added to `tests/contract/`; nightly contract CI run green.
 
 **Depends on:** Steps 1–6; Phase 3 plugin scaffold; Phase 5 having merged the `FallbackTier.run(prior_attempts=[])` callsite already (per arch G2).
 

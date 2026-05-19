@@ -691,6 +691,15 @@ Unified test plan combining the three approaches.
 - `bench_typecheck_typescript_under_8s` — `tsc --noEmit` on 80-file fixture.
 - `bench_phase4_retrieval_recall_at_top3` (CI nightly via Phase 6.5 harness) — top-1 recall ≥ 0.9 on known-equivalent cases; thresholds calibrated, not point-checked.
 
+### Cross-cutting test-architecture additions
+
+Per `docs/roadmap.md §"Test architecture evolution"`, Phase 4 extends the Phase-3 scaffolding (Phase 3 ships `tests/e2e/`, `tests/property/test_cache_invariant.py`, parameterized portfolio sweep, `tests/contract/`) with four phase-specific items:
+
+- **Phase 4 rows added to `tests/e2e/scenarios.yaml`** — recipe → RAG → LLM-fallback slice exercised against `node_typescript_helm`, `node_yarn_berry_pnp`, and each of the four `fixtures/vuln-major-bump/*` examples. Each row asserts the full pipeline outcome (recipe miss → RAG hit OR RAG miss → LLM fallback → `Validated(passed=True)` with audit anchor written).
+- **`tests/golden/events/` directory** — pins the schema of the new event streams Phase 4 emits: (a) `AttemptAnchor` JSONL (`tests/golden/events/attempt_anchor.{success,refusal}.jsonl`) per [ADR-04-0017](ADRs/0017-attempt-anchor-event-schema.md), and (b) the two-stream Phase 4 / Phase 5 event log (`tests/golden/events/two_stream.express-cve.{spanning,internal}.jsonl`). These calcify the on-disk schema so future consumers (operator portal, future critic training, replay debugging) cannot be silently broken by an in-place mutation. `schema_version` is checked alongside byte equality.
+- **`tsc` added to `tests/contract/`** alongside Phase 3's `npm`/`pnpm`/`yarn`/`jq` — pins the TypeScript-compiler subprocess behavior at exact versions, run nightly. Catches the case where a project upgrades TypeScript and `tsc --noEmit` starts behaving differently for the `typecheck.typescript` SignalKind.
+- **`FallbackTier`-scope determinism property** (already in scope as [S6-07](stories/S6-07-determinism-cassette-replay-property.md)) — listed here for completeness; the workflow-scope generalization (entire LangGraph state machine) waits for Phase 6.
+
 ## Design patterns applied
 
 **This section supersedes the three per-lens pattern tables.**

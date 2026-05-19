@@ -1044,6 +1044,8 @@ Six explicit pattern commitments (calibrated range per design-patterns toolkit: 
 - `tests/integration/test_three_plugin_contract.py` — bake-test against vuln + universal + `example--noop--*`.
 - `tests/integration/test_end_to_end_express_cve.py` — exit criterion gate.
 
+**Cross-cutting test-architecture additions** (per `docs/roadmap.md §"Test architecture evolution"`). Phase 3 lands four foundational pieces that subsequent phases extend by adding rows rather than new test architectures: (a) **`tests/property/test_cache_invariant.py`** — Hypothesis property over random `(gather, edit, gather)` sequences asserting outputs match iff `declared_inputs` content is byte-identical (wider than the per-key `BundleCacheKey` round-trip); (b) **parameterized portfolio sweep** — extends `tests/integration/portfolio/test_portfolio_sweep.py` over `{cold-cache, warm-cache, mid-run-cache-corruption, concurrent-multi-fixture}` modes × fixture portfolio; (c) **`tests/e2e/` slice harness** — table-driven `scenarios.yaml` rows; Phase 3 ships the scaffolding + the first row (`vuln-remediation`, `express-cve-2024-21501`); (d) **`tests/contract/` real-binary tier** — version-pinned contract tests for `npm`, `pnpm`, `yarn`, `jq`; excluded from `make test`, run nightly in CI + on `pyproject.toml` changes.
+
 **Performance regression budgets** (relative-budget; > 25% regression vs. 7-day rolling mean fails):
 
 | Bench | Budget |

@@ -237,6 +237,11 @@ Phase 3 lands the first **plugin** (`vulnerability-remediation--node--npm`), the
 - `tests/adversarial/` (marked `@pytest.mark.phase03_adv`): CVE-record size/depth caps; `package.json` / `package-lock.json` caps; `--ignore-scripts` canary; egress denial; symlink TOCTOU; capability-construction fence (already in Step 4); recipe-authoring abuse precursor; lockfile re-resolve introduces NEW CVE → `cve_delta_introduced`.
 - `tests/integration/test_yarn_berry_routed_to_universal.py`: Yarn Berry repo falls through to universal fallback.
 - `tests/integration/test_extends_chain.py`: `extends`-chain composition test (depth 4 ok).
+- **Cross-cutting test-architecture additions** (per `docs/roadmap.md §"Test architecture evolution"`):
+  - `tests/property/test_cache_invariant.py` — Hypothesis property over random `(gather, edit-tracked-input, gather, edit-untracked-file, gather)` sequences; outputs match iff `declared_inputs` content is byte-identical.
+  - `tests/integration/portfolio/test_portfolio_sweep.py` — parameterize over `{cold-cache, warm-cache, mid-run-cache-corruption, concurrent-multi-fixture}` modes.
+  - `tests/e2e/` — new directory; ship `conftest.py` (fixture-repo provisioning), `scenarios.yaml` (table-driven rows), and `test_e2e_vuln_remediation.py`. Phase 3's first row: `(vuln-remediation, express-cve-2024-21501, branch_created + lockfile_diff matches golden)`. Subsequent phases add rows to `scenarios.yaml`.
+  - `tests/contract/` — new tier; version-pinned contract tests for `npm`, `pnpm`, `yarn`, `jq`. Excluded from `make test` via a new `contract` pytest marker; run nightly in CI and on every `pyproject.toml` change. CI workflow file `.github/workflows/contract.yml` schedules the nightly run.
 
 **Done criteria:**
 - [ ] All fixtures present and `pytest tests/fixtures/test_fixtures_load.py` smoke-loads each.
@@ -245,6 +250,10 @@ Phase 3 lands the first **plugin** (`vulnerability-remediation--node--npm`), the
 - [ ] Golden-file comparisons byte-equal (modulo whitelisted nondeterminism: timestamps, `workflow_id`, `event_id`).
 - [ ] `pytest tests/integration/test_breaking_test_suite.py` — recipe applies cleanly but `npm test` fails → orchestrator returns `Validated(passed=False, failing=["tests"])`; **no retry** (Phase 3 alone; Phase 5 wraps).
 - [ ] `cve_delta` signal: `tests/adversarial/test_cve_delta_introduced.py` — lockfile resolves a transitive that itself has a known CVE; `TrustOutcome.passed == False`; branch NOT created.
+- [ ] `tests/property/test_cache_invariant.py` passes over ≥50 Hypothesis runs.
+- [ ] `tests/integration/portfolio/test_portfolio_sweep.py` runs all four modes green against the fixture portfolio.
+- [ ] `tests/e2e/scenarios.yaml` contains the Phase 3 row; `pytest tests/e2e/test_e2e_vuln_remediation.py` exits 0.
+- [ ] `pytest -m contract tests/contract/` green on the local nightly CI image; `.github/workflows/contract.yml` is committed and the first nightly run succeeds.
 
 **Depends on:** Steps 6 + 7 (orchestrator and plugins must work end-to-end before properties are meaningful).
 

@@ -102,6 +102,10 @@ Any future refactor that preserves that contract is invisible to Phase 6.5.
 - Integration tests: kill/resume, retry recovery, HITL interrupt/resume.
 - Static tests: graph nodes may import ports, not each other directly.
 
+**Cross-cutting test-architecture additions** (per `docs/roadmap.md §"Test architecture evolution"`). Phase 6 is the first phase where *workflow-level* determinism becomes testable — the state machine ties Phases 3/4/5 together into one replayable graph. Two additions:
+- **Phase 6 rows added to `tests/e2e/scenarios.yaml`** (extends the Phase-3 harness) — full state-machine slice exercised from gather through PR-ready local branch, against the fixture cohort `node_typescript_helm` + `node_yarn_berry_pnp` + `node_pnpm_native`. Each row asserts terminal state + replay-byte-equality.
+- **Workflow-scope replay-determinism property** (`tests/property/test_workflow_replay_determinism.py`) — extends Phase 4 S6-07's `FallbackTier`-scope property to the entire LangGraph state machine: for any `(repo_snapshot, cassette_id, embedding_model_digest)` triple, the pipeline produces byte-identical outputs across N ≥ 50 independent runs (modulo timestamps + `workflow_id`). The property is workflow-scope because `VulnRemediationSut` is the seam Phase 6.5's bench harness reads — flaky determinism at this layer would silently poison every downstream eval and every promotion-gate decision.
+
 ## Failure modes
 
 | Failure | Detection | Required behavior |

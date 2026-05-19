@@ -46,3 +46,6 @@ Implement Phase 6 contracts-first: define `VulnRemediationSut` and the ledger mo
 - Kill/resume fixture.
 - HITL interrupt/resume fixture.
 - Docs + contract snapshot closeout.
+- **Cross-cutting test-architecture additions** (per `docs/roadmap.md §"Test architecture evolution"`):
+  - Add Phase 6 rows to `tests/e2e/scenarios.yaml` — full state-machine slice (gather → PR-ready local branch) against `node_typescript_helm` + `node_yarn_berry_pnp` + `node_pnpm_native`.
+  - `tests/property/test_workflow_replay_determinism.py` — Hypothesis property extending Phase 4 S6-07 to the full LangGraph state machine; for any `(repo_snapshot, cassette_id, embedding_model_digest)` triple, ≥ 50 independent runs produce byte-identical outputs modulo timestamps + `workflow_id`.
