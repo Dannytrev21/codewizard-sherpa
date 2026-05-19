@@ -28,6 +28,13 @@ RUNTIME_DEPS = frozenset(
         "tree-sitter",
         "tree-sitter-typescript",
         "tree-sitter-javascript",
+        # Phase-3 S3-02 adds `alembic` to the runtime closure — VulnIndex
+        # uses Alembic for sqlite schema migrations. Alembic is lazy-imported
+        # inside `VulnIndex._upgrade` (cold-start fence enforces) but lives
+        # in [project.dependencies] because the gather pipeline imports the
+        # vuln_index package at runtime. ADR-0002 fence still excludes LLM
+        # SDKs; `alembic` is not an LLM SDK.
+        "alembic",
     }
 )
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
