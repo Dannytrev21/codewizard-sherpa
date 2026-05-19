@@ -68,7 +68,7 @@ Implements four toolkit patterns simultaneously:
 - `src/codegenie/plugins/scope.py` ships `ScopeDim`, `Concrete`, `Wildcard`, `PluginScope.parse`, `PluginScope.matches`, `PluginScope.specificity` with `match`-based dispatch.
 - `tests/unit/plugins/test_scope.py` exercises `Concrete | Wildcard` algebra; property test on `specificity` partial order.
 - Every Pydantic model in `src/codegenie/{plugins,transforms}/` uses `model_config = ConfigDict(frozen=True, extra="forbid")`.
-- `dict[str, Any]` is banned under `src/codegenie/{plugins,transforms}/` and `plugins/` by `tests/fence/test_no_any_in_contract_layer.py`.
+- `dict[str, Any]` is banned under `src/codegenie/{plugins,transforms}/` and `plugins/` by `tests/fence/test_no_any_in_plugin_surface.py` (S1-05 — landed under the manifest name `test_no_any_in_plugin_surface.py`, NOT `test_no_any_in_contract_layer.py`).
 - Phase 4 / 5 / 6 / 7 plugins inherit the discipline — TCCM YAML readers go through smart constructors; recipe `apply()` returns `RecipeOutcome` tagged unions; new identifiers go in `identifiers.py`.
 - `TrustSignal.details: dict[str, str | int | bool | float]` — primitives only; not `dict[str, Any]`.
 

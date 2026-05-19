@@ -1,7 +1,7 @@
 # Story S1-05 — Phase 3 import-linter contracts + AST fences
 
 **Step:** Step 1 — Scaffold packages, domain primitives, sum types, and structural CI fences
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S1-05.md`](_attempts/S1-05.md) for the per-AC evidence table + planted-violation evidence blocks)
 **Effort:** M
 **Depends on:** S1-02 (`src/codegenie/plugins/` package exists), S1-03 (`src/codegenie/transforms/outcomes.py` exists), S1-04 (`src/codegenie/transforms/{transform,apply_context}.py` exist)
 **ADRs honored:** ADR-0010 (Consequences — `dict[str, Any]` banned under `src/codegenie/{plugins,transforms}/`; fence test enforces); ADR-0001 — **partial**: this story prevents LLM/`Any` pollution of `transforms/__init__.py`; the explicit re-export snapshot fence is deferred to S6-06; ADR-0011 (audit + lint posture — these fences are CI gates, not runtime guarantees; a PR editing both the fence and the violation defeats it, mitigated by CODEOWNERS on `tests/fence/` and `_phase2_baseline.txt`).

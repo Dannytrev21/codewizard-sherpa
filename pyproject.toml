@@ -343,3 +343,28 @@ source_modules = ["codegenie"]
 # breaks the contract, which is over-broad vs. the documented intent.
 as_packages = false
 forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]
+
+# ---------------------------------------------------------------------------
+# Phase 3 LLM-SDK contracts (S1-05). The whole `codegenie.{plugins,transforms}`
+# tree must remain LLM-SDK-free — Phase 3 is the deterministic-recipe loop,
+# and the gather-pipeline ADR-0002 closure already excludes these SDKs from
+# the runtime distribution. These contracts use `as_packages = true` so every
+# submodule under the package is scanned (NOT just the `__init__.py`), since
+# the threat is a future module importing anthropic / openai / etc. The five
+# names mirror `codegenie._fence.FORBIDDEN_LLM_SDKS`; drift between the two
+# is asserted by `tests/fence/test_phase3_importlinter_contracts_shape.py`.
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "codegenie.plugins must not import LLM SDKs"
+type = "forbidden"
+source_modules = ["codegenie.plugins"]
+as_packages = true
+forbidden_modules = ["anthropic", "langgraph", "openai", "langchain", "transformers"]
+
+[[tool.importlinter.contracts]]
+name = "codegenie.transforms must not import LLM SDKs"
+type = "forbidden"
+source_modules = ["codegenie.transforms"]
+as_packages = true
+forbidden_modules = ["anthropic", "langgraph", "openai", "langchain", "transformers"]

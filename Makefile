@@ -40,8 +40,16 @@ test:
 docs:
 	@mkdocs build --strict
 
+# `--no-cov` mirrors CI's `addopts=` override — running the fence subset
+# without it would trip pyproject's `--cov-fail-under=85` (the subset
+# doesn't cover enough source). The CI `fence` job invokes the Phase 0
+# scan directly with `-o "addopts="`; local `make fence` widens the gate
+# to include `tests/fence/` (S1-05 AC-3). Path order matters: the Phase 0
+# test `test_fence_recipe_invokes_pytest_on_fence_test_path` checks for the
+# exact substring `pytest -q tests/unit/test_pyproject_fence.py`, so we
+# keep that as a prefix and append the new path + flag.
 fence:
-	@pytest -q tests/unit/test_pyproject_fence.py
+	@pytest -q tests/unit/test_pyproject_fence.py tests/fence/ --no-cov
 
 audit-verify:
 	@python -m codegenie audit verify

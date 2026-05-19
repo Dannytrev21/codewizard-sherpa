@@ -27,7 +27,7 @@ Phase 3 lands the first **plugin** (`vulnerability-remediation--node--npm`), the
 - `src/codegenie/transforms/transform.py`: `Transform` ABC + `TransformProvenance` Pydantic.
 - `src/codegenie/transforms/outcomes.py`: `RecipeOutcome` (`Applied | Skipped | NotApplicable | Failed`), `RemediationOutcome` (`Validated | RequiresHumanReview | NotApplicable | Failed`), `NodeTransition` (`Advance | ShortCircuit | Escalate`), `AdapterConfidence` (`High | Degraded | Unavailable`), `Applicability` (`Applies | NotApplies`) — every one a Pydantic discriminated union with `Discriminator("kind")`.
 - `src/codegenie/plugins/resolution.py`: `ConcreteResolution | UniversalFallbackResolution` sum.
-- `tools/lint/importlinter.cfg` amended with Phase 3 LLM-SDK contracts covering `src/codegenie/{plugins,transforms}/` and `plugins/`.
+- `pyproject.toml [tool.importlinter]` amended with Phase 3 LLM-SDK contracts covering `src/codegenie/{plugins,transforms}/` (S1-05 — `tools/lint/importlinter.cfg` does NOT exist in this repo; the import-linter config lives in `pyproject.toml` per Phase 0 ADR phase-0006).
 - `tests/fence/test_no_llm_in_transforms.py`: runtime-closure scan of the Phase 3 surface against `FORBIDDEN_LLM_SDKS`.
 - `tests/fence/test_no_any_in_plugin_surface.py`: AST-walk asserting no new `Any` or `dict[str, Any]` annotations under `src/codegenie/{plugins,transforms}/`.
 - `tests/fence/test_kernel_frozen.py`: git-diff Phase 0/1/2 file list against ADR-anchored allowlist (only `ALLOWED_BINARIES` and `import-linter` edits permitted).
