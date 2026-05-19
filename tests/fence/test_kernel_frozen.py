@@ -8,12 +8,12 @@ anchor (raise via review).
 
 **CI fetch-depth requirement.** GitHub Actions defaults to a shallow clone.
 The baseline SHA must be reachable from ``HEAD`` for ``git merge-base
---is-ancestor`` and ``git diff`` to work. Set ``actions/checkout`` with
-``fetch-depth: 0`` (or call ``git fetch --unshallow`` before ``make fence``).
-The current CI ``fence`` job runs only the Phase 0 scan, so this is a
-future-proofing note for when ``tests/fence/`` is added to its invocation
-(the ``test`` job already uses the default checkout but reaches deep enough
-because the baseline SHA is recent — re-evaluate when the baseline rotates).
+--is-ancestor`` and ``git diff`` to work. ``_ensure_baseline_reachable``
+self-heals a shallow clone by attempting ``git fetch --unshallow`` when the
+baseline SHA is missing — so this fence works without callers having to set
+``actions/checkout`` with ``fetch-depth: 0`` ahead of time. If the unshallow
+fetch fails (e.g., the SHA was rewritten on the remote), the diff call
+surfaces a clear error.
 """
 
 from __future__ import annotations
@@ -115,12 +115,52 @@ def _read_baseline_sha(baseline_path: Path) -> str:
     return text
 
 
+def _ensure_baseline_reachable(baseline: str) -> None:
+    """Self-heal a shallow clone before reading ``git diff``.
+
+    GitHub Actions defaults to ``fetch-depth: 1``, which means commits older
+    than ``HEAD`` are not in the local history. We try ``git cat-file -e``
+    first (cheap reachability check); if the baseline is missing AND the
+    clone is shallow, attempt ``git fetch --unshallow``. This keeps the
+    fence working without forcing every caller (CI YAML, local dev) to set
+    ``fetch-depth: 0`` ahead of time. Falls through silently if the clone
+    is already deep — the diff call will surface a clearer error if the
+    SHA genuinely doesn't exist in the remote.
+    """
+    cat = subprocess.run(
+        ["git", "cat-file", "-e", f"{baseline}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if cat.returncode == 0:
+        return
+    is_shallow = (
+        subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        == "true"
+    )
+    if is_shallow:
+        subprocess.run(
+            ["git", "fetch", "--unshallow"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
 def _run_git_diff(baseline: str, head: str = "HEAD") -> list[tuple[str, Path]]:
     """Return ``[(status, path), ...]`` from ``git diff --name-status -M``.
 
     ``-M`` enables rename detection so a delete-then-recreate that defeats the
     naive diff is treated as ``R`` (in-scope) rather than disappearing.
+    Self-heals a shallow CI clone before invoking diff.
     """
+    _ensure_baseline_reachable(baseline)
     result = subprocess.run(
         ["git", "diff", "--name-status", "-M", f"{baseline}..{head}"],
         capture_output=True,
@@ -157,6 +197,7 @@ def test_baseline_resolves_to_ancestor_of_head_and_is_not_head(
     name: str, baseline_path: Path
 ) -> None:
     sha = _read_baseline_sha(baseline_path)
+    _ensure_baseline_reachable(sha)
     head_sha = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         capture_output=True,
