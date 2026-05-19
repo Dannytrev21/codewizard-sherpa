@@ -402,23 +402,6 @@ def test_audit_verify_smoke_run(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Original ``ctx.output_dir`` drift (scip_index, tree_sitter_import_graph, "
-        "slo) is fixed by the BudgetingContext parity change; the smoke run on "
-        "the polyglot fixture now surfaces TWO unrelated pre-existing probe "
-        "errors that this fence was originally designed to catch: "
-        "(a) ``ripgrep_curated`` invokes ``rg`` directly but ``ALLOWED_BINARIES`` "
-        "carries the package name ``ripgrep`` — DisallowedSubprocessError on every "
-        "smoke run; (b) ``ownership`` returns ``errors=['codeowners_absent']`` on "
-        "fixtures that lack a CODEOWNERS file — a typed low-information "
-        "observation, but ``errors != []`` lands the probe as ``exit_status='error'`` "
-        "in the audit record. Both are separate fixture/probe issues; this xfail "
-        "stays until they land their own fixes. Once they do, this xfail flips to "
-        "XPASS and strict=True fails CI until the marker is removed."
-    ),
-)
 def test_no_probe_errors_in_smoke_run_record(tmp_path: Path) -> None:
     """Every probe in the smoke run record exits ``ok`` or ``skipped`` — never ``error``.
 

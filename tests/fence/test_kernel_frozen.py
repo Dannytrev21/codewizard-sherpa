@@ -121,6 +121,17 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # the source of truth, this file is generated.
         # adr: docs/production/adrs/0007-frozen-probe-contract.md
         Path("src/codegenie/schema/probes/layer_d/skills_index.schema.json"),
+        # Phase-shakedown F-06 — moves ``"codeowners_absent"`` from
+        # ``errors=`` to ``warnings=`` so the no-CODEOWNERS case is a
+        # typed low-information observation, not a probe error. The
+        # `errors=` placement was a Phase-2 over-classification that
+        # masked real probe errors downstream and made every smoke run
+        # on fixtures without CODEOWNERS look broken. Schema slice +
+        # confidence + downstream consumer shape unchanged.
+        # adr: docs/phases/02-context-gather-layers-b-g/ADRs/
+        # 0001-add-docker-and-security-cli-tools-to-allowed-binaries.md
+        # §Correction (2026-05-19).
+        Path("src/codegenie/probes/layer_e/ownership.py"),
     }
 )
 

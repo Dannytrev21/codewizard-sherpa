@@ -396,6 +396,14 @@ def test_catalog_edit_invalidates_only_node_manifest(
         "gitleaks",
         "scip_index",
         "semantic_index_meta",
+        # Phase-shakedown F-06: ``ripgrep_curated`` now runs on a warm
+        # gather after the ``ripgrep`` → ``rg`` allowlist correction
+        # (02-ADR-0001 §Correction). It declares ``tsconfig.json`` in
+        # its inputs (same as ``scip_index``); ``scip-typescript`` writes
+        # that file on cold pass, so warm-pass cache key legitimately
+        # diverges. Pre-fix the probe errored before any input snapshot,
+        # so its miss never surfaced in the warm_state envelope.
+        "ripgrep_curated",
     }
     assert "node_manifest" in misses, (
         f"S3-06 AC-7 — catalog edit must invalidate node_manifest; "

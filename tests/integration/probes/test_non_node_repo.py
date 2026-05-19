@@ -173,6 +173,11 @@ def test_non_node_go_registry_filter_couples_to_detected_languages(
         "repo_config",
         "semgrep",
         "skills_index",
+        # Phase-shakedown F-06: ripgrep_curated now runs after the
+        # ``ripgrep`` → ``rg`` allowlist name correction (02-ADR-0001
+        # §Correction). Pre-fix it errored on every smoke run with
+        # ``DisallowedSubprocessError`` and dropped out of the envelope.
+        "ripgrep_curated",
     }
     assert actual == expected, (
         f"envelope probe-keys diverged from expected runnable set; "
