@@ -1,9 +1,24 @@
 # Story S1-06 — Phase 7 LLM-SDK import-linter contract + no-`Any` AST fence
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** S
 **Depends on:** S1-03, S1-04, S1-05
+
+## Validation notes (2026-05-19, `phase-story-validator` first pass)
+
+Edits applied in place (see [`_validation/S1-06-phase7-primitive-fences.md`](_validation/S1-06-phase7-primitive-fences.md) for the full audit):
+
+- **F1 — Canonical walker pinned.** The TDD plan and Implementation outline now name `walk_any_annotations(src: str, path: Path) -> list[Violation]` from `codegenie._phase3_fence` — not `has_any_annotation(tree)`. The walker already exists; the executor imports, does not fork (Rule 7).
+- **F2 — `PHASE7_ROOTS` Open/Closed mirror is now an explicit AC.** Mirrors Phase 3's `PHASE3_ROOTS: Final[tuple[Path, ...]]` convention; floor guard parametrizes over it.
+- **F4/F5 — `sys.modules` isolation + metamorphic invariants made concrete.** AC-3.b spells out snapshot/restore discipline; AC-3.c spells out the plant-outside-primitive-then-walk-then-pop-then-intersect invariant. No more hand-wavy "implementer wires this."
+- **F6 — `as_packages = true` rationale captured load-bearing** so a future "cleanup" cannot silently drop it.
+- **F7 — `make fence` wiring concretised to `tests/fence/test_fence_target_wiring.py`** (which exists). AC-6 names the file to extend.
+- **F8 — AC-7's three planted-violation scenarios enumerated** with exact failure-message expectations each must produce; evidence shape uniform.
+- **F9 — `__init__.py` is INCLUDED in the AST walk** (deliberate divergence from Phase 3 — re-exports are public surface). Floor guard counts non-init modules only.
+- **F3 / F10 / F11 — surfaced as Notes-for-implementer** (marker-grammar Open/Closed grandfathering, S5-01 byte-edit allowlist forward-coupling, `lint-imports` invocation discipline).
+
+Out-of-scope (recorded; not folded into ACs): shared `codegenie._fence_roots` registry (rule-of-three not yet reached — defer to Phase 8+); phase-prefix-agnostic `ALLOWED_MARKER_RE` (defer until a real Phase 7+ marker is needed); `model_construct()` bypass fence (already deferred per the story's Out-of-scope section).
 **ADRs honored:** ADR-0004 (Consequences clause: "an `import_linter` contract extends the cold-start defense to `src/codegenie/primitives/vuln_provenance/` — no LLM SDK imports" and "a fence test extends the runtime closure assertion to the new tree"), production ADR-0005 (no LLM in gather pipeline — this story extends that fence to the new primitive), Phase 3 ADR-0010 (`dict[str, Any]` banned under contract-surface trees — this story extends that to `primitives/vuln_provenance/`), Phase 0/Phase 3 fence precedent (`tests/fence/test_pyproject_fence.py`, `tests/fence/test_no_any_in_plugin_surface.py`)
 
 ## Context
@@ -29,7 +44,7 @@ The Phase 0 `tests/unit/test_pyproject_fence.py` + Phase 3 `tests/fence/test_no_
   - `pyproject.toml §[tool.importlinter]` (existing Phase 0 + Phase 3 contracts) — mirror the `type = "forbidden"`, `source_modules = [...]`, `forbidden_modules = [...]`, `as_packages = true`, `include_external_packages = true` shape. Read the existing rows; do NOT redefine `FORBIDDEN_LLM_SDKS`.
   - `src/codegenie/_fence.py` — Phase 0 `FORBIDDEN_LLM_SDKS` + `scan_installed_distribution` + `parse_runtime_dep_names_from_toml`. **Reuse**; do NOT reimplement.
   - `tests/unit/test_pyproject_fence.py` — Phase 0 fence-test scaffolding. Mirror the planted-positive + metamorphic-complement pattern.
-  - `src/codegenie/_phase3_fence.py` + `tests/fence/test_no_any_in_plugin_surface.py` — Phase 3 `Any`-AST-walker (the `_phase3_fence._has_any` visitor function); reuse the walker, retarget the roots.
+  - `src/codegenie/_phase3_fence.py` + `tests/fence/test_no_any_in_plugin_surface.py` — Phase 3 `Any`-AST-walker. **Canonical helper:** `walk_any_annotations(src: str, path: Path) -> list[Violation]`. **Canonical roots constant:** `PHASE3_ROOTS: Final[tuple[Path, ...]]`. **Canonical hit type:** the frozen `Violation` dataclass with `kind: ViolationKind` (closed `Literal`). Phase 7 imports all three verbatim and mirrors `PHASE3_ROOTS` with a parallel `PHASE7_ROOTS` (extension by addition — Phase 3's tuple is NOT mutated; Phase 7 ADR-0009 byte-edit allowlist forbids it).
   - `tests/fence/test_phase3_importlinter_contracts_shape.py` — Phase 3 contract-shape parsing test; mirror.
   - `src/codegenie/primitives/vuln_provenance/syft_reader.py` (from S1-05) — has `extra="allow"` deliberately; the `Any`-fence must **exempt** this file (or specifically not flag `__pydantic_extra__` shapes).
 - **Phase 3 story precedent:**
@@ -54,25 +69,33 @@ Land three CI gates that protect the `src/codegenie/primitives/vuln_provenance/`
   as_packages = true
   include_external_packages = true
   ```
-  A unit test parses `pyproject.toml`, locates the contract, asserts (a) `source_modules == ["codegenie.primitives.vuln_provenance"]`, (b) `forbidden_modules` is exactly the five SDKs (no drift), (c) `as_packages is True`, (d) `include_external_packages is True`.
+  A unit test parses `pyproject.toml`, locates the contract by name, asserts:
+  - **(a)** `source_modules == ["codegenie.primitives.vuln_provenance"]` (retargeting to `codegenie.primitives` would over-fence; retargeting to a subpath would under-fence — pin exactly).
+  - **(b)** `set(forbidden_modules) == codegenie._fence.FORBIDDEN_LLM_SDKS` — coupled to the canonical constant so drift is impossible. Drift here = the fence is silently incomplete.
+  - **(c)** `as_packages is True` — **load-bearing**: without it `import-linter` scans only `vuln_provenance/__init__.py` and every submodule (`types`, `protocols`, `errors`, `syft_reader`, `registry`, `assembly`, `events`, `sbom_verifier`) silently leaks. The shape-pin test's failure message MUST name the submodule-leakage failure mode so a future "cleanup" cannot drop the flag silently.
+  - **(d)** `include_external_packages is True` — required for `import-linter` to traverse third-party packages (the LLM SDKs) in transitive-import reasoning.
 - [ ] **AC-2 — `make lint-imports` green with the new contract.** Verified by a planted-positive subprocess test: a temp file `src/codegenie/primitives/vuln_provenance/_test_planted_leak.py` containing `import anthropic` is written, `make lint-imports` runs as a subprocess, exits non-zero, the failure message names the planted file. File removed after assertion (test uses `try/finally`).
 - [ ] **AC-3 — `tests/fence/test_phase7_no_llm.py` — runtime-closure scan.** Reuses `codegenie._fence.FORBIDDEN_LLM_SDKS`. Mutation guards:
   - **AC-3.a** **Live check:** `pkgutil.walk_packages(codegenie.primitives.vuln_provenance.__path__)` followed by `set(sys.modules) & FORBIDDEN_LLM_SDKS == set()`.
-  - **AC-3.b** **Per-SDK planted-positive** (`@pytest.mark.parametrize` over the five SDKs): inject a synthetic `sys.modules[<sdk>]` via a temp submodule under the primitive's path (`tmp_path` + `sys.path` prepend); assert the same scanner the live check uses catches it; remove the temp submodule.
-  - **AC-3.c** **Metamorphic complement:** pre-populate `sys.modules["anthropic"]` directly (NOT via the primitive's closure); assert the fence does NOT fire. Proves scope is the primitive's closure, not the test runner's `sys.modules`.
+  - **AC-3.b** **Per-SDK planted-positive** (`@pytest.mark.parametrize` over the five SDKs): for each SDK, (1) write a fake `<sdk>.py` to a `tmp_path/fake_sdk_root` and `monkeypatch.syspath_prepend` it; (2) write a temp primitive submodule `src/codegenie/primitives/vuln_provenance/_test_planted_<sdk>.py` containing `import <sdk>`; (3) **snapshot AND pop** every `codegenie.primitives.vuln_provenance` and `codegenie.primitives.vuln_provenance.*` entry from `sys.modules` (so the walker re-imports them fresh and observes the planted file); (4) run the SAME scanner the live check uses; (5) assert `sdk in scanner_result`; (6) in `finally`, delete the planted file, pop the SDK from `sys.modules`, pop the freshly-imported primitive modules, restore the snapshot. The isolation discipline is **load-bearing** — without it, subsequent tests see a different `vuln_provenance.*` class identity than they did at pytest collection time (breaks the future S2-01 adapter registry's class-identity contract).
+  - **AC-3.c** **Metamorphic complement:** plant a fake `anthropic.py` at `tmp_path/fake_outside/anthropic.py` and `monkeypatch.syspath_prepend` it (NOT under the primitive's path); `importlib.import_module("anthropic")` to populate `sys.modules["anthropic"]`; walk the primitive packages; assert `"anthropic" in sys.modules` (we put it there); pop ALL `FORBIDDEN_LLM_SDKS` entries from `sys.modules`; intersect post-pop `sys.modules` with `FORBIDDEN_LLM_SDKS`; assert the result is `frozenset()`. **The invariant proven is:** the primitive's walk does NOT re-import a globally-present SDK; scoping is the primitive's closure, not the test runner's `sys.modules`. (Concrete invariant — no hand-wavy "implementer wires this.")
   - **AC-3.d** **Import-success guard:** assert `"codegenie.primitives.vuln_provenance" in sys.modules` after the walk — silently-caught `ImportError` must not green the test.
   - **AC-3.e** **ADR framing in docstring:** module-level docstring names ADR-0004 + production ADR-0005; meta-test scans for the required strings.
 - [ ] **AC-4 — `tests/fence/test_no_any_in_provenance_surface.py` — AST-walk fence.** Mirrors Phase 3's structural visitor (NOT shotgun `ast.walk`):
-  - Roots: every `.py` file under `src/codegenie/primitives/vuln_provenance/`.
-  - Walker: `ast.NodeVisitor` restricted to `ast.AnnAssign.annotation`, `ast.arg.annotation`, `ast.FunctionDef.returns`, `ast.AsyncFunctionDef.returns`, `ast.ClassDef`-body-level `AnnAssign`.
-  - Flags: any subtree of those annotations containing `ast.Name(id="Any")` or `ast.Attribute(attr="Any")`.
-  - **The walker is the SAME function** as Phase 3's `src/codegenie/_phase3_fence.py::_has_any` (or equivalent name) — **reuse, do not fork**. If Phase 3's walker can be retargeted by passing roots, do that; if not, extract the visitor into a shared helper module.
-  - **Floor guard:** each root directory exists AND contains ≥ 1 non-`__init__.py` Python module (parametrized assertion fails loudly if the primitive directory is deleted).
-  - **Per-shape planted-violation matrix:** parametrized over the existing Phase 3 mutation matrix (`x: Any`, `def f(x: Any) -> None`, `def f() -> Any`, `x: dict[str, Any]`, `x: list[Any]`, `x: typing.Any`, `x: "Any"` forward-ref, etc.) — each row is one mutation guard.
-  - **Negative cases:** `x: int = 1`, `isinstance(obj, Any)` (runtime, not annotation), `if TYPE_CHECKING: from typing import Any` (import, not annotation) → NOT flagged.
+  - **`PHASE7_ROOTS` Open/Closed mirror:** module-level `PHASE7_ROOTS: Final[tuple[Path, ...]] = (Path("src/codegenie/primitives/vuln_provenance"),)`. Mirrors `codegenie._phase3_fence.PHASE3_ROOTS`. Phase 3's `PHASE3_ROOTS` is NOT mutated (Phase 7 ADR-0009 byte-edit allowlist forbids editing `_phase3_fence.py`). A future ADR-0039 primitive landing in Phase 8+ becomes the third consumer; at that point the per-phase tuples may be lifted into a shared `codegenie._fence_roots` registry (rule-of-three) — out of scope here.
+  - **AST scan scope:** every `*.py` file under each `PHASE7_ROOTS` entry, **including `__init__.py`** — re-exports from `vuln_provenance/__init__.py` are part of the public surface; an `Any` annotation there is just as harmful as one in a submodule. This is a deliberate divergence from Phase 3's `scan_phase3_surface()` (which excludes `__init__.py`); rationale recorded in the module docstring.
+  - **Walker:** import `walk_any_annotations(src: str, path: Path) -> list[Violation]` from `codegenie._phase3_fence` verbatim. **This is the SAME function Phase 3 uses.** Do NOT extract, re-implement, fork, or rename — Rule 7. (The walker was extracted into `_phase3_fence` by Phase 3 S1-05; the visitor handles `ast.AnnAssign.annotation`, `ast.arg.annotation`, `ast.FunctionDef.returns`, `ast.AsyncFunctionDef.returns`, plus forward-ref re-parse of string `Constant` values.) Import `Violation` (frozen dataclass) and `ViolationKind` (closed `Literal`) for hit aggregation.
+  - **Floor guard:** parametrized over `PHASE7_ROOTS`; each root directory exists AND contains ≥ 1 non-`__init__.py` Python module (`__init__.py` is included in the AST scan but EXCLUDED from the floor-guard count, to avoid silently-greening an empty package whose init re-exports nothing).
+  - **Per-shape planted-violation matrix:** reuse Phase 3's exact matrix verbatim (`x: Any`, `def f(x: Any) -> None`, `def f() -> Any`, `x: dict[str, Any]`, `x: Dict[str, Any]`, `x: list[Any]`, `x: tuple[Any, ...]`, `x: typing.Any`, `x: Callable[..., Any]`, `x: dict[str, list[Any]]`, `x: "Any"` forward-ref, `x: "dict[str, Any]"` forward-ref) — each row is one mutation guard against a regression that drops a shape from the visitor.
+  - **Negative cases:** `x: int = 1`, `x: dict[str, int] = {}`, `isinstance(obj, Any)` (runtime), `if TYPE_CHECKING: from typing import Any` (import), `from typing import Any` (import) → NOT flagged.
 - [ ] **AC-5 — `syft_reader.py` is exempt from the `Any` fence.** The deliberate `extra="allow"` admits a `__pydantic_extra__: dict[str, Any]` shape internally to Pydantic, but the file's *declared annotations* must stay typed. The fence walks `syft_reader.py` and flags any **declared** `Any` annotation; the Pydantic-internal `__pydantic_extra__` field is generated, not declared, so it does not appear in the AST. A test asserts: `_has_any("syft_reader.py source")` returns no findings today (i.e., the S1-05 implementation must not have introduced any `Any` annotations).
-- [ ] **AC-6 — `make fence` wiring.** The `Makefile` `fence:` target's recipe includes `tests/fence/test_phase7_no_llm.py` and `tests/fence/test_no_any_in_provenance_surface.py` (or, equivalently, a directory glob that covers them). A meta-test parses the `Makefile`'s `fence:` recipe and asserts both fence test paths are present (or that the glob covers them).
-- [ ] **AC-7 — Three-out-of-three planted-violation evidence** (mirrors Phase 3 S1-05's discipline): for each of the three CI gates (import-linter contract, no-LLM runtime fence, no-`Any` AST fence), the story's `_attempts/` log records evidence that a deliberately-planted violation (a) was inserted, (b) caused CI to fail with a useful error message, (c) was removed before merge. The evidence lives in `_attempts/S1-06.md` (created during execution).
+- [ ] **AC-6 — `make fence` wiring.** Extend `tests/fence/test_fence_target_wiring.py` (which exists, Phase 3 precedent) with assertions that the `Makefile`'s `fence:` recipe covers **all four** new Phase 7 fence files: `tests/fence/test_phase7_no_llm.py`, `tests/fence/test_no_any_in_provenance_surface.py`, `tests/fence/test_phase7_importlinter_contracts_shape.py`, `tests/fence/test_lint_imports_catches_phase7_planted_leak.py`. Coverage is asserted either by explicit-path enumeration in the recipe OR by a directory glob (e.g. `tests/fence/`) that the meta-test recognises. Do NOT invent a new wiring test — extend the existing one.
+- [ ] **AC-7 — Three-out-of-three planted-violation evidence** (mirrors Phase 3 S1-05's discipline). `_attempts/S1-06.md` records evidence for **each** of the three enumerated scenarios — uniform shape so the validation precedent stays mechanical:
+  1. **Gate 1 — `import-linter` contract:** plant `import anthropic` at `src/codegenie/primitives/vuln_provenance/_test_planted_phase7_leak.py`; run `make lint-imports` (or the `lint-imports` console script directly — see Notes); capture stdout/stderr; assert non-zero exit AND the combined output names BOTH `anthropic` AND (`phase-7` OR `vuln_provenance`) so an operator can locate the offending contract; remove the planted file in `finally`.
+  2. **Gate 2 — runtime-closure fence (`tests/fence/test_phase7_no_llm.py`):** same planted file as above; run `pytest tests/fence/test_phase7_no_llm.py`; capture failure output; assert it names the planted module path (`_test_planted_phase7_leak`); remove planted file.
+  3. **Gate 3 — no-`Any` AST fence (`tests/fence/test_no_any_in_provenance_surface.py`):** plant `x: Any = 1` at `src/codegenie/primitives/vuln_provenance/_test_planted_any.py`; run `pytest tests/fence/test_no_any_in_provenance_surface.py`; capture failure output; assert it reports `Violation(file=…_test_planted_any.py, line=1, kind="any-name", snippet="Any")`; remove planted file.
+
+  Plus a `## Forward-coupling to S5-01` section in the same `_attempts/S1-06.md` listing every byte-edit this story made to Phase 0–6.5-locked files (`pyproject.toml`'s one `[[tool.importlinter.contracts]]` block) and every new file added under `tests/fence/` (four new files) — S5-01's executor mechanically picks these up when writing the byte-edit allowlist.
 - [ ] **AC-8 — Gates.** `make lint-imports` green; `pytest tests/fence/` green; `mypy --strict` clean on touched files; `ruff check`, `ruff format --check` clean; Phase 0/1/2/3 + Phase 5/6.5 regression suite green.
 - [ ] The TDD plan's red tests exist, were committed, and are green.
 - [ ] `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest` all pass on the touched files.
@@ -89,11 +112,13 @@ Land three CI gates that protect the `src/codegenie/primitives/vuln_provenance/`
    - Add the import-success guard.
    - Module-level docstring naming ADR-0004 + production ADR-0005.
 3. Land `tests/fence/test_no_any_in_provenance_surface.py`:
-   - If `codegenie._phase3_fence` has an extractable `_has_any` (or `AnyAnnotationVisitor`) helper, reuse it. Otherwise, refactor into a shared `codegenie._fence` helper and update Phase 3's import (additive, surgical — read Phase 3's fence file first to confirm shape).
-   - Root: `src/codegenie/primitives/vuln_provenance/`.
-   - Floor-guard test: assert the root exists + has ≥ 1 non-`__init__.py` module.
-   - Live check: walk every `.py`, run the visitor, assert no findings.
-   - Planted-violation parametrized matrix (mirror Phase 3's table).
+   - Import `walk_any_annotations` (canonical helper, signature `(src: str, path: Path) -> list[Violation]`) and `Violation` from `codegenie._phase3_fence`. **The walker already exists.** Do NOT extract, fork, or rename — Rule 7.
+   - Module-level `PHASE7_ROOTS: Final[tuple[Path, ...]] = (Path("src/codegenie/primitives/vuln_provenance"),)`. Mirror, do not edit, `codegenie._phase3_fence.PHASE3_ROOTS`.
+   - Module-level helper `_scan_phase7_surface() -> list[Violation]` that iterates `PHASE7_ROOTS`, asserts each root is a directory and contains ≥ 1 non-`__init__.py` module (floor guard), then runs `walk_any_annotations` over every `*.py` file (including `__init__.py` — see AC-4 rationale).
+   - Floor-guard test: parametrize over `PHASE7_ROOTS`; assert directory exists + non-init module count ≥ 1.
+   - Live check: call `_scan_phase7_surface()`; assert returned `Violation` list is empty.
+   - `syft_reader.py` exempt-but-clean test (AC-5): read `PHASE7_ROOTS[0] / "syft_reader.py"`; run the walker; assert empty list.
+   - Per-shape planted-violation parametrized matrix (verbatim Phase 3 table — paste, don't paraphrase).
    - Negative-case parametrized matrix.
 4. Land `tests/fence/test_phase7_importlinter_contracts_shape.py`:
    - Parse `pyproject.toml`; locate the Phase 7 contract by name; assert the four invariants (AC-1.a-d).
@@ -190,70 +215,111 @@ def test_fence_ignores_llm_sdk_outside_primitive_closure(monkeypatch):
 `tests/fence/test_no_any_in_provenance_surface.py`:
 
 ```python
-"""Phase 7 no-Any AST fence — ADR-0004 + Phase 3 ADR-0010.
+"""Phase 7 no-Any AST fence — Phase 7 ADR-0004 + Phase 3 ADR-0010 / ADR-0011.
 
 AST-walks src/codegenie/primitives/vuln_provenance/ and rejects any
 declared `Any` / `dict[str, Any]` annotation. The deliberate `extra='allow'`
 on SyftSbom is NOT a declared `Any` — it surfaces internally via
-`__pydantic_extra__` which is not in the AST. This fence remains green
-after S1-05.
+`__pydantic_extra__` which Pydantic generates at runtime and which is not
+in the AST. This fence remains green after S1-05.
+
+Audit + lint posture (ADR-0011), not a runtime guarantee.
 """
 from __future__ import annotations
 
-import ast
 from pathlib import Path
+from typing import Final
 
 import pytest
 
-from codegenie._phase3_fence import (  # or wherever the shared helper lives
-    has_any_annotation,
+from codegenie._phase3_fence import Violation, walk_any_annotations
+
+PHASE7_ROOTS: Final[tuple[Path, ...]] = (
+    Path("src/codegenie/primitives/vuln_provenance"),
 )
-
-PRIMITIVE_ROOT = Path("src/codegenie/primitives/vuln_provenance")
-
-
-# --- AC-4 Floor guard --------------------------------------------------------
-
-def test_primitive_root_exists_and_nonempty():
-    assert PRIMITIVE_ROOT.is_dir()
-    python_files = [
-        p for p in PRIMITIVE_ROOT.rglob("*.py") if p.name != "__init__.py"
-    ]
-    assert python_files, f"{PRIMITIVE_ROOT} has no non-__init__.py modules"
+"""Mirror of `codegenie._phase3_fence.PHASE3_ROOTS`. Do NOT mutate PHASE3_ROOTS
+from this file — Phase 7 ADR-0009 byte-edit allowlist forbids editing
+`_phase3_fence.py`. Future Phase 8+ primitive surfaces extend by adding a
+parallel `PHASE8_ROOTS` constant in a new fence file."""
 
 
-# --- AC-4 Live check ---------------------------------------------------------
+def _scan_phase7_surface() -> list[Violation]:
+    """Live scan using the canonical Phase 3 walker."""
+    out: list[Violation] = []
+    for root in PHASE7_ROOTS:
+        if not root.is_dir():
+            raise AssertionError(
+                f"Phase-7 fence root {root} does not exist — fence cannot run"
+            )
+        non_init = [p for p in root.rglob("*.py") if p.name != "__init__.py"]
+        if not non_init:
+            raise AssertionError(
+                f"Phase-7 fence root {root} has only __init__.py — would silently green"
+            )
+        # NB: scan ALL *.py files (including __init__.py) — re-exports are
+        # public surface. Floor guard above counts non-init modules only.
+        for file in sorted(root.rglob("*.py")):
+            out.extend(walk_any_annotations(file.read_text(), file))
+    return out
 
-def test_no_any_in_primitive_surface():
-    findings = []
-    for py in PRIMITIVE_ROOT.rglob("*.py"):
-        tree = ast.parse(py.read_text())
-        hits = has_any_annotation(tree)
-        if hits:
-            findings.append((py, hits))
-    assert findings == [], f"Any annotations found in primitive: {findings}"
+
+# --- AC-4 floor guard --------------------------------------------------------
+
+@pytest.mark.parametrize("root", PHASE7_ROOTS, ids=lambda p: str(p))
+def test_each_phase7_root_exists_and_is_non_empty(root: Path) -> None:
+    assert root.is_dir()
+    assert [p for p in root.rglob("*.py") if p.name != "__init__.py"]
 
 
-# --- AC-4 Per-shape planted-violation matrix --------------------------------
+# --- AC-4 live check ---------------------------------------------------------
 
-@pytest.mark.parametrize("snippet,expected_hit", [
+def test_no_any_in_primitive_surface() -> None:
+    violations = _scan_phase7_surface()
+    assert violations == [], f"Any annotations found in primitive: {violations}"
+
+
+# --- AC-5 syft_reader.py exempt-but-clean ------------------------------------
+
+def test_syft_reader_has_no_declared_any_annotations() -> None:
+    path = PHASE7_ROOTS[0] / "syft_reader.py"
+    assert path.is_file()
+    violations = walk_any_annotations(path.read_text(), path)
+    assert violations == []
+
+
+# --- AC-4 per-shape planted-violation matrix (verbatim Phase 3 table) -------
+
+_SHAPE_MATRIX: Final[tuple[tuple[str, bool], ...]] = (
     ("x: Any = 1", True),
     ("def f(x: Any) -> None: ...", True),
     ("def f() -> Any: ...", True),
     ("x: dict[str, Any] = {}", True),
+    ("x: Dict[str, Any] = {}", True),
     ("x: list[Any] = []", True),
+    ("x: tuple[Any, ...] = ()", True),
     ("x: typing.Any = 1", True),
+    ("x: Callable[..., Any] = None", True),
+    ("x: dict[str, list[Any]] = {}", True),
     ('x: "Any" = 1', True),
+    ('x: "dict[str, Any]" = {}', True),
     ("x: int = 1", False),
+    ("x: dict[str, int] = {}", False),
     ("isinstance(obj, Any)", False),
-])
-def test_walker_per_shape(snippet, expected_hit):
-    tree = ast.parse(snippet)
-    hits = has_any_annotation(tree)
-    assert bool(hits) is expected_hit
+    ("if TYPE_CHECKING:\n    from typing import Any", False),
+    ("from typing import Any", False),
+)
+
+
+@pytest.mark.parametrize("snippet,expected_hit", _SHAPE_MATRIX)
+def test_walker_per_shape(snippet: str, expected_hit: bool) -> None:
+    import textwrap
+    violations = walk_any_annotations(
+        textwrap.dedent(snippet), path=Path("_test.py")
+    )
+    assert (len(violations) > 0) is expected_hit
 ```
 
-State why it fails today: (a) the `import-linter` contract for `codegenie.primitives.vuln_provenance` does not exist; (b) `tests/fence/test_phase7_no_llm.py` does not exist; (c) `tests/fence/test_no_any_in_provenance_surface.py` does not exist; (d) the shared `has_any_annotation` helper may need extraction.
+State why it fails today: (a) the `import-linter` contract for `codegenie.primitives.vuln_provenance` does not exist; (b) `tests/fence/test_phase7_no_llm.py` does not exist; (c) `tests/fence/test_no_any_in_provenance_surface.py` does not exist; (d) `tests/fence/test_phase7_importlinter_contracts_shape.py` does not exist; (e) `tests/fence/test_lint_imports_catches_phase7_planted_leak.py` does not exist. Note: `walk_any_annotations` and `Violation` already exist in `codegenie._phase3_fence` — no extraction work needed.
 
 ### Green — make it pass
 - Add the `[[tool.importlinter.contracts]]` block to `pyproject.toml`.
@@ -263,19 +329,21 @@ State why it fails today: (a) the `import-linter` contract for `codegenie.primit
 
 ### Refactor — clean up
 - Each fence file's module docstring names ADR-0004 + production ADR-0005 + ADR-0011 ("audit + lint posture, not runtime").
-- If `has_any_annotation` was extracted, update Phase 3's existing test to import from the new home (surgical, additive).
-- Confirm `make fence` runs all four fence tests (Phase 0, Phase 3 transforms, Phase 3 plugins, Phase 7).
+- No walker extraction needed — `walk_any_annotations` already lives in `codegenie._phase3_fence` (Phase 3 S1-05). Verify by import.
+- Confirm `make fence` runs all four new Phase 7 fence files alongside Phase 0 + Phase 3's fences. The Phase 3 `tests/fence/test_no_any_in_plugin_surface.py` MUST still pass — the shared walker is unchanged, no Phase 3 imports moved.
 
 ## Files to touch
 | Path | Why |
 |---|---|
-| `pyproject.toml` | Add one `[[tool.importlinter.contracts]]` block for the primitive. |
+| `pyproject.toml` | Add one `[[tool.importlinter.contracts]]` block for the primitive (Phase 7 byte-edit allowlist row to be recorded for S5-01). |
 | `tests/fence/test_phase7_no_llm.py` | NEW — runtime-closure scan; planted-positive + metamorphic complement. |
-| `tests/fence/test_no_any_in_provenance_surface.py` | NEW — AST-walk fence; floor guard + planted-violation matrix. |
+| `tests/fence/test_no_any_in_provenance_surface.py` | NEW — AST-walk fence; floor guard + planted-violation matrix; consumes `walk_any_annotations` from `codegenie._phase3_fence`. |
 | `tests/fence/test_phase7_importlinter_contracts_shape.py` | NEW — parse `pyproject.toml`; assert the new contract's shape (AC-1). |
-| `tests/fence/test_lint_imports_catches_phase7_planted_leak.py` | NEW — subprocess `make lint-imports` planted-positive (AC-2). |
-| `Makefile` (verify, possibly amend) | Ensure `fence:` target's recipe runs the new fence files. |
-| `src/codegenie/_phase3_fence.py` or equivalent (read first) | Possibly extract `has_any_annotation` into a shared helper if not already. |
+| `tests/fence/test_lint_imports_catches_phase7_planted_leak.py` | NEW — subprocess `lint-imports` planted-positive (AC-2). |
+| `tests/fence/test_fence_target_wiring.py` | EXTEND — assert the `Makefile`'s `fence:` recipe covers the four new files (AC-6). |
+| `Makefile` | NO EDIT IF the existing `fence:` target's glob (`tests/fence/`) already covers the new files; verify via the wiring test first. |
+| `src/codegenie/_phase3_fence.py` | **DO NOT TOUCH** — Phase 7 ADR-0009 byte-edit allowlist forbids editing this file. `walk_any_annotations`, `Violation`, `PHASE3_ROOTS` are imported as-is. |
+| `_attempts/S1-06.md` | NEW — three planted-violation evidence entries (AC-7) + forward-coupling section listing the byte-edits for S5-01. |
 
 ## Out of scope
 
@@ -297,4 +365,7 @@ State why it fails today: (a) the `import-linter` contract for `codegenie.primit
 - **Phase 3 + Phase 0/1/2 regression suite stays green.** This story adds contracts + fence files but does NOT touch any existing production code. The risk is if extracting `has_any_annotation` into a shared module breaks Phase 3's test; verify Phase 3's `tests/fence/test_no_any_in_plugin_surface.py` still imports + runs after the extraction.
 - **The `import-linter` runs in a separate CI job** (`make lint-imports`); the runtime-closure fence runs in `pytest tests/fence/`; the no-`Any` fence runs in `pytest tests/fence/`. All three must be green before merge. The story's done-criteria are AND across all three.
 - **Pin the `Makefile` recipe shape if you edit it.** Use `tests/fence/` as a glob if it covers everything; otherwise enumerate the paths. Do not regress to `pytest -q tests/` (which would run the whole suite — way too slow for the `fence` target).
-- **Forward to S5-01.** The byte-edit allowlist fence (Step 5) will assert that this story's changes to `pyproject.toml` (one contract block) and `tests/fence/` (three new files) are within its allowlist row reservations. Coordinate file paths with the S5-01 implementer; if S5-01 has not yet been written, leave a `# TODO(S5-01)` marker in this story's `_attempts/` log noting "this story's `pyproject.toml` edit must be on the S5-01 byte-edit allowlist."
+- **Forward to S5-01.** The byte-edit allowlist fence (Step 5) will assert that this story's edits to Phase 0–6.5 files are within its allowlist row reservations. This story makes ONE byte-edit to a Phase 0–6.5 file: a single `[[tool.importlinter.contracts]]` block append in `pyproject.toml`. It also adds FOUR new files under `tests/fence/` (additive new files under that directory are implicitly admitted; see ADR-0009 Decision text). Record both in `_attempts/S1-06.md` under a `## Forward-coupling to S5-01` section so S5-01's executor mechanically consumes them when writing the allowlist.
+- **Marker-grammar Open/Closed (forward note).** `codegenie._phase3_fence.ALLOWED_MARKER_RE` is regex-hardcoded to `P3-ADR-\d{4}`. If a future Phase 7+ file ever needs an inline `# fence: any-allowed` exemption, do NOT widen this regex from Phase 7 — that's a byte-edit to `_phase3_fence.py`, which ADR-0009 forbids. The mechanically-additive path is a separate Phase-3-ADR-amendment story that lifts the grammar to phase-prefix-agnostic (`P\d-ADR-\d{4}`). Today's posture is "zero markers under Phase 7 surface" (mirrors Phase 3 S1-05 AC-5.d), so no marker is needed yet.
+- **`lint-imports` invocation discipline (AC-2 + AC-7 Gate 1).** Invoke the `lint-imports` console script directly (resolved via `Path(sys.executable).parent / "lint-imports"` with a `shutil.which` fallback), not `make lint-imports`. The `make` indirection (a) requires a working `make` on every test host, (b) re-invokes pytest in some configs, (c) loses pytest's `capture_output` discipline. Mirror Phase 3's precedent at `tests/fence/test_lint_imports_catches_planted_leak.py`.
+- **`PHASE7_ROOTS` extension, not `PHASE3_ROOTS` mutation.** Phase 7's `PHASE7_ROOTS: Final[tuple[Path, ...]]` lives in `tests/fence/test_no_any_in_provenance_surface.py`. Do NOT add a row to Phase 3's `PHASE3_ROOTS` in `_phase3_fence.py`. The per-phase pattern is intentional — rule-of-three for a shared `codegenie._fence_roots` registry has not been crossed; Phase 8+ becomes the 3rd consumer.
