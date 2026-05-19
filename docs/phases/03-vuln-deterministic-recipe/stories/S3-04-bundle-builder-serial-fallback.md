@@ -1,7 +1,7 @@
 # Story S3-04 — `BundleBuilder` with `asyncio.Semaphore` concurrency + deterministic serial fallback (ADR-0008)
 
 **Step:** Step 3 — TCCM, BundleBuilder, VulnIndex, content-addressed cache
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S3-04.md`](_attempts/S3-04.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S3-01
 **ADRs honored:** Phase 3 ADR-0008 (deterministic serial fallback; NOT hedged-race — production commitment §2.4 is veto-strength), Phase 3 ADR-0010 (tagged-union / Literal discipline; sum-type dispatch via `match` + `assert_never`), Phase 3 ADR-0011 (honest framing — `SandboxedPath` is audit-grade), production ADR-0029 (TCCM `must_read`/`should_read`/`may_read`), production ADR-0030 (graph-aware query primitives), production ADR-0032 (language search adapters provide `AdapterConfidence`)
