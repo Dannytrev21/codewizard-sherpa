@@ -128,3 +128,15 @@ phase-story-executor runs in this phase. New entries at the bottom.
     inputs — fine for capture-style tests (no fixture mutation);
     surprising for tests that mutate fixture state. Suppress
     explicitly + document in the test docstring why it's safe.
+
+15. **Fail-not-skip needs a CI provisioning predecessor**
+    (S4-02). The story's `pytest.fail("bwrap missing on Linux")`
+    discipline (ADR-0006 §Consequences + High-level-impl L310) is
+    the right destination, but it requires the CI YAML to install
+    `bubblewrap` first — and that edit is S9-01's scope. Land an
+    Adapter story whose loud-fail-on-Linux integration tests
+    presume S9-01 has already run, and the integration lane on
+    master will hard-fail until S9-01 lands. Resolution mirrors
+    AC-15 / S4-02 Attempt 2: `pytest.xfail("S9-01 pending — ...")`
+    for the bwrap-missing path; the AC-15 CI-setup fence is the
+    gate that flips to a hard fail post-S9-01.
