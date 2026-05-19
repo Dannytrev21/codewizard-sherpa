@@ -60,6 +60,24 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("src/codegenie/py.typed"),
         # S1-05 — this story's walker
         Path("src/codegenie/_phase3_fence.py"),
+        # ADR-0010 Amendment 2026-05-18 — AdapterConfidence canonical-home
+        # consolidation: adapters.confidence becomes a pure re-export of
+        # transforms.outcomes (Phase 2 typed surface preserved; classes
+        # de-duplicated). adr: docs/phases/03-vuln-deterministic-recipe/
+        # ADRs/0010-domain-modeling-discipline-scope-sum-type-and-newtypes.md
+        # §Amendments (2026-05-18).
+        Path("src/codegenie/adapters/confidence.py"),
+        # ADR-0010 Amendment 2026-05-18 — cycle-fix dependency: PackageManager
+        # import moved under TYPE_CHECKING (annotation-only use under
+        # ``from __future__ import annotations``). Required so that
+        # types.identifiers can be imported by transforms.outcomes /
+        # adapters.confidence without forming the types ↔ probes cycle.
+        Path("src/codegenie/depgraph/registry.py"),
+        # ADR-0010 Amendment 2026-05-18 — cycle-fix dependency: PackageManager
+        # imported from the canonical origin (probes.node_build_system) rather
+        # than the types.identifiers re-export, to keep this module out of the
+        # types.identifiers init cycle. Phase 1 ADR-0013 still owns the enum.
+        Path("src/codegenie/probes/layer_b/dep_graph.py"),
     }
 )
 
