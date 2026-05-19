@@ -1,7 +1,7 @@
 # Story S2-01 — PluginRegistry kernel + Plugin/Adapter/RecipeEngine Protocols
 
 **Step:** Step 2 — Plugin Registry kernel, manifest schema, loader, resolver
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-18 (phase-story-executor; see [`_attempts/S2-01.md`](_attempts/S2-01.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S1-01 (`PluginId`, `PluginScope`), S1-02 (`PluginScope.parse`)
 **ADRs honored:** ADR-0002, ADR-0004, ADR-0010, ADR-0011 (framing only — `PLUGINS.lock` rejection raised by loader in S2-03), production ADR-0031
