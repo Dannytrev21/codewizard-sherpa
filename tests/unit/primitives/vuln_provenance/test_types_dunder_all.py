@@ -44,8 +44,7 @@ def test_types_module_all_is_exact_and_sorted() -> None:
         f"types.__all__ must be sorted; got {actual}, want {tuple(sorted(actual))}."
     )
     assert not any(name.startswith("_") for name in actual), (
-        "`types.__all__` must omit underscore-prefixed names "
-        f"(package-internal); got {actual}."
+        f"`types.__all__` must omit underscore-prefixed names (package-internal); got {actual}."
     )
 
 
