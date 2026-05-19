@@ -97,3 +97,34 @@ phase-story-executor runs in this phase. New entries at the bottom.
     standardise on one kwarg name in a sweep — pick `error` (matches
     the rest of `codegenie.errors` taxonomy vocabulary) and update
     S3-05 + every catch site. Not a now-bug; flag as Phase-3 cleanup.
+
+11. **Adding a sum-type variant is additive widening** (S4-02).
+    `JailedSubprocessResult` grew from five to six variants
+    (`JailSetupFailed`). Per S4-01's contract snapshot test policy
+    (Step 9 risk #4), additive widening is permitted with: golden
+    regen, exhaustiveness-arm addition, variant-count assertion
+    update. The subprocess-mypy negative fixture becomes *stricter*
+    automatically (omitting any arm still fails mypy). Future Port
+    extensions follow this template.
+
+12. **`get_type_hints` strips `Annotated[...]`** (S4-02). When
+    pinning a Port's return annotation that uses
+    `Annotated[Union[...], Field(discriminator="kind")]`, pass
+    `include_extras=True` or the test fails because the resolved
+    hint is the bare Union, not the Annotated alias. Cross-ref:
+    S4-01 AC-2 / S4-02 AC-1.
+
+13. **mypy treats `sys.platform != "linux"` as a constant on
+    darwin** (S4-02). Guarded-early-return shapes
+    (`if sys.platform != "linux": return ...; <linux code>`)
+    report the linux code as `Unreachable` under `mypy --strict`
+    when checked on darwin. Invert to
+    `if sys.platform == "linux": <code>; return <default>` for
+    bidirectional clean.
+
+14. **Hypothesis + `tmp_path` needs
+    `suppress_health_check=[HealthCheck.function_scoped_fixture]`**
+    (S4-02). `@given` doesn't reset the fixture between generated
+    inputs — fine for capture-style tests (no fixture mutation);
+    surprising for tests that mutate fixture state. Suppress
+    explicitly + document in the test docstring why it's safe.

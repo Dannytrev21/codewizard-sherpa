@@ -15,6 +15,7 @@ from codegenie.transforms.sandbox_jail import (
     Completed,
     DiskQuotaExceeded,
     JailedSubprocessResult,
+    JailSetupFailed,
     NetworkDenied,
     OomKilled,
     TimedOut,
@@ -33,6 +34,8 @@ def classify(result: JailedSubprocessResult) -> str:
             return "network_denied"
         case DiskQuotaExceeded():
             return "disk_quota_exceeded"
+        case JailSetupFailed():
+            return "jail_setup_failed"
         case _ as unexpected:
             assert_never(unexpected)
 
@@ -55,6 +58,14 @@ def test_every_variant_classifies() -> None:
         (
             DiskQuotaExceeded(kind="disk_quota_exceeded", quota_bytes=1, bytes_written=2),
             "disk_quota_exceeded",
+        ),
+        (
+            JailSetupFailed(
+                kind="jail_setup_failed",
+                reason="bwrap-not-on-path",
+                detail="bwrap missing",
+            ),
+            "jail_setup_failed",
         ),
     ]
     for variant, expected in cases:

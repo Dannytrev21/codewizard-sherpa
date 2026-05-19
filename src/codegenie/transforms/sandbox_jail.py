@@ -70,6 +70,7 @@ __all__ = [
     "JailedEnv",
     "JailedSubprocessResult",
     "JailedSubprocessSpec",
+    "JailSetupFailed",
     "NetworkDenied",
     "NetworkPolicy",
     "NpmEnv",
@@ -248,8 +249,33 @@ class DiskQuotaExceeded(BaseModel):
     bytes_written: int = Field(ge=0)
 
 
+class JailSetupFailed(BaseModel):
+    """Adapter could not stand up the jail (binary missing from the
+    allowlist, ``bwrap`` not on PATH, ``CAP_NET_ADMIN`` absent, ``cwd``
+    missing, generic kernel setup failure). Distinct from a clean
+    :class:`Completed` because the child never actually ran.
+
+    The :attr:`reason` field is a closed enum of short tokens; :attr:`detail`
+    is a redacted human-readable message preserved verbatim from the
+    underlying exception (no absolute paths; no secrets — Pydantic's
+    ``extra="forbid"`` plus the sanitizer fences cover the redaction
+    contract).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["jail_setup_failed"] = "jail_setup_failed"
+    reason: Literal[
+        "binary-not-allowlisted",
+        "bwrap-not-on-path",
+        "cwd-missing",
+        "cap-net-admin-missing",
+        "kernel-setup-failed",
+    ]
+    detail: str = Field(min_length=1)
+
+
 JailedSubprocessResult = Annotated[
-    Completed | TimedOut | OomKilled | NetworkDenied | DiskQuotaExceeded,
+    Completed | TimedOut | OomKilled | NetworkDenied | DiskQuotaExceeded | JailSetupFailed,
     Field(discriminator="kind"),
 ]
 """Tagged-union return of :meth:`SubprocessJail.run`. Every consumer

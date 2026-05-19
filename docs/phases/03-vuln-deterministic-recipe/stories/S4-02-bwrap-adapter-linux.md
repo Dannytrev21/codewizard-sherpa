@@ -1,7 +1,7 @@
 # Story S4-02 — `BwrapAdapter` (Linux) — `bwrap --unshare-all` + seccomp + netns
 
 **Step:** Step 4 — SubprocessJail Port + Bwrap + sandbox-exec + ALLOWED_BINARIES amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-19 (phase-story-executor; see [`_attempts/S4-02.md`](_attempts/S4-02.md) for the per-AC evidence table + gate log)
 **Effort:** L
 **Depends on:** S4-01 (`SubprocessJail` Protocol, `JailedSubprocessSpec`, `JailedSubprocessResult` discriminated union, `NetworkPolicy = DenyAll | RegistryAllowlist` sum); transitively S1-03 (sum types). **Precondition:** S4-05 must land first OR co-land — it adds `bwrap` to `ALLOWED_BINARIES` AND removes `bwrap`/`bubblewrap` from `tests/unit/test_exec.py::test_allowed_binaries_closed_set_regression` (lines 362-363). Without S4-05, this story's `run_allowlisted("bwrap", ...)` calls fail the chokepoint check before any spawn. S4-04 strongly preferred (real `SandboxedPath` for integration tests); unit tests use `FakeSandboxedPath` shim.
 **ADRs honored:** 03-ADR-0006 (`BwrapAdapter` is the Linux Adapter of the `SubprocessJail` Port; bwrap command-line and seccomp filter pinned in §Decision); 03-ADR-0012 (`bwrap` added to `ALLOWED_BINARIES` — S4-05 lands the data change; this story is the consumer).

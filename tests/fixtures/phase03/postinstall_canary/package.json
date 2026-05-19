@@ -1,0 +1,8 @@
+{
+  "name": "postinstall-canary",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "postinstall": "node -e \"require('fs').writeFileSync(process.env.CANARY_PATH || '/tmp/canary', 'x')\""
+  }
+}

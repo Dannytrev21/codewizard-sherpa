@@ -30,6 +30,7 @@ from codegenie.transforms.sandbox_jail import (
     JailedEnv,
     JailedSubprocessResult,
     JailedSubprocessSpec,
+    JailSetupFailed,
     NetworkDenied,
     NetworkPolicy,
     NpmEnv,
@@ -74,6 +75,7 @@ def test_module_exports_exact() -> None:
         "OomKilled",
         "NetworkDenied",
         "DiskQuotaExceeded",
+        "JailSetupFailed",
         "NpmEnv",
         "GitEnv",
         "NetworkPolicy",
@@ -208,6 +210,11 @@ def test_spec_smart_constructor_rejects(overrides: dict[str, object]) -> None:
         OomKilled(kind="oom_killed", peak_rss_mib=512),
         NetworkDenied(kind="network_denied", host="evil.example.com"),
         DiskQuotaExceeded(kind="disk_quota_exceeded", quota_bytes=1024, bytes_written=2048),
+        JailSetupFailed(
+            kind="jail_setup_failed",
+            reason="bwrap-not-on-path",
+            detail="bwrap missing on this runner",
+        ),
     ],
 )
 def test_result_variant_roundtrip(variant: object) -> None:
@@ -503,11 +510,13 @@ def test_module_source_has_no_dict_any_or_bare_exception() -> None:
 # ---------------------------------------------------------------------------
 # AC-15 — schema snapshot specificity.
 # ---------------------------------------------------------------------------
-def test_result_schema_has_oneof_with_five_variants_and_kind_discriminator() -> None:
+def test_result_schema_has_oneof_with_six_variants_and_kind_discriminator() -> None:
     adapter = TypeAdapter(JailedSubprocessResult)
     schema = adapter.json_schema(by_alias=True)
     assert schema["discriminator"]["propertyName"] == "kind"
-    assert len(schema["oneOf"]) == 5
+    # S4-02 AC-21 added ``JailSetupFailed`` as the sixth variant (additive
+    # extension per S4-01 contract snapshot policy / Step 9 risk #4).
+    assert len(schema["oneOf"]) == 6
 
 
 def test_spec_schema_has_env_and_network_discriminators() -> None:
