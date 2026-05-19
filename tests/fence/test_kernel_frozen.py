@@ -140,6 +140,16 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # 0001-add-docker-and-security-cli-tools-to-allowed-binaries.md
         # §Correction (2026-05-19).
         Path("src/codegenie/probes/layer_e/ownership.py"),
+        # Phase-shakedown F-03 — additive ``redact_raw_artifact_bytes``
+        # function + ``_PATTERNS_BYTES`` constant. Closes the raw-artifact
+        # byte-redaction gap (scip-index.scip embedded the indexed source
+        # text verbatim, riding past the slice-walking redactor onto
+        # disk). The existing ``_PATTERNS`` / ``redact_secrets`` /
+        # ``OutputSanitizer`` surfaces are unchanged. Pure additive at
+        # the writer-marshalling chokepoint.
+        # adr: docs/phases/02-context-gather-layers-b-g/ADRs/
+        # 0012-redaction-before-cache-staging-invariant.md
+        Path("src/codegenie/output/sanitizer.py"),
     }
 )
 
