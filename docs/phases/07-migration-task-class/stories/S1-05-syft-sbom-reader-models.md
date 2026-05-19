@@ -1,10 +1,27 @@
 # Story S1-05 — `SyftSbom` Pydantic reader
 
 **Step:** Step 1 — Scaffold `vuln.provenance` primitive — newtypes, Provenance union, Protocol, errors, SyftSbom reader, fences
-**Status:** Ready
+**Status:** GREEN
 **Effort:** S
 **Depends on:** S1-01
-**ADRs honored:** ADR-0004 (the SBOM reader lives under `src/codegenie/primitives/vuln_provenance/syft_reader.py`), Phase 2 deliberate-decision carry-forward (`extra="allow"` on the SBOM surface — this is the *single* exception to the "everything is `extra="forbid"`" rule), production ADR-0038 (the contract names `SyftSbom` + `SyftArtifact` + `SyftLocation`; `locations[].layerID` is the load-bearing field)
+**ADRs honored:** ADR-0004 (the SBOM reader lives under `src/codegenie/primitives/vuln_provenance/syft_reader.py`; this story's AC-7 implicitly amends ADR-0004 §Consequences by re-exporting `SyftArtifact` + `SyftLocation` in addition to `SyftSbom` — consumer adapters need typed annotation access), Phase 2 deliberate-decision carry-forward (`extra="allow"` on the SBOM surface — this is the *single* exception to the "everything is `extra="forbid"`" rule), production ADR-0038 (the contract names `SyftSbom` + `SyftArtifact` + `SyftLocation`; `locations[].layerID` is the load-bearing field), ADR-0004 §Consequences smart-constructor-bypass fence (no `model_construct()` call sites under the primitive tree; this story plants the per-file structural assertion since `syft_reader.py` is the deserialization surface most likely to attract such a shortcut)
+
+## Validation notes (2026-05-19 — phase-story-validator pass)
+
+Verdict: **HARDENED**. Edits in this pass:
+
+- **AC-4 strengthened** — round-trip claim was asserted in prose but not by test. Added an explicit `model_dump_json` re-validation step and a follow-up parse to prove unknown fields survive the full encode → decode → encode cycle. Mutation note: an impl that silently dropped unknown fields on serialization would now fail.
+- **AC-3 strengthened** — multi-location artifact case added (real syft outputs commonly carry several `locations[]` entries per artifact). The `first-non-empty-layerID-wins` invariant the adapters depend on is purely an adapter-side concern (S4-02 / S4-03), but this story's model contract must at minimum admit + iterate `len(locations) > 1` without surprise.
+- **AC-2.5 (new) — empty-SBOM happy path** — promoted from implicit (it was hiding inside AC-2) to an explicit positive constraint; `SyftSbom.model_validate({"artifacts": []})` is a legitimate state the adapters call sites must handle.
+- **AC-8.5 (new) — no `model_construct()` call sites** — ADR-0004 §Consequences names this fence at the primitive-tree level; this story plants the per-file structural assertion because `syft_reader.py` is the file most likely to attract a `model_construct(...)` shortcut (it's the deserialization surface). AST-walk fence in the existing module-purity test file.
+- **TDD plan** — added concrete test bodies for module-purity (was named, not specified), multi-location round-trip, unknown-fields lossless round-trip, and `model_construct` AST fence. Executor no longer has to invent any test body.
+- **Notes-for-implementer** — recorded two deferred design-pattern opportunities (`frozen=True`, `LayerID` newtype) with the *why-we-don't-now* rationale so the executor doesn't silently add either; recorded the Hypothesis property-test option as an optional hardening hint (deferred — single fixture + multi-location case is sufficient mutation pressure for this story).
+
+Conflict resolution log:
+- *Coverage* asked for an "every conceivable extra-field shape" property test; *Consistency* + Rule 2 said "single realistic fixture plus targeted unknown-field cases is enough for a types-only story". Consistency-wins-over-coverage: surfaced as a Notes hint, not promoted to AC. The S4-04 AST fence is the load-bearing structural defense; this story does not need to recapitulate it.
+- *Design-Patterns* asked for `frozen=True` to make post-deserialization mutation a `ValidationError`. *Consistency* + Rule 2 said "no caller mutates `SyftSbom`; adding frozen=True now is premature abstraction". Consistency wins; recorded as an evaluated-and-rejected alternative in Notes so the executor doesn't add it silently and so a future story can revisit if a mutation site appears.
+
+Full report: `_validation/S1-05-syft-sbom-reader-models.md`.
 
 ## Context
 
@@ -59,13 +76,20 @@ Land three Pydantic models under `src/codegenie/primitives/vuln_provenance/syft_
   ```
   Note: the arch §Data model also shows `source: SyftSource`, `distro: SyftDistro | None`, `descriptor: dict[str, Any]` — those are **deferred** to a future story (the manifest is unambiguous: this story ships *only* the three core models and the four known fields; richer parsing waits for first consumer demand). A `# TODO(future)` comment in the file names the deferral.
 - [ ] **AC-2 — `extra="allow"` admits unknown fields.** Test: `SyftSbom.model_validate({"artifacts": [], "spdx_version": "2.3", "unknown_field": [1, 2, 3]})` succeeds (does not raise). The unknown fields are silently admitted; accessing them via `__pydantic_extra__` works but is NOT a tested affordance (adapters never reach into `__pydantic_extra__` — S4-04 plants the AST fence).
+- [ ] **AC-2.5 — Empty-SBOM happy path is an explicit, positive state.** `SyftSbom.model_validate({"artifacts": []})` succeeds; `sbom.artifacts == []` and `len(sbom.artifacts) == 0` both hold. Likewise `SyftArtifact.model_validate({"name": "x", "version": "1"})` yields `art.locations == []`. The adapter side relies on these defaults — an impl that made `artifacts` or `locations` mandatory would silently break realistic syft outputs.
 - [ ] **AC-3 — Known fields are typed and validated.** Test matrix:
   - `SyftArtifact(name="openssl", version="3.0.7")` → ok; `locations` defaults to `[]`.
   - `SyftArtifact(name=None, version="3.0.7")` → `ValidationError` (`name` is `str`, not optional).
   - `SyftLocation(path="/usr/bin/openssl", layerID="sha256:abc...")` → ok.
   - `SyftLocation(path="/usr/bin/openssl")` → ok; `layerID` defaults to `None`.
   - `SyftLocation(path=None)` → `ValidationError`.
-- [ ] **AC-4 — Round-trip via realistic JSON snippet.** A fixture under `tests/fixtures/syft/minimal_alpine.json` (small — < 1 KB) carries a syft JSON shape with one artifact, one location, one `layerID`, plus 2-3 unknown top-level fields (`schema`, `descriptor`, `source`). `SyftSbom.model_validate_json(fixture)` succeeds and round-trips: `SyftSbom.model_validate_json(...).model_dump_json()` losslessly preserves the known fields (the unknown ones round-trip through `extra="allow"`).
+  - **Multi-location artifact.** `SyftArtifact.model_validate({"name": "x", "version": "1", "locations": [{"path": "/a", "layerID": "sha256:aaa"}, {"path": "/b", "layerID": "sha256:bbb"}, {"path": "/c"}]})` yields three `SyftLocation` instances; iteration order matches input order (Pydantic preserves list order); the third has `layerID is None`. Real syft outputs frequently carry multiple `locations[]` per artifact; the model contract must admit + preserve them.
+- [ ] **AC-4 — Round-trip via realistic JSON snippet, including unknown-field preservation.** A fixture under `tests/fixtures/syft/minimal_alpine.json` (small — < 1 KB) carries a syft JSON shape with one artifact, one location, one `layerID`, plus 2-3 unknown top-level fields (`schema`, `descriptor`, `source`). The test performs a full encode → decode → encode cycle:
+  1. `sbom1 = SyftSbom.model_validate_json(raw)` — succeeds.
+  2. `dump1 = sbom1.model_dump(mode="json")` — produces a dict that contains both the known fields (`artifacts[0].name == "openssl"`, `artifacts[0].locations[0].layerID == "sha256:abc123"`) **and** the unknown top-level fields (`"schema"`, `"descriptor"`, `"source"` all present).
+  3. `sbom2 = SyftSbom.model_validate(dump1)` — succeeds; `sbom2.artifacts[0].locations[0].layerID == sbom1.artifacts[0].locations[0].layerID`.
+
+  **Mutation note:** an impl that silently dropped unknown fields on serialization (e.g., used `model_dump(exclude_unset=True)` internally or set `model_config = ConfigDict(extra="ignore")`) would pass AC-2 but fail AC-4. AC-4 is the structural defense against such drift.
 - [ ] **AC-5 — `layerID` is load-bearing.** A dedicated test pins the field name (not `layer_id`, not `LayerID`) — the syft JSON uses camelCase. A renaming would silently break adapter resolution.
   ```python
   def test_location_layer_id_field_name():
@@ -77,7 +101,8 @@ Land three Pydantic models under `src/codegenie/primitives/vuln_provenance/syft_
   ```
 - [ ] **AC-6 — Module-level `_KNOWN_LOCATION_FIELDS` catalog.** A `Final[frozenset[str]] = frozenset({"path", "layerID"})` declared at module top so S4-04's AST-walk fence can import it and use it as the source-of-truth allowlist when verifying adapters read only known fields. The same pattern exists for `_KNOWN_ARTIFACT_FIELDS = frozenset({"name", "version", "locations"})`. **This is the seam S4-04 fences against.**
 - [ ] **AC-7 — `vuln_provenance/__init__.py` re-exports.** `from codegenie.primitives.vuln_provenance import SyftSbom, SyftArtifact, SyftLocation` succeeds. (The internal catalogs `_KNOWN_*_FIELDS` are NOT re-exported — they're module-private; tests/fences read them via direct-module import.)
-- [ ] **AC-8 — Module purity.** AST-walk test on `syft_reader.py` asserts imports are a subset of `{__future__, typing, pydantic}`. No filesystem I/O, no logging, no sibling imports — the reader is types-only at this stage.
+- [ ] **AC-8 — Module purity.** AST-walk test on `syft_reader.py` asserts imports are a subset of `{__future__, typing, pydantic}`. No filesystem I/O, no logging, no sibling imports — the reader is types-only at this stage. (Test body in TDD plan.)
+- [ ] **AC-8.5 — No `model_construct()` call sites in `syft_reader.py`.** ADR-0004 §Consequences calls out a fence against `model_construct()` use inside the primitive tree (it is the smart-constructor bypass that would let an adapter skip Pydantic validation and feed adapter logic an unvalidated dict). `syft_reader.py` is the deserialization surface most likely to attract such a shortcut. An AST-walk test in `tests/unit/primitives/vuln_provenance/test_syft_reader_module_purity.py` asserts no `Call` node in this file has `attr == "model_construct"`. (Test body in TDD plan.)
 - [ ] **AC-9 — Gates.** `mypy --strict src/codegenie/primitives/vuln_provenance/` clean; `ruff check`, `ruff format --check` clean; `make lint-imports` green; Phase 0/1/2/3 + Phase 5/6.5 regression suite green.
 - [ ] The TDD plan's red test exists, was committed, and is green.
 - [ ] `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest` all pass on the touched files.
@@ -194,6 +219,35 @@ def test_location_layer_id_optional():
     assert loc.layerID is None
 
 
+# --- Empty / minimal SBOM happy path (AC-2.5) --------------------------------
+
+def test_empty_sbom_validates():
+    sbom = SyftSbom.model_validate({"artifacts": []})
+    assert sbom.artifacts == []
+    assert len(sbom.artifacts) == 0
+
+
+def test_artifact_default_empty_locations():
+    art = SyftArtifact.model_validate({"name": "x", "version": "1"})
+    assert art.locations == []
+
+
+# --- Multi-location artifact (AC-3 extension) --------------------------------
+
+def test_artifact_admits_multiple_locations_preserving_order():
+    art = SyftArtifact.model_validate({
+        "name": "x",
+        "version": "1",
+        "locations": [
+            {"path": "/a", "layerID": "sha256:aaa"},
+            {"path": "/b", "layerID": "sha256:bbb"},
+            {"path": "/c"},
+        ],
+    })
+    assert [loc.path for loc in art.locations] == ["/a", "/b", "/c"]
+    assert [loc.layerID for loc in art.locations] == ["sha256:aaa", "sha256:bbb", None]
+
+
 # --- Round-trip realistic fixture (AC-4) -------------------------------------
 
 def test_minimal_alpine_fixture_round_trips():
@@ -208,6 +262,24 @@ def test_minimal_alpine_fixture_round_trips():
     assert "schema" in payload  # pre-condition: fixture has unknowns
 
 
+def test_unknown_fields_survive_full_encode_decode_encode_cycle():
+    """Full round-trip — known AND unknown fields must survive `model_dump` →
+    re-validate. An impl that secretly used `extra='ignore'` or `exclude_unset=True`
+    would pass AC-2 but fail this — that's the mutation defense AC-4 anchors."""
+    raw = FIXTURE.read_text()
+    sbom1 = SyftSbom.model_validate_json(raw)
+    dump1 = sbom1.model_dump(mode="json")
+    # Known fields preserved
+    assert dump1["artifacts"][0]["name"] == "openssl"
+    assert dump1["artifacts"][0]["locations"][0]["layerID"] == "sha256:abc123"
+    # Unknown top-level fields preserved
+    for unknown_key in ("schema", "descriptor", "source"):
+        assert unknown_key in dump1, f"unknown field {unknown_key!r} dropped on dump"
+    # And a second decode succeeds idempotently
+    sbom2 = SyftSbom.model_validate(dump1)
+    assert sbom2.artifacts[0].locations[0].layerID == sbom1.artifacts[0].locations[0].layerID
+
+
 # --- Known-field catalog (AC-6) ----------------------------------------------
 
 def test_known_location_fields_pinned():
@@ -216,6 +288,57 @@ def test_known_location_fields_pinned():
 
 def test_known_artifact_fields_pinned():
     assert sr._KNOWN_ARTIFACT_FIELDS == frozenset({"name", "version", "locations"})
+```
+
+#### Module-purity + smart-constructor-bypass fence (AC-8 + AC-8.5)
+
+Test file path: `tests/unit/primitives/vuln_provenance/test_syft_reader_module_purity.py`
+
+```python
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+from typing import Final
+
+SYFT_READER: Final[Path] = Path("src/codegenie/primitives/vuln_provenance/syft_reader.py")
+_ALLOWED_TOP_LEVEL_IMPORTS: Final[frozenset[str]] = frozenset({"__future__", "typing", "pydantic"})
+
+
+def _parse() -> ast.Module:
+    return ast.parse(SYFT_READER.read_text())
+
+
+def test_syft_reader_imports_are_minimal():
+    """AC-8 — types-only module. Imports must be a subset of
+    {__future__, typing, pydantic}. Adding stdlib or sibling imports is a
+    surface-widening change that must be surfaced via a follow-up story
+    (e.g., when a real I/O reader lands)."""
+    tree = _parse()
+    seen: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            seen.add(node.module.split(".")[0])
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                seen.add(alias.name.split(".")[0])
+    unexpected = seen - _ALLOWED_TOP_LEVEL_IMPORTS
+    assert not unexpected, f"unexpected imports in syft_reader.py: {unexpected!r}"
+
+
+def test_syft_reader_has_no_model_construct_call_sites():
+    """AC-8.5 — ADR-0004 §Consequences fences against `model_construct()`
+    inside the primitive tree (smart-constructor bypass). `syft_reader.py`
+    is the deserialization surface most likely to attract this shortcut;
+    pin the absence structurally rather than relying on review discipline."""
+    tree = _parse()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            assert node.func.attr != "model_construct", (
+                f"`model_construct` call at line {node.lineno} — use "
+                "`model_validate(...)` instead. ADR-0004 §Consequences."
+            )
 ```
 
 State why it fails: `ImportError` — `codegenie.primitives.vuln_provenance.syft_reader` and the three models don't exist. Also `FileNotFoundError` for the fixture.
@@ -258,3 +381,12 @@ State why it fails: `ImportError` — `codegenie.primitives.vuln_provenance.syft
 - **No I/O in this story.** No `Path.read_text()` inside the module, no logging, no subprocess. The module is types-only. The fixture is only consumed in tests. The future "read from disk" function lives elsewhere when it's needed.
 - **Adapters will pass `SyftSbom` instances to `assemble_provenance(... , sbom=sbom)`** per the Protocol shape from S1-04. The forward-reference `"SyftSbom"` in S1-04's `protocols.py` resolves to *this story's* class once S1-04's `from __future__ import annotations` + `get_type_hints` chain runs. Verify after both land: a quick smoke test that the forward reference resolves.
 - **Phase 3 regression suite stays green.** This story does not touch any Phase 3 file. If a regression appears, the cause is likely an `import-linter` contract that did not yet admit `codegenie.primitives.vuln_provenance` — surface as follow-up; S1-06 lands the proper contracts.
+
+### Evaluated-and-rejected design-pattern alternatives (per validator)
+
+These are surfaced so the executor does not silently adopt them and so a future story can revisit if the triggering condition appears. **None of them are ACs for this story.**
+
+- **`frozen=True` on `SyftSbom` / `SyftArtifact` / `SyftLocation`.** *Considered:* it would make any post-deserialization mutation a `ValidationError`, hardening the "data shapes don't permit illegal combinations a defensive reader has to check" commitment beyond what `extra="allow"` alone delivers. *Rejected here* per Rule 2 (Simplicity First) — no caller in the current Phase 7 set mutates an `SyftSbom`; the adapters consume it read-only, and `sbom_verifier.py` (S4-01) is also read-only. Adopting `frozen=True` now is premature abstraction. *Re-open if:* any consumer ever needs to construct a mutated copy (`.model_copy(update=...)`) — at that point `frozen=True` is a clarifying constraint, not a free hardening.
+- **`LayerID` newtype.** *Considered:* `layerID: str` is structurally indistinguishable from arbitrary strings; a `NewType("LayerID", str)` would prevent confusion at the type level (e.g., accidentally passing a `path` where a `layerID` is expected at the adapter boundary). *Rejected here* per rule-of-three: only two consumers (Alpine S4-02 + Distroless S4-03) read this field today; the per-call-site readability cost of a newtype wrapper exceeds the safety gain. *Re-open if:* a third consumer reads `layerID` (e.g., a future runtime-bundled adapter or a sandbox-side trust check) — that's the rule-of-three threshold and the newtype pays for itself.
+- **Hypothesis property-based fuzz over the unknown-field topology.** *Considered:* a `@given(st.dictionaries(...))` test could fuzz the `extra="allow"` surface and verify any random unknown-field shape round-trips through `model_dump`. *Rejected here* per scope and Rule 2 — the single realistic fixture + the multi-location case + the explicit unknown-fields round-trip test (AC-4) collectively exert enough mutation pressure for a types-only story. The S4-04 AST fence on the consumer side is the structural defense; this story does not need to recapitulate it. *Re-open if:* a real-world syft schema drift incident slips through these tests in a later phase — then Hypothesis pays back its cost.
+- **Smart-constructor "narrow view".** *Considered:* a `SyftSbom.minimal_view() -> _SyftSbomMinimal` projection that re-validates into a frozen `extra="forbid"` subset, so adapters can *only* see the known fields. *Rejected here* per Rule 2 and because the S4-04 AST-walk fence already enforces "adapters read only `_KNOWN_*_FIELDS`" structurally — adding a runtime narrow-view projection is belt-and-suspenders for a Phase 7 invariant. *Re-open if:* the AST fence proves too brittle (e.g., catches a refactor that's actually correct) — at that point a runtime projection is the next step.
