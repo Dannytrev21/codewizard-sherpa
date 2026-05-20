@@ -228,9 +228,7 @@ def _extract_imports(
     return edges
 
 
-def _read_and_extract(
-    path: Path, parser: Parser, query: Query, relative_path: str
-) -> list[Edge]:
+def _read_and_extract(path: Path, parser: Parser, query: Query, relative_path: str) -> list[Edge]:
     """Shell over :func:`_extract_imports` — owns the per-file IO + size
     gate + parse-error gate. Every failure escalates to a sentinel
     exception the caller maps to one ``failed_files`` increment plus
@@ -354,8 +352,7 @@ class TreeSitterImportGraphProbe(Probe):
         from tree_sitter import Parser, Query
 
         tooling: dict[SupportedLanguage, tuple[Parser, Query]] = {
-            name: (Parser(lang), Query(lang, _TS_IMPORT_QUERY))
-            for name, lang in languages.items()
+            name: (Parser(lang), Query(lang, _TS_IMPORT_QUERY)) for name, lang in languages.items()
         }
 
         # 3. Per-file extraction inside an async-cancellable inner coroutine
