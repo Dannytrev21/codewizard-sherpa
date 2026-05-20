@@ -89,17 +89,24 @@ The original implementation defined the `PackageManager` Literal inside the prob
 
 ### Decision
 
-The **definition home** of the `PackageManager` Literal moves from `codegenie.probes.node_build_system` to the kernel-tier `codegenie.types.identifiers`. `probes/node_build_system.py` now *imports* `PackageManager` from `codegenie.types.identifiers` (and re-exports the name for intra-`probes` callers such as `layer_b/dep_graph.py`).
+The **definition home** of the `PackageManager` Literal moves from `codegenie.probes.node_build_system` to the kernel-tier `codegenie.types.identifiers`. `probes/node_build_system.py` no longer defines it (the Literal block is deleted — the probe never referenced the type internally); `layer_b/dep_graph.py` and `depgraph/registry.py` import `PackageManager` directly from `codegenie.types.identifiers`.
 
 Governing principle: **domain identifiers, newtypes, and closed-set enums live in `codegenie.types`; leaf packages (`probes`, `indices`, `depgraph`, `plugins`, `primitives`) import from `types`, never the reverse.** This makes `codegenie.types.identifiers` a true leaf (stdlib + `typing` only) and removes the lazy `__getattr__` re-export and the `TYPE_CHECKING`-guarded cycle band-aids in `indices/registry.py` and `depgraph/registry.py`.
 
-The enum **values** (`bun`, `pnpm`, `yarn-classic`, `yarn-berry`, `npm`), the schema, and the `_detect_yarn_variant` algorithm are untouched — this amendment is a relocation, not a contract change.
+Fixing the primary `types ↔ probes` cycle peeled open two further cold-start cycles of the same shape — a non-`probes` module importing the probe contract from `codegenie.probes.base` at runtime, which triggers `probes/__init__`'s eager probe load and re-enters. Both are closed in the same change:
+
+- **`depgraph/registry.py`** — `ProbeContext` (used only in annotations + the `DepGraphStrategy` alias) is demoted to a `TYPE_CHECKING` import and quoted as a forward-ref inside the alias.
+- **`conventions/catalog.py`** — `RepoSnapshot` (annotation-only) is demoted likewise; **`conventions/loader.py`** — `compare_versions` (a runtime call into `probes._shared.version_freshness`) is made a function-scoped deferred import (the lazy-import cold-start discipline `cli.py` already uses).
+
+The enum **values** (`bun`, `pnpm`, `yarn-classic`, `yarn-berry`, `npm`), the schema, and the `_detect_yarn_variant` algorithm are untouched — this amendment is a relocation plus import-graph hygiene, not a contract change.
 
 ### Consequences
 
-- `tests/fence/test_per_submodule_cold_start.py`'s `_KNOWN_BROKEN_PRE_FIX` set empties to zero; the `xfail` sentinel is removed.
-- An import-linter `layers` contract pins `codegenie.types` below the leaf packages so the inversion cannot silently return.
+- `tests/fence/test_per_submodule_cold_start.py`'s `_KNOWN_BROKEN_PRE_FIX` set empties to zero (all 166 submodules import clean in fresh subprocesses); the `xfail` sentinel becomes a permanent `test_known_broken_set_is_empty` guard.
+- A new import-linter `forbidden` contract pins `codegenie.types.identifiers` off `codegenie.probes` so the inversion cannot statically return. A package-level `layers` contract is not feasible — `probes` and `depgraph` are mutually dependent at package granularity; the narrow `forbidden` contract is the precise guard.
+- The kernel-frozen fence allowlist (`tests/fence/test_kernel_frozen.py` `_KERNEL_ALLOWLIST`) gains `node_build_system.py`, `indices/registry.py`, `conventions/catalog.py`, and `conventions/loader.py` — each a Phase-0/1/2 kernel file this amendment authorises touching.
 - Closes the spawned task *"Break circular import in codegenie.plugins.manifest"* — `plugins.manifest` was a victim of this same cycle.
+- The deeper structural cause — the probe contract (`probes/base.py`) and shared helpers (`probes/_shared/`) living under the eagerly-probe-loading `probes` package — remains. The per-consumer `TYPE_CHECKING` / deferred-import fixes are correct and sufficient; a future ADR may relocate the contract to a non-eager-loading home.
 
 ## Evidence / sources
 

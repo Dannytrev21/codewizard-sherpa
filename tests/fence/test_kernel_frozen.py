@@ -150,6 +150,32 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # adr: docs/phases/02-context-gather-layers-b-g/ADRs/
         # 0012-redaction-before-cache-staging-invariant.md
         Path("src/codegenie/output/sanitizer.py"),
+        # ADR-0013 Amendment 2026-05-20 — `PackageManager`'s definition home
+        # moved to the kernel-tier `types.identifiers` to break the
+        # `types ↔ probes` cold-start cycle; the `PackageManager = Literal[...]`
+        # block is deleted from this probe (it never used the type internally).
+        # adr: docs/phases/01-context-gather-layer-a-node/ADRs/
+        # 0013-yarn-variants-as-distinct-package-managers.md §Amendment 2026-05-20.
+        Path("src/codegenie/probes/node_build_system.py"),
+        # ADR-0013 Amendment 2026-05-20 — cycle-fix: the `IndexName` import is
+        # promoted from `TYPE_CHECKING` to a plain top-level import now that
+        # `types.identifiers` is a clean leaf (the band-aid it dodged is gone).
+        # adr: docs/phases/01-context-gather-layer-a-node/ADRs/
+        # 0013-yarn-variants-as-distinct-package-managers.md §Amendment 2026-05-20.
+        Path("src/codegenie/indices/registry.py"),
+        # ADR-0013 Amendment 2026-05-20 — closes the `conventions ↔ probes`
+        # cold-start cycle: `RepoSnapshot` (annotation-only) is demoted to a
+        # `TYPE_CHECKING` forward-ref so importing `catalog` no longer triggers
+        # `probes/__init__`'s eager probe load. adr: docs/phases/
+        # 01-context-gather-layer-a-node/ADRs/
+        # 0013-yarn-variants-as-distinct-package-managers.md §Amendment 2026-05-20.
+        Path("src/codegenie/conventions/catalog.py"),
+        # ADR-0013 Amendment 2026-05-20 — closes the `conventions ↔ probes`
+        # cold-start cycle: `compare_versions` is made a function-scoped
+        # deferred import (it lives under the eagerly-probe-loading `probes`
+        # package). adr: docs/phases/01-context-gather-layer-a-node/ADRs/
+        # 0013-yarn-variants-as-distinct-package-managers.md §Amendment 2026-05-20.
+        Path("src/codegenie/conventions/loader.py"),
     }
 )
 
