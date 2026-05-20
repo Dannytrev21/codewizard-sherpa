@@ -1,0 +1,12 @@
+# osv-scanner ignore registry.
+#
+# osv-scanner auto-discovers this file when it scans `uv.lock` from the repo
+# root; the `security` job in `.github/workflows/ci.yml` also passes it
+# explicitly via `--config=osv-scanner.toml`. Every entry MUST carry a
+# `reason` and an `ignoreUntil` so a suppression re-surfaces for review
+# instead of silently persisting forever.
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-89"  # alias CVE-2025-69534
+ignoreUntil = 2026-08-18
+reason = "Python-Markdown unauthenticated DoS (CVSS 7.5): malformed HTML-like input makes html.parser raise an uncaught AssertionError. No fixed release exists — markdown 3.10.2 is the latest and is affected (advisory range is introduced:0 with no fix event). `markdown` enters this repo ONLY as a build-time transitive dependency of the mkdocs docs toolchain (mkdocs / mkdocs-material / pymdown-extensions); it is NOT in the codegenie runtime closure (proven by the `fence` job + import-linter), and the docs build parses only trusted in-repo .md files — there is no attacker-controlled-Markdown path. Remove this entry (and the mirrored `--ignore-vuln` in ci.yml) once Python-Markdown ships a fixed release — tracking issue Python-Markdown/markdown#1534."

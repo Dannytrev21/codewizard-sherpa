@@ -184,15 +184,31 @@ jobs:
           # pip resolution unless the requirements file is hashed). We
           # extract concrete name==version pairs from uv.lock above, so
           # there's nothing for pip to re-resolve.
-          pip-audit --strict --disable-pip --no-deps --requirement /tmp/requirements-from-uv.txt
+          #
+          # ``--ignore-vuln PYSEC-2026-89`` (alias CVE-2025-69534):
+          # Python-Markdown unauthenticated DoS, CVSS 7.5, with NO fixed
+          # release available (markdown 3.10.2 is the latest and is
+          # affected). ``markdown`` is a build-time-only transitive dep of
+          # the mkdocs docs toolchain — not in the codegenie runtime closure
+          # (proven by the ``fence`` job + import-linter) — and the docs
+          # build parses only trusted in-repo .md files. Full rationale +
+          # an ``ignoreUntil`` expiry live in ``osv-scanner.toml``; remove
+          # both suppressions when Python-Markdown ships a fix.
+          pip-audit --strict --disable-pip --no-deps --ignore-vuln PYSEC-2026-89 --requirement /tmp/requirements-from-uv.txt
       - name: osv-scanner (uv.lock)
         # v1.9.1: the action lives at the ``osv-scanner-action`` subpath,
         # NOT the repo root (the root ``action.yml`` has no ``runs:``
         # section by design — see ``CONTRIBUTING.md`` upstream). The SHA
         # remains pinned per ADR-0002.
+        #
+        # ``--config=osv-scanner.toml`` loads the ignore registry at the
+        # repo root (see that file for the PYSEC-2026-89 rationale +
+        # expiry). Without it, the un-fixable markdown DoS advisory would
+        # trip ``--fail-on-severity=HIGH``.
         uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638  # v1.9.2
         with:
           scan-args: |-
+            --config=osv-scanner.toml
             --lockfile=uv.lock
             --fail-on-severity=HIGH
 
