@@ -23,13 +23,9 @@
       }
     },
     "scip": {
-      "confidence": "low",
+      "confidence": "high",
       "freshness": {
-        "kind": "stale",
-        "reason": {
-          "kind": "indexer_error",
-          "message": "indexer_reported_1_errors"
-        }
+        "kind": "fresh"
       }
     },
     "semgrep": {

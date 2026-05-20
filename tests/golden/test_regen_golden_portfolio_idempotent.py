@@ -20,7 +20,6 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REGEN_SCRIPT = _REPO_ROOT / "scripts" / "regen_golden.py"
-_GOLDEN_ROOT = _REPO_ROOT / "tests" / "golden" / "probes"
 
 
 def _snapshot_sha_set(root: Path) -> dict[str, str]:
@@ -32,14 +31,24 @@ def _snapshot_sha_set(root: Path) -> dict[str, str]:
     return out
 
 
-def test_two_consecutive_updates_are_byte_identical() -> None:
+def test_two_consecutive_updates_are_byte_identical(tmp_path: Path) -> None:
     """`--update --portfolio` twice → second run produces zero file changes."""
-    # First pass — captures baseline. We trust the committed goldens are
-    # already a fixed point (the harness test enforces that). This test
-    # verifies the *operation* itself is idempotent: running update against
-    # a clean tree produces no churn on the second invocation.
+    # Regen into a temp golden root via the ``--golden-root`` override so the
+    # real ``tests/golden/`` tree is never mutated — a test must not dirty
+    # tracked files. This test verifies the *operation* itself is idempotent:
+    # two consecutive updates produce no churn on the second invocation.
+    golden_root = tmp_path / "golden"
+    regen_argv = [
+        sys.executable,
+        str(_REGEN_SCRIPT),
+        "--update",
+        "--portfolio",
+        "--golden-root",
+        str(golden_root),
+    ]
+
     result1 = subprocess.run(
-        [sys.executable, str(_REGEN_SCRIPT), "--update", "--portfolio"],
+        regen_argv,
         cwd=str(_REPO_ROOT),
         capture_output=True,
         text=True,
@@ -48,10 +57,10 @@ def test_two_consecutive_updates_are_byte_identical() -> None:
     assert result1.returncode == 0, (
         f"first --update failed (rc={result1.returncode}):\n{result1.stderr}"
     )
-    snapshot_a = _snapshot_sha_set(_GOLDEN_ROOT)
+    snapshot_a = _snapshot_sha_set(golden_root)
 
     result2 = subprocess.run(
-        [sys.executable, str(_REGEN_SCRIPT), "--update", "--portfolio"],
+        regen_argv,
         cwd=str(_REPO_ROOT),
         capture_output=True,
         text=True,
@@ -60,7 +69,7 @@ def test_two_consecutive_updates_are_byte_identical() -> None:
     assert result2.returncode == 0, (
         f"second --update failed (rc={result2.returncode}):\n{result2.stderr}"
     )
-    snapshot_b = _snapshot_sha_set(_GOLDEN_ROOT)
+    snapshot_b = _snapshot_sha_set(golden_root)
 
     assert snapshot_a == snapshot_b, (
         "Two consecutive --update passes produced different golden bytes — "

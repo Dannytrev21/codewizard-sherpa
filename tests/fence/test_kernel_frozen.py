@@ -48,6 +48,11 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("pyproject.toml"),
         # S4-05 / P3-ADR-0012 — ALLOWED_BINARIES amendment (allowed-if-touched)
         Path("src/codegenie/exec/__init__.py"),
+        # P3-ADR-0014 — ScipIndexProbe removes the `scip-typescript
+        # --infer-tsconfig` artifact so gather never mutates the analyzed
+        # repo outside `.codegenie/`. adr: docs/phases/03-vuln-deterministic-
+        # recipe/ADRs/0014-scip-index-probe-removes-infer-tsconfig-artifact.md
+        Path("src/codegenie/probes/layer_b/scip_index.py"),
         # S1-01 / P3-ADR-0010 — newtype additions
         Path("src/codegenie/types/identifiers.py"),
         # S1-01 — re-exports
