@@ -25,7 +25,12 @@ import time
 from pathlib import Path
 from typing import Final
 
-from tests.bench._bench_kernel import (
+# Running this file as a script puts the script's own directory on
+# ``sys.path[0]``, not the repo root — prepend the repo root so the
+# ``tests`` namespace package resolves for the kernel import below.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from tests.bench._bench_kernel import (  # noqa: E402
     Threshold,
     compare_to_baseline,
     exit_with_verdict,
