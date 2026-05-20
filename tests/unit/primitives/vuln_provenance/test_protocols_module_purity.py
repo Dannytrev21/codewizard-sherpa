@@ -31,6 +31,12 @@ _ALLOWED_ERRORS_IMPORTS: Final[frozenset[str]] = frozenset(
     {
         "__future__",
         "codegenie.errors",
+        # S2-01 — RegistryError carries a typed `.key: ProvenanceAdapterId`
+        # payload and a `.duplicate(...)` classmethod (Phase 7 ADR-0007).
+        # The identifier import is TYPE_CHECKING-guarded; the `typing`
+        # import provides `TYPE_CHECKING`.
+        "typing",
+        "codegenie.types.identifiers",
     }
 )
 

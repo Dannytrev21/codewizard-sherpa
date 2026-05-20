@@ -1,7 +1,7 @@
 # Story S2-01 — `Layer` + `Ecosystem` enums + `_REGISTRY` + `@register_provenance_adapter` decorator
 
 **Step:** Step 2 — Registry kernel, `_ADAPTER_DISPATCH_ORDER`, `assemble_provenance` free function
-**Status:** Ready
+**Status:** GREEN (shipped 2026-05-19; see `_attempts/S2-01-provenance-adapter-registry.md`)
 **Effort:** M
 **Depends on:** S1-01 (`ProvenanceAdapterId` newtype, `CveId`, `PackageId`, `ImageRef`), S1-03 (seven-variant `Provenance` discriminated union — referenced only via `type[VulnProvenanceAdapter]`), S1-04 (`VulnProvenanceAdapter` Protocol + `ProvenanceError` / `RegistryError` typed exception hierarchy)
 **ADRs honored:** Phase 7 ADR-0001 (no `MultiPluginCoordinator` — this registry is the only Phase 7 plugin/registry seam for adapters), Phase 7 ADR-0004 (vuln.provenance primitive home — registry lives under the primitive tree), Phase 7 ADR-0006 (framing only — dispatch policy lives in S2-03's `Final` tuple, NOT in this registry), Phase 7 ADR-0007 (registry stores **classes**, not instances), production ADR-0031 (Plugin/Registry), production ADR-0032 (DepGraphAdapter Protocol — adapter shape precedent), production ADR-0038 (vulnerability provenance attribution — the deferred ADR this resolves).

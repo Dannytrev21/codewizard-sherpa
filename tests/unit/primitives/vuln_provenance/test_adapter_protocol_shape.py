@@ -243,14 +243,34 @@ def _error_class_body_kinds(name: str) -> list[str]:
     pytest.fail(f"Class {name!r} not found in errors.py")
 
 
-@pytest.mark.parametrize("klass_name", ["ProvenanceError", "RegistryError", "AdapterError"])
+@pytest.mark.parametrize("klass_name", ["ProvenanceError", "AdapterError"])
 def test_error_class_is_markers_only(klass_name: str) -> None:
     """AC-11 — mirrors ``src/codegenie/errors.py`` "Subclasses carry no
     ``__init__``, no ``__str__``, no class attributes — they are markers
-    only." A single docstring body is the only admitted shape."""
+    only." A single docstring body is the only admitted shape.
+
+    ``RegistryError`` is intentionally exempt from this fence starting in
+    S2-01: per Phase 7 ADR-0007 §Consequences + S2-01 AC-6, the class
+    carries a typed ``.key: ProvenanceAdapterId`` payload and a
+    ``duplicate(...)`` classmethod constructor so the plugin loader (S8-03)
+    and supervisor exit-code-4 formatter can render structured diagnostics
+    without re-parsing the message. See ``test_registry_error_payload_shape``
+    below for the structural lock on the permitted body."""
     body_kinds = _error_class_body_kinds(klass_name)
     assert body_kinds == ["docstring"], (
         f"{klass_name} must be markers-only (docstring body only); got "
         f"{body_kinds}. Adding __init__ / __str__ / attributes is a Phase 7 "
         "ADR-0004 amendment."
+    )
+
+
+def test_registry_error_payload_shape() -> None:
+    """S2-01 AC-6 — ``RegistryError`` is a typed-payload error, NOT a
+    marker. The class body is locked to a docstring + ``.key`` AnnAssign +
+    ``duplicate`` classmethod. Adding behavior beyond that requires a Phase
+    7 ADR amendment (mirror the rationale above)."""
+    body_kinds = _error_class_body_kinds("RegistryError")
+    assert body_kinds == ["docstring", "AnnAssign", "FunctionDef"], (
+        f"RegistryError shape drifted: got {body_kinds}. Expected "
+        "docstring + `.key` annotation + `duplicate` classmethod (S2-01 AC-6)."
     )

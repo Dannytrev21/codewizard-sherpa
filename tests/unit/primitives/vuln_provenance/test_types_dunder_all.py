@@ -49,6 +49,9 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "BaseKind",
     "Both",
     "DistroPackage",
+    # S2-01 — provenance-adapter registry kernel (enums + decorator).
+    "Ecosystem",
+    "Layer",
     "Provenance",
     # S1-04.
     "ProvenanceError",
@@ -63,6 +66,8 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "UnknownReason",
     # S1-04 — Protocol port.
     "VulnProvenanceAdapter",
+    # S2-01 — decorator (lowercase, sorts after VulnProvenanceAdapter).
+    "register_provenance_adapter",
 )
 
 

@@ -20,6 +20,11 @@ Protocol port; `errors.py` companions `ProvenanceError`, `RegistryError`,
 S1-05 grows the surface by three names — the upstream-syft Pydantic
 models `SyftSbom`, `SyftArtifact`, `SyftLocation` (carrying the
 deliberate `extra="allow"` posture; consumer-side fence lives in S4-04).
+
+S2-01 grows the surface by three names — the `Layer` and `Ecosystem` enums
+plus the `@register_provenance_adapter` decorator. The `_REGISTRY` dict
+itself stays module-private (see `registry.py`); consumers go through
+`assemble_provenance` (S2-04), not the raw dict.
 """
 
 from __future__ import annotations
@@ -30,6 +35,11 @@ from codegenie.primitives.vuln_provenance.errors import (
     RegistryError,
 )
 from codegenie.primitives.vuln_provenance.protocols import VulnProvenanceAdapter
+from codegenie.primitives.vuln_provenance.registry import (
+    Ecosystem,
+    Layer,
+    register_provenance_adapter,
+)
 from codegenie.primitives.vuln_provenance.syft_reader import (
     SyftArtifact,
     SyftLocation,
@@ -62,6 +72,8 @@ __all__ = [
     "BaseKind",
     "Both",
     "DistroPackage",
+    "Ecosystem",
+    "Layer",
     "Provenance",
     "ProvenanceError",
     "RegistryError",
@@ -72,4 +84,5 @@ __all__ = [
     "Unknown",
     "UnknownReason",
     "VulnProvenanceAdapter",
+    "register_provenance_adapter",
 ]

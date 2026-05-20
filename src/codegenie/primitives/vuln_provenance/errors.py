@@ -34,7 +34,12 @@ embedded on the class.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from codegenie.errors import CodegenieError
+
+if TYPE_CHECKING:
+    from codegenie.types.identifiers import ProvenanceAdapterId
 
 __all__ = [
     "AdapterError",
@@ -52,7 +57,36 @@ class ProvenanceError(CodegenieError):
 class RegistryError(ProvenanceError):
     """Raised by ``@register_provenance_adapter`` (S2-01) on a duplicate
     ``(Layer, Ecosystem)`` key. Hard fail at import time so a silent
-    shadow never lands in the registry."""
+    shadow never lands in the registry.
+
+    The typed ``.key`` attribute carries the colliding ``ProvenanceAdapterId``
+    so the plugin loader (S8-03) and the supervisor's exit-code-4 formatter
+    can render a structured diagnostic without re-parsing the message.
+    Use the :meth:`duplicate` classmethod to construct — it formats the
+    operator-facing message (both colliding ``module.qualname`` strings)
+    in one place.
+    """
+
+    key: ProvenanceAdapterId | None = None
+
+    @classmethod
+    def duplicate(
+        cls,
+        *,
+        key: ProvenanceAdapterId,
+        existing_qualname: str,
+        duplicate_qualname: str,
+    ) -> RegistryError:
+        """Construct a duplicate-registration error with the canonical
+        message shape ``"duplicate adapter for {key!r}: {existing} and
+        {duplicate}"``. Mirrors the dual-qualname diagnostic in
+        :mod:`codegenie.probes.registry` so an operator grepping a plugin
+        tree can locate both call sites from the message alone."""
+        instance = cls(
+            f"duplicate adapter for {key!r}: {existing_qualname} and {duplicate_qualname}"
+        )
+        instance.key = key
+        return instance
 
 
 class AdapterError(ProvenanceError):
