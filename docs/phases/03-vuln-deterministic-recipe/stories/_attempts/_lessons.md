@@ -140,3 +140,22 @@ phase-story-executor runs in this phase. New entries at the bottom.
     AC-15 / S4-02 Attempt 2: `pytest.xfail("S9-01 pending — ...")`
     for the bwrap-missing path; the AC-15 CI-setup fence is the
     gate that flips to a hard fail post-S9-01.
+
+16. **A validator can harden two ACs into a mutual contradiction**
+    (S5-02 — BLOCKED). The phase-story-validator's harden pass
+    independently (a) strengthened AC-Surface-2 to require a
+    `mypy --strict` `RecipeEngine`-Protocol assignment and (b)
+    rewrote `apply` to return a 2-tuple `(RecipeOutcome, Transform
+    | None)` — never cross-checking that S5-01's *landed*
+    `RecipeEngine.apply(...) -> RecipeOutcome` makes those two
+    incompatible (a tuple return is not covariantly assignable to
+    `RecipeOutcome`). Lesson: when a story both (i) implements a
+    Protocol shipped by a prior GREEN story and (ii) changes the
+    shape of the implementing method, the executor's Stage-1 must
+    diff the method signature against the *as-built* Protocol, not
+    the story's prose. The deeper design gap: a `RecipeEngine` has
+    no sanctioned channel to surface its produced `Transform`
+    object — `Applied` carries only `transform_id` and no
+    `TransformRegistry` exists. Decide that (architect scope:
+    widen `Applied`, change the Protocol, or add a registry story)
+    *before* any engine story can be executed.

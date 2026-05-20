@@ -162,7 +162,7 @@ The `/phase-story-writer`, `/phase-story-validator`, and `/phase-story-executor`
 A story's `**Status:**` line is the source of truth:
 - `Ready` / `HARDENED` — validated, awaiting executor.
 - `GREEN` / `Done` — shipped with runtime evidence.
-- `BLOCKED` / `BLOCKED-PARTIAL` — explicit precondition not met; check the attempt log for the resolution path. As of 2026-05 there are zero `BLOCKED` stories.
+- `BLOCKED` / `BLOCKED-PARTIAL` — explicit precondition not met; check the attempt log for the resolution path. As of 2026-05-20 two stories are `BLOCKED` pending architecture rework: phase-7 `S3-02` (npm plugin directory not yet built) and phase-3 `S5-02` (`RecipeEngine.apply` 2-tuple vs. Protocol-conformance contradiction).
 
 ## Global rules (also in `~/.claude/CLAUDE.md`)
 

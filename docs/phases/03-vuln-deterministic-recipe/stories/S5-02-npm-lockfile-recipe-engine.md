@@ -1,7 +1,7 @@
 # Story S5-02 — `NpmLockfileRecipeEngine` (production day-1 implementation)
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** HARDENED
+**Status:** BLOCKED — 2026-05-20 (phase-story-executor Stage-1 hard gate; see [`_attempts/S5-02.md`](_attempts/S5-02.md)). AC-Apply-1 (`apply` returns a 2-tuple) and AC-Surface-2(b) (`apply` is `mypy --strict` Protocol-conformant) are mutually unsatisfiable against the landed S5-01 `RecipeEngine.apply(...) -> RecipeOutcome`. Needs `/phase-architect` + `/phase-story-writer` rework before re-execution.
 **Effort:** L
 **Depends on:** S5-01 (`RecipeEngine` Protocol at `transforms/recipe_engine.py` + `ApplicationPlan`), S1-03 (`outcomes.py` discriminated unions), S1-04 (`Transform` ABC + `TransformProvenance`), S4-01 (`SubprocessJail` Port + `JailedSubprocessSpec` + `JailedSubprocessResult` variant shapes), S4-04 (`SandboxedPath` + `O_NOFOLLOW`; HARDENED — integration TOCTOU AC gates on this story being GREEN at execute-time), S4-05 (`NpmInstallCapability` + `mint()`; HARDENED).
 **ADRs honored:** ADR-0009, ADR-0010, ADR-0007, ADR-0006, ADR-0011, ADR-0001 (Phase-5 contract snapshot — `Transform` / `RecipeOutcome` shape pinned), Phase-1 ADR-0007 (`ErrorId` dotted-snake format)
