@@ -25,6 +25,11 @@ S2-01 grows the surface by three names — the `Layer` and `Ecosystem` enums
 plus the `@register_provenance_adapter` decorator. The `_REGISTRY` dict
 itself stays module-private (see `registry.py`); consumers go through
 `assemble_provenance` (S2-04), not the raw dict.
+
+S2-02 grows the surface by three names — the `AdapterFactory` Protocol,
+the `DefaultAdapterFactory` implementation, and the all-`None`
+`default_adapter_factory` singleton. The closed DI-kwarg vocabulary
+`_DI_KWARGS` stays module-private (see `factory.py`).
 """
 
 from __future__ import annotations
@@ -33,6 +38,11 @@ from codegenie.primitives.vuln_provenance.errors import (
     AdapterError,
     ProvenanceError,
     RegistryError,
+)
+from codegenie.primitives.vuln_provenance.factory import (
+    AdapterFactory,
+    DefaultAdapterFactory,
+    default_adapter_factory,
 )
 from codegenie.primitives.vuln_provenance.protocols import VulnProvenanceAdapter
 from codegenie.primitives.vuln_provenance.registry import (
@@ -64,6 +74,7 @@ from codegenie.primitives.vuln_provenance.types import (
 __all__ = [
     "AdapterConfidence",
     "AdapterError",
+    "AdapterFactory",
     "AppDirect",
     "AppKind",
     "AppTransitive",
@@ -71,6 +82,7 @@ __all__ = [
     "BaseImage",
     "BaseKind",
     "Both",
+    "DefaultAdapterFactory",
     "DistroPackage",
     "Ecosystem",
     "Layer",
@@ -84,5 +96,6 @@ __all__ = [
     "Unknown",
     "UnknownReason",
     "VulnProvenanceAdapter",
+    "default_adapter_factory",
     "register_provenance_adapter",
 ]
