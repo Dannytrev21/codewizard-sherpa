@@ -1,7 +1,16 @@
 # Story S3-01 — `test_provenance_assembly_via_plugins.py` contract test (red-first)
 
 **Step:** Step 3 — `NpmVulnProvenanceAdapter` in Phase 3 plugin as additive new file (first byte-edit territory)
-**Status:** Ready
+**Status:** GREEN (shipped 2026-05-20; see `_attempts/S3-01-npm-adapter-contract-test-first.md`)
+**Completed:** 2026-05-20
+**Attempts:** 1
+**Evidence:**
+- Files (all new — no Phase 0–6.5 byte-edits): `tests/integration/test_provenance_assembly_via_plugins.py`, `tests/integration/conftest.py`, `tests/integration/_fixtures/syft_sboms/npm_lodash_app.json`
+- Tests: `test_provenance_assembly_via_plugins.py` — 4 scenarios; the 3 positive-path scenarios `xfail(strict=True)` until S3-02, the `test_red_state_when_no_npm_adapter_registered` canary passes. Runtime: `1 passed, 3 xfailed` (Implementation-outline step 6).
+- Gates: `ruff format --check` + `ruff check` + `mypy --strict` clean on both new `.py` files; full `make check` (lint → typecheck → test → fence) green.
+- Deviations (see attempt log): AC-8 `ImageRef` is a bare `NewType` (no `.parse()` — constructed directly); AC-1 no `integration` marker (unregistered under `--strict-markers`; suite convention is no marker); AC-10 prose contradiction resolved to the self-consistent reading (xfail-strict on the 3 future scenarios, not the red-state canary).
+- Attempt log: `_attempts/S3-01-npm-adapter-contract-test-first.md`
+- Commit: (pending human merge)
 **Effort:** S
 **Depends on:** S2-04 (`assemble_provenance(...)` free function lands with `match`/`assert_never` composition), S1-05 (`SyftSbom` Pydantic reader exists so the test can construct a typed SBOM fixture)
 **ADRs honored:** [ADR-0007](../ADRs/0007-provenance-adapter-registry-stores-classes.md) (the registry stores adapter **classes**, so the integration test asserts class registration + dispatch-time construction — never instance registration); [ADR-0009](../ADRs/0009-phase-7-byte-edit-allowlist-fence.md) (this story does NOT touch any Phase 0–6.5 file — it only adds `tests/integration/test_provenance_assembly_via_plugins.py`; the fence cost is paid by S3-02 + S3-03); [ADR-0004](../ADRs/0004-vuln-provenance-primitive-home.md) (the primitive's `attribute(...) -> Provenance` surface is what the test pins); [ADR-0006](../ADRs/0006-adapter-dispatch-explicit-final-tuple.md) (the test exercises `_ADAPTER_DISPATCH_ORDER` walking — the result must be reachable through the canonical dispatch path, not by importing the adapter class directly)

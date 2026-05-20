@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "name": "lodash",
+      "version": "4.17.20",
+      "locations": [
+        {
+          "path": "node_modules/lodash/package.json",
+          "layerID": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "express",
+      "version": "4.18.2",
+      "locations": [
+        {
+          "path": "node_modules/express/package.json",
+          "layerID": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    }
+  ]
+}
