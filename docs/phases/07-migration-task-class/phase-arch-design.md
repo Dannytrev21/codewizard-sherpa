@@ -1322,7 +1322,12 @@ Two scenarios, both gated by `@pytest.mark.phase07_e2e` (CI matrix-split for `--
 
 ---
 
-## Integration with Phase 8 (next phase)
+## Integration with Phase 8 (downstream consumer)
+
+> Sequencing note: Phase 7.5 (multi-language foundations + Python) is inserted
+> between Phase 7 and Phase 8 in `docs/roadmap.md`. Phase 7.5 does not consume
+> Phase 7's coordination output; the contracts below are consumed by Phase 8's
+> Planner, which remains their canonical downstream consumer.
 
 ### New contracts introduced
 

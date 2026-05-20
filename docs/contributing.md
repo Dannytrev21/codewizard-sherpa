@@ -240,6 +240,33 @@ discipline: **structural defenses are cheap to add and cheap to run; the
 moment a class of bug shows up in production, write the fence that would
 have caught it.**
 
+### Extension by addition — what counts as an edit
+
+Extension by addition means **no *silent* edits**, not "no edits"
+([ADR-0043](production/adrs/0043-extension-by-addition-means-no-silent-edits.md)).
+An edit is a violation only when it changes existing behaviour *silently*.
+Edits the compiler or a fence fully polices are the enforcement mechanism,
+not violations — these **categories** are always safe:
+
+- Adding a member to a closed `Literal` / `Enum`.
+- Adding a field to a frozen struct or a new `$ref` to a schema envelope.
+- Adding an import line to an explicit-import collection point
+  (`probes/__init__.py`, the language registry, etc.).
+- Adding a new file (probe, plugin, adapter, `LanguagePack`).
+
+The category-based fence (`tests/fence/test_no_silent_edits.py`) checks a
+diff against these categories. It **replaces** the per-phase enumerated
+byte-edit allowlists — do not add new per-phase allowlist rows.
+
+**Migrations.** A genuinely cross-cutting change to existing code — a
+security fix across every probe, a logging-format change, a new required
+field — is a **migration**: a loud, reviewed, all-at-once horizontal
+sweep, explicitly labelled as such in the PR. A migration is *not* a
+silent edit; it is gated by the conformance suite (`tests/conformance/`)
+and golden files, regenerated deliberately, in a single reviewed pass.
+Use a migration rather than forking a near-duplicate component to avoid
+touching the original.
+
 ### ADR lifecycle
 
 Production ADR statuses are `Proposed`, `Accepted`, `Provisional Accepted`, `Deferred`, and `Superseded`.

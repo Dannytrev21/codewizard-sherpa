@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Phase 0** (bullet-tracer foundations) — Done.
 - **Phase 1** (Layer A Node probes — `LanguageDetection`, `NodeBuildSystem`, `NodeManifest`, `CI`, `Deployment`, `TestInventory`) — Done.
 - **Phase 2** (Layer B–G probes) — Most stories shipped (S4-01..S4-07, S5-01..S5-06 GREEN; S6-01..S6-08 + S7..S8 in flight via the autonomous executor pipeline).
-- **Phases 3, 5, 6.5** — Designed (final-design + arch + ADRs + stories) but not implemented.
+- **Phases 3–7** — Designed (final-design + arch + ADRs + stories) but not implemented.
+- **Phase 7.5** (multi-language foundations + Python) — roadmap entry only; design pipeline not yet run.
 
 The story-driven autonomous-execution pipeline (`/phase-story-writer`, `/phase-story-validator`, `/phase-story-executor`) is the canonical way new work lands. Story files under `docs/phases/{phase}/stories/` carry their own status (`Ready` / `HARDENED` / `GREEN` / `Done` / `BLOCKED`).
 
@@ -136,7 +137,7 @@ These appear across every doc and constrain implementation. Do not violate witho
 - **Facts, not judgments.** Probes capture evidence ("trace observed 0 shell invocations"). Conclusions ("safe to migrate") are the Planner's job.
 - **Honest confidence.** Every probe reports `confidence: Literal["high", "medium", "low"]`. `IndexHealthProbe` (B2) is called out across docs as the single most important probe — silent index staleness is the worst failure mode.
 - **Determinism over probabilism for structural changes.** Recipes (OpenRewrite) + AST/LST manipulation for structural transforms; LLM reserved for judgment calls.
-- **Extension by addition.** New language / new task type = new probes + new Skills, never edits to existing probes or the coordinator. The probe contract in `base.py` is locked.
+- **Extension by addition — no *silent* edits.** New language / new task type = new probes + new Skills + new plugins. Edits the compiler or a fence fully polices (a new `Literal` member, a struct field, an import line) are the enforcement mechanism, not violations; genuinely cross-cutting change uses the sanctioned **migration** path (a loud, conformance-gated sweep). The probe contract in `base.py` is locked. (See [ADR-0043](docs/production/adrs/0043-extension-by-addition-means-no-silent-edits.md).)
 - **Organizational uniqueness as data, not prompts.** Skills with YAML frontmatter, conventions catalogs, policy YAML, replacement catalogs, exception registries.
 - **Progressive disclosure for context.** `RepoContext` indexes evidence by path/manifest; consumers read originals at decision time.
 - **Humans always merge.** Autonomy ends at PR creation.

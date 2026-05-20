@@ -63,6 +63,7 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0040](0040-data-lifecycle-retention-and-classification.md) | Data lifecycle, retention, and classification | data · governance · retention |
 | [0041](0041-model-and-prompt-release-qualification.md) | Model and prompt release qualification | llm · release · reproducibility · capability · content-addressed-digest |
 | [0042](0042-multi-plugin-coordination-for-both-workflows.md) | Multi-plugin coordination for `Both` workflows | orchestration · coordination · planning |
+| [0043](0043-extension-by-addition-means-no-silent-edits.md) | Extension by addition means "no silent edits" — category-based fence replaces per-phase allowlists; sanctioned migration path | architecture · extension-by-addition · fences · contracts · migrations |
 
 ## Index — Deferred decisions
 

@@ -82,7 +82,7 @@ Nine constraints that every subsystem must honor. Proposed changes that violate 
 2. **Facts, not judgments.** Gatherer captures evidence ("trace observed 0 shell invocations"); never writes conclusions ("safe to migrate"). Conclusions are the Planner's job.
 3. **Honest confidence.** Every probe and every state node reports confidence + provenance. Silent staleness is the worst failure mode.
 4. **Determinism over probabilism for structural changes.** AI agents are "safer builders, risky maintainers" — use recipes for refactors; reserve LLMs for judgment calls.
-5. **Extension by addition.** New language / task / tool = new probes + new Skills + new subgraphs, never edits to existing ones.
+5. **Extension by addition — no *silent* edits.** New language / task / tool = new probes + new Skills + new subgraphs. Compiler- or fence-policed edits (a new `Literal` member, a struct field, an import line) are the enforcement mechanism, not violations; cross-cutting change uses the sanctioned migration path ([ADR-0043](production/adrs/0043-extension-by-addition-means-no-silent-edits.md)).
 6. **Organizational uniqueness as data, not prompts.** Skills, conventions, policies, exceptions all live as structured data the agent queries.
 7. **Progressive disclosure.** `RepoContext` indexes evidence; doesn't inline it. Agents read originals at decision time via MCP.
 8. **Humans always merge.** Autonomy ends at PR creation.
@@ -126,6 +126,8 @@ See [ADR-0031](production/adrs/0031-plugin-architecture.md) for the full plugin 
 
 The most recent architectural additions (May 2026):
 
+- **Phase 7.5 — Multi-language foundations + Python** — the `LanguagePack` total-value language contract; the second target language added by addition. See [roadmap §Phase 7.5](roadmap.md).
+- **ADR-0043 — Extension by addition means "no silent edits"** — a category-based fence replaces per-phase byte-edit allowlists; a sanctioned migration path covers legitimate horizontal change. See [ADR-0043](production/adrs/0043-extension-by-addition-means-no-silent-edits.md).
 - **Phase 13.5 — Operator portal** (read-only views + plugin/task kill-switches). See [ADR-0035](production/adrs/0035-operator-portal-architecture.md) and [ADR-0036](production/adrs/0036-plugin-task-enablement-dual-source-policy.md).
 - **Phase 02 IndexHealthProbe** (B2) — the single most important probe in the gather layer; catches silent index staleness ([Phase 02 ADR-0006](phases/02-context-gather-layers-b-g/ADRs/0006-index-freshness-sum-type-location.md)).
 - **ADR-0033 Domain modeling discipline** — newtype + smart constructor + sum type + illegal-states-unrepresentable applied across new code from May 2026 forward.

@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-05-18
 **Tags:** architecture · extension-by-addition · contracts · phase-7
-**Related:** ADR-0007, ADR-0028, ADR-0031, ADR-0038
+**Related:** ADR-0007, ADR-0028, ADR-0031, ADR-0038, ADR-0043
 
 ## Context
 
@@ -24,3 +24,4 @@ New task classes must not edit existing plugins or stable existing behavior. A b
 
 - Phase 7 may add `vuln.provenance` without violating extension-by-addition.
 - Future docs must say whether they mean plugin addition only or plugin addition plus an ADR-backed bounded primitive.
+- [ADR-0043](0043-extension-by-addition-means-no-silent-edits.md) refines the *definition* of extension-by-addition itself — "no *silent* edits" — and supplies the category-based fence that enforces it. This ADR's bounded-additive-primitive carve-out stands unchanged; ADR-0043 governs what counts as an "edit".

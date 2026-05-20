@@ -64,6 +64,7 @@ LLMs appear only at the **leaves**, called via the Agents SDK for narrow judgmen
 | Phases 3–5, 6.5 — Designed | 📐 Designs complete |
 | Phase 6 — Plugin-aware redesign | 📐 Designs complete |
 | Phase 7 — Migration task-class (distroless containers) | 📐 Designs complete |
+| Phase 7.5 — Multi-language foundations + Python | 📋 Planned |
 | Phases 8–16 — Roadmap stubs awaiting design | 📋 Planned |
 
 The implementation focus today is the **local CLI POC** (`codegenie gather`). The probe contract it implements is the same one the production service will use ([ADR-0007](production/adrs/0007-probe-contract-preserved-poc-to-service.md)) — drift here would propagate everywhere.
@@ -91,5 +92,5 @@ This site is structured for progressive disclosure:
 | 5 minutes | This page |
 | 30 minutes | This page + [Architecture overview](architecture.md) |
 | 2 hours | Add the [Production design](production/design.md) |
-| A weekend | Add the [ADR index](production/adrs/README.md) (36 numbered decisions) and one or two phase [final-designs](roadmap.md) |
+| A weekend | Add the [ADR index](production/adrs/README.md) (43 numbered decisions) and one or two phase [final-designs](roadmap.md) |
 | Want to contribute | [Contributing guide](contributing.md) |
