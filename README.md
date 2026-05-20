@@ -4,15 +4,15 @@
 
 📖 **Full docs:** [dannytrev21.github.io/codewizard-sherpa](https://dannytrev21.github.io/codewizard-sherpa/) — overview, get-started, architecture, ADRs, per-phase designs.
 
-The work in flight is a local Python CLI (`codegenie gather`) that produces a deterministic, cacheable `RepoContext` artifact from any repo. From that bullet tracer, the system grows into a 7-stage Temporal-orchestrated service that drives vulnerability remediation, container migrations, and (eventually) agentic recipe authoring across a portfolio of repos.
+The shipped surface is a local Python CLI (`codegenie`) that produces a deterministic, cacheable `RepoContext` artifact from any repo. From that bullet tracer, the system grows into a 7-stage Temporal-orchestrated service that drives vulnerability remediation, container migrations, and (eventually) agentic recipe authoring across a portfolio of repos.
 
-**As of 2026-05:** Phase 0 (bullet-tracer foundations) is shipped. Phase 1 Step 1 (Layer A — Node primitives) is closed; Phase 1 Step 2 (`LanguageDetection` extension + `NodeBuildSystem` probe) lands the first new Phase 1 probe.
+**As of 2026-05:** Phases 0–2 are shipped — the full deterministic gather pipeline (CLI, ~36 probes across Layers A–G, async coordinator, content-addressed cache, schema validation). Phase 3 (deterministic vulnerability remediation — the first transform the system writes) is in flight.
 
 ---
 
 ## Architecture (local POC)
 
-The diagram below is the **current scope** — Phases 0–2 of the [roadmap](docs/roadmap.md): a deterministic context-gathering pipeline with no LLM anywhere in the gather path. The probe contract that ships here is the same one the production service will use, so bugs at this layer propagate.
+The diagram below is the **gather pipeline** — Phases 0–2 of the [roadmap](docs/roadmap.md): a deterministic context-gathering pipeline with no LLM anywhere in the gather path. Phase 3 builds the transform layer on top of it. The probe contract that ships here is the same one the production service will use, so bugs at this layer propagate.
 
 ![Local POC architecture](docs/architecture/local-poc.svg)
 
@@ -54,7 +54,7 @@ flowchart TD
 ### Load-bearing commitments visible in the diagram
 
 - **No LLM in the gather pipeline.** Enforced by `import-linter` in CI ([Phase 0 ADR 0002](docs/phases/00-bullet-tracer-foundations/ADRs/0002-fence-ci-job-no-llm-in-gather.md)), not by convention.
-- **Single subprocess chokepoint.** All external tools go through one allowlisted `exec(...)` call site — no ad-hoc `subprocess.run` scattered through probes ([Phase 0 ADR 0012](docs/phases/00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md)). Phase 1 extends the allowlist to `{"git", "node"}` ([Phase 1 ADR 0001](docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md)).
+- **Single subprocess chokepoint.** All external tools go through one allowlisted `exec(...)` call site — no ad-hoc `subprocess.run` scattered through probes ([Phase 0 ADR 0012](docs/phases/00-bullet-tracer-foundations/ADRs/0012-subprocess-allowlist-chokepoint.md)). Phase 1 added `node` to the allowlist ([Phase 1 ADR 0001](docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md)); Phase 2's omnibus 02-ADR-0001 extended it further (`semgrep`, `syft`, `grype`, `gitleaks`, `scip-typescript`, `tree-sitter`, `npm`, `jq`, and more).
 - **Content-addressed cache keyed off `declared_inputs`.** Probes declare which files/resources they read; the cache key derives from that, so incremental gathers are correct by construction.
 - **Two-pass sanitizer between validation and write.** Probe outputs pass Pydantic ([Phase 0 ADR 0010](docs/phases/00-bullet-tracer-foundations/ADRs/0010-pydantic-probe-output-validator.md)) then a separate sanitizer ([ADR 0008](docs/phases/00-bullet-tracer-foundations/ADRs/0008-output-sanitizer-two-pass-chokepoint.md)) before reaching disk.
 - **Facts, not judgments.** Probes capture evidence (`"trace observed 0 shell invocations"`); they don't write conclusions (`"safe to migrate"`). Conclusions are the Planner's job in later phases.
@@ -77,23 +77,27 @@ check-toml, end-of-file-fixer, trailing-whitespace) is SHA-pinned and defined
 in [`.pre-commit-config.yaml`](.pre-commit-config.yaml); the `forbidden-patterns`
 local hook enforces ADR-0008 + ADR-0012 by regex.
 
-### CLI surface (Phase 0 shipped)
+### CLI surface
 
 ```console
 $ python -m codegenie --help
 $ python -m codegenie gather ./path/to/repo
 ```
 
-- `codegenie gather <path>` — vertical slice. Walks the repo, dispatches the
-  registered probes (Phase 0 ships `LanguageDetectionProbe`; Phase 1 extends
-  the surface), writes `.codegenie/context/repo-context.yaml` + a per-run
+- `codegenie gather <path>` — walks the repo, dispatches ~36 registered probes
+  across Layers A–G, writes `.codegenie/context/repo-context.yaml` + a per-run
   audit record under `.codegenie/context/runs/`. Exit codes: `0` ok, `2` all
   probes failed, `3` schema validation failed (writes `.yaml.invalid`
   sibling), `5` symlink output refused, `6` secret-shaped field rejected.
 - `codegenie audit verify --runs-dir <r> --cache-dir <c> --yaml-path <y>` —
   pure-read verifier. Recomputes per-probe blob anchors + the whole-YAML
   anchor; exit `0` clean, exit `4` mismatch.
-- `codegenie cache gc` — Phase-1+ stub (logs `cache.gc.stub`, exits 0).
+- `codegenie cache gc` — stub (logs `cache.gc.stub`, exits 0).
+- `codegenie cache prune` — content-addressed bundle GC; emits a
+  `cache_gc_completed` audit event.
+- `codegenie vuln-index refresh --source <nvd|ghsa|osv|all>` — Phase 3 S3-03.
+  Fetches + parses CVE feeds into the sqlite `VulnIndex`. Exit codes: `0` ok,
+  `4` partial refresh, `5` all feeds failed, `7` schema not migrated.
 
 Global flags: `--verbose` (DEBUG events), `--version`, `--refresh-tools`
 (re-detect external tools), `--no-gitignore` / `--auto-gitignore` (skip /
@@ -109,43 +113,49 @@ detected as idempotent and never rewritten (mtime preserved).
 
 ## CI pipeline
 
-Every PR runs through six SHA-pinned jobs across Python 3.11 / 3.12 ×
-`ubuntu-24.04`:
+Every PR runs a SHA-pinned set of jobs (Python 3.11 / 3.12 ×
+`ubuntu-24.04`). The core gating jobs:
 
 | Job | What it runs | Why it's load-bearing |
 |---|---|---|
 | `lint` | `make lint` (ruff) + `make lint-imports` (import-linter) | Structural cold-start defense — blocks heavy modules from `codegenie.cli` and `codegenie/__init__.py` |
-| `typecheck` | `make typecheck` (mypy `--strict`) | Catches narrowed-type drift early |
+| `typecheck` / `mypy` | `make typecheck` (mypy `--strict`) | Catches narrowed-type drift early |
 | `test` | `pytest -q` (default excludes `-m bench`) + `bench-collection-guard` (asserts exactly 3 bench tests) + advisory `bench` step (uploads `bench-results.json`) | Full suite + advisory perf canaries |
 | `security` | `pip-audit` + `osv-scanner` against `uv.lock` | Supply-chain advisories; HIGH/CRITICAL fails the job |
 | `docs` | `mkdocs build --strict` (path-filtered on `docs/**` + `mkdocs.yml`) | Docs gate |
 | `fence` | `pytest -q tests/unit/test_pyproject_fence.py` after a two-step bare install | **Load-bearing ADR-0002 gate** — refuses any LLM SDK in the gather-pipeline runtime closure |
 
-Workflow files: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (five
-jobs), [`.github/workflows/docs.yml`](.github/workflows/docs.yml) (the
-sixth, path-filtered to honor the ≤90s walltime advisory). All third-party
-actions are pinned by 40-character SHA; concurrency is grouped by
-`${{ github.ref }}` with `cancel-in-progress: true`.
+Plus six additive Phase-2 lanes — `contract-freeze`, `unit`, `integration`,
+`portfolio`, `adv-phase02`, `bench` — each `needs: [fence]`, so a closure-fence
+violation short-circuits the whole run.
+
+Workflow files: [`ci.yml`](.github/workflows/ci.yml) (12 jobs),
+[`docs.yml`](.github/workflows/docs.yml) (path-filtered docs gate),
+[`bench-nightly.yml`](.github/workflows/bench-nightly.yml) (nightly cron bench),
+[`docs-deploy.yml`](.github/workflows/docs-deploy.yml) (GitHub Pages deploy).
+All third-party actions are pinned by 40-character SHA; concurrency is grouped
+by `${{ github.ref }}` with `cancel-in-progress: true`.
 
 ---
 
 ## Project status
 
-**Design pipeline (as of 2026-05):** phases 0–7 are fully designed end-to-end; phases 8–16 are roadmap stubs.
-**Implementation:** Phase 0 shipped; Phase 1 Step 1 (Node primitives) closed; Step 2+ in progress.
+**Design pipeline (as of 2026-05):** phases 0–7 (including 6.5) are fully designed end-to-end; phase 7.5 and phases 8–16 are roadmap entries.
+**Implementation:** Phases 0–2 shipped (the deterministic gather pipeline); Phase 3 (deterministic vuln remediation) in flight.
 
-| # | Phase | Design | Implementation | Stories |
-|---|---|---|---|---|
-| 0 | Bullet tracer + project foundations | ✅ | ✅ Done | [23 stories](docs/phases/00-bullet-tracer-foundations/stories/) |
-| 1 | Context gathering — Layer A (Node.js) | ✅ | 🚧 Step 1 closed (S1-01 → S1-10 done) | [33 stories](docs/phases/01-context-gather-layer-a-node/stories/) |
-| 2 | Context gathering — Layers B–G | ✅ | — | [51 stories](docs/phases/02-context-gather-layers-b-g/stories/) |
-| 3 | Vuln remediation — deterministic recipe path | ✅ | — | [45 stories](docs/phases/03-vuln-deterministic-recipe/stories/) |
-| 4 | Vuln remediation — LLM fallback + solved-example RAG | ✅ | — | [39 stories](docs/phases/04-vuln-llm-fallback-rag/stories/) |
-| 5 | Sandbox + Trust-Aware gates | ✅ | — | [40 stories](docs/phases/05-sandbox-trust-gates/stories/) |
-| 6 | SHERPA-style state machine for the vuln loop | ✅ | — | [42 stories](docs/phases/06-sherpa-state-machine/stories/) |
-| 6.5 | Per-task-class eval harness + first benches | ✅ | — | [36 stories](docs/phases/06.5-per-task-class-eval-harness/stories/) |
-| 7 | Add migration task class (Chainguard distroless) | ✅ | — | [54 stories](docs/phases/07-migration-task-class/stories/) |
-| 8–16 | Planner, Temporal, Discovery/Assessment, Handoff/Learning, AgentOps, continuous gather, agentic recipe authoring, hardening | Roadmap only | — | — |
+| # | Phase | Design | Implementation |
+|---|---|---|---|
+| 0 | [Bullet tracer + project foundations](docs/phases/00-bullet-tracer-foundations/stories/) | ✅ | ✅ Done |
+| 1 | [Context gathering — Layer A (Node.js)](docs/phases/01-context-gather-layer-a-node/stories/) | ✅ | ✅ Done |
+| 2 | [Context gathering — Layers B–G](docs/phases/02-context-gather-layers-b-g/stories/) | ✅ | ✅ Done |
+| 3 | [Vuln remediation — deterministic recipe path](docs/phases/03-vuln-deterministic-recipe/stories/) | ✅ | 🚧 In flight |
+| 4 | [Vuln remediation — LLM fallback + solved-example RAG](docs/phases/04-vuln-llm-fallback-rag/stories/) | ✅ | — |
+| 5 | [Sandbox + Trust-Aware gates](docs/phases/05-sandbox-trust-gates/stories/) | ✅ | — |
+| 6 | [SHERPA-style state machine for the vuln loop](docs/phases/06-sherpa-vuln-loop/stories/) | ✅ | — |
+| 6.5 | [Per-task-class eval harness + first benches](docs/phases/06.5-per-task-class-eval-harness/stories/) | ✅ | — |
+| 7 | [Add migration task class (Chainguard distroless)](docs/phases/07-migration-task-class/stories/) | ✅ | — |
+| 7.5 | Multi-language foundations + Python | Roadmap only | — |
+| 8–16 | Planner, Temporal, Discovery/Assessment, Handoff/Learning, AgentOps, continuous gather, agentic recipe authoring, hardening | Roadmap only | — |
 
 See [`docs/roadmap.md`](docs/roadmap.md) for phase scope and exit criteria.
 
@@ -183,7 +193,7 @@ Each numbered phase under [`docs/phases/NN-<slug>/`](docs/phases/) contains, in 
 
 ## Workflow skills
 
-Five skills under [`.claude/skills/`](.claude/skills/) form the official pipeline for taking a roadmap phase from idea to implemented code. Each downstream skill consumes the upstream's outputs verbatim — don't skip stages or write the artifacts by hand.
+Six skills live under [`.claude/skills/`](.claude/skills/). Five form the official pipeline for taking a roadmap phase from idea to implemented code — each downstream skill consumes the upstream's outputs verbatim, so don't skip stages or write the artifacts by hand. The sixth, `phase-shakedown`, is an audit/closeout skill that runs outside the linear chain.
 
 | Skill | Input | Output | Invocation |
 |---|---|---|---|
@@ -192,6 +202,7 @@ Five skills under [`.claude/skills/`](.claude/skills/) form the official pipelin
 | `phase-story-writer` | `High-level-impl.md` + arch + ADRs | `stories/` backlog | "create stories for phase N" |
 | `phase-story-validator` | One story file | Hardened story (edited in place) + `_validation/<story>.md` report | "validate / harden / audit story X" |
 | `phase-story-executor` | One hardened story file | Code + tests on disk, attempt log under `_attempts/` | "implement S1-01" |
+| `phase-shakedown` | A target phase | End-to-end run + triaged `_e2e/` report | "shake down phase N" |
 
 ---
 
@@ -233,19 +244,20 @@ codewizard-sherpa/
 ├── mkdocs.yml                         # curated docs site
 ├── .pre-commit-config.yaml            # SHA-pinned hooks (ruff/mypy/gitleaks/forbidden-patterns/…)
 ├── .github/workflows/                 # ci.yml (5 jobs) + docs.yml (path-filtered)
-├── .claude/skills/                    # Workflow skills (5)
+├── .claude/skills/                    # Workflow skills (6)
 │   ├── roadmap-phase-designer/
 │   ├── phase-architect/
 │   ├── phase-story-writer/
 │   ├── phase-story-validator/
-│   └── phase-story-executor/
-├── src/codegenie/                     # CLI + probe contract + coordinator + cache + sanitizer
-│   ├── cli.py · exec.py · logging.py · errors.py
-│   ├── parsers/ (safe_json · safe_yaml · jsonc · _io · _depth)
-│   ├── coordinator/ (parsed_manifest_memo · input_snapshot · raw_artifact_budget)
-│   ├── catalogs/ (native_modules · ci_providers)
-│   ├── schema/probes/ (per-probe JSON Schema + _subschema_convention.md)
-│   └── probes/, cache/, config/, output/
+│   ├── phase-story-executor/
+│   └── phase-shakedown/
+├── src/codegenie/                     # CLI + probe contract + coordinator + cache + transforms
+│   ├── cli.py · audit.py · logging.py · errors.py · hashing.py · result.py
+│   ├── probes/ (Layer A–G probes), coordinator/, cache/, output/, schema/
+│   ├── exec/ (subprocess allowlist chokepoint), parsers/, catalogs/, config/
+│   ├── transforms/ (Phase 3 recipe engines + sandbox), plugins/, vuln_index/
+│   └── adapters/ · conventions/ · depgraph/ · grammars/ · indices/
+│       · primitives/ · report/ · skills/ · tccm/ · types/
 ├── tests/                             # unit · adv · bench · integration
 └── docs/
     ├── architecture/                  # Diagrams (Excalidraw + SVG)
@@ -265,7 +277,7 @@ codewizard-sherpa/
         ├── 03-vuln-deterministic-recipe/
         ├── 04-vuln-llm-fallback-rag/
         ├── 05-sandbox-trust-gates/
-        ├── 06-sherpa-state-machine/
+        ├── 06-sherpa-vuln-loop/
         ├── 06.5-per-task-class-eval-harness/
         └── 07-migration-task-class/
 ```

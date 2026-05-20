@@ -2,7 +2,7 @@
 
 This is the operational handbook. The [`README.md`](README.md) covers strategy and architecture; this file covers **how the work actually gets done** day-to-day.
 
-The repo is built around a story-driven, red-green-refactor TDD discipline executed by a four-stage skill pipeline (`roadmap-phase-designer` → `phase-architect` → `phase-story-writer` → `phase-story-validator` → `phase-story-executor`). Stories live under [`docs/phases/NN-<slug>/stories/`](docs/phases/) and are the atomic unit of work — one story, one PR-shaped commit triple.
+The repo is built around a story-driven, red-green-refactor TDD discipline executed by a five-stage skill pipeline (`roadmap-phase-designer` → `phase-architect` → `phase-story-writer` → `phase-story-validator` → `phase-story-executor`). A sixth skill, `phase-shakedown`, runs phases end-to-end for audit/closeout outside that linear chain. Stories live under [`docs/phases/NN-<slug>/stories/`](docs/phases/) and are the atomic unit of work — one story, one PR-shaped commit triple.
 
 ---
 
@@ -33,7 +33,7 @@ Stories are the unit of work. A typical contribution flow is:
 
 ### 1. Pick a story
 
-Look for the next `**Status:** Ready` (or `Ready — hardened`) story under the active phase. Stories run sequentially within a step; check `Depends on:` in the frontmatter and the phase's `High-level-impl.md` for ordering.
+Look for the next `**Status:** Ready` (or `HARDENED`) story under the active phase. Story status vocabulary is `Ready` / `HARDENED` / `GREEN` / `Done` / `BLOCKED`. Stories run sequentially within a step; check `Depends on:` in the frontmatter and the phase's `High-level-impl.md` for ordering.
 
 ### 2. Harden (only if the story isn't already hardened)
 
@@ -91,7 +91,7 @@ The local commit-time firewall is defined in [`.pre-commit-config.yaml`](.pre-co
 | `Detect hardcoded secrets` | gitleaks/gitleaks | Secret leaks |
 | `check yaml` / `check toml` | pre-commit-hooks | Malformed YAML / TOML |
 | `fix end of files` / `trim trailing whitespace` | pre-commit-hooks | File hygiene |
-| `forbidden-patterns` | **local** ([`scripts/check_forbidden_patterns.py`](scripts/check_forbidden_patterns.py)) | Executable enforcement of ADR-0008 (no `print()` in `src/`, no bare `yaml.load(` without `Loader=`) + ADR-0012 (no ad-hoc `subprocess.run` outside `src/codegenie/exec.py`) |
+| `forbidden-patterns` | **local** ([`scripts/check_forbidden_patterns.py`](scripts/check_forbidden_patterns.py)) | Executable enforcement of ADR-0008 (no `print()` in `src/`, no bare `yaml.load(` without `Loader=`) + ADR-0012 (no ad-hoc `subprocess.run` outside `src/codegenie/exec/`) |
 
 **Never skip hooks** (`--no-verify`) unless explicitly told to. If a hook fails, fix the root cause. If a pre-commit fails *after* you've already committed, fix the issue and **create a new commit** — never amend (Rule 12: amending after a failed hook risks destroying earlier work).
 
@@ -103,24 +103,32 @@ Probes are the unit of evidence-gathering. Adding one is the prototypical "exten
 
 1. **Pick a sprint / story.** New probes belong in a `phase-architect`-produced `High-level-impl.md` step. If you're inventing a new probe, draft a story under the relevant phase's `stories/` directory and run `phase-story-writer` + `phase-story-validator` against it first.
 
-2. **Implement the probe class** under `src/codegenie/probes/<probe_name>.py`:
+2. **Implement the probe class** under `src/codegenie/probes/<probe_name>.py`
+   (or a `layer_<x>/` subpackage). Match the frozen `Probe` ABC in
+   [`src/codegenie/probes/base.py`](src/codegenie/probes/base.py):
 
    ```python
-   from codegenie.probes.base import Probe, ProbeOutput
+   from typing import Literal
+
+   from codegenie import exec as _exec
+   from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
    from codegenie.probes.registry import register_probe
 
-   @register_probe
+   @register_probe                                      # or @register_probe(heaviness="medium")
    class MyProbe(Probe):
-       name = "my_probe"
-       declared_inputs = ("package.json",)             # globs or fingerprint
-       applies_to_tasks = ("vuln_remediation",)        # ("*",) means "all"
-       applies_to_languages = ("typescript",)          # ("*",) means "all"
-       timeout_s = 10.0
+       name: str = "my_probe"
+       layer: Literal["A"] = "A"
+       tier: Literal["base", "task_specific"] = "task_specific"
+       applies_to_tasks: list[str] = ["*"]              # ["*"] means "all"
+       applies_to_languages: list[str] = ["typescript"] # ["*"] means "all"
+       requires: list[str] = []                         # other probe names
+       declared_inputs: list[str] = ["package.json"]    # globs / special tokens
+       timeout_seconds: int = 10
 
-       async def run(self, ctx: ProbeContext) -> ProbeOutput:
+       async def run(self, repo: RepoSnapshot, ctx: ProbeContext) -> ProbeOutput:
            # Read evidence; never write conclusions.
-           # External binaries: use ctx.exec.run_allowlisted(...).
-           # Parsed JSON manifests: use ctx.parsed_manifest(path).
+           # External binaries: _exec.run_allowlisted(...).
+           # Parsed JSON manifests: ctx.parsed_manifest(path).
            ...
    ```
 
@@ -130,7 +138,7 @@ Probes are the unit of evidence-gathering. Adding one is the prototypical "exten
 
 5. **Add the unit tests** under `tests/unit/probes/test_<probe_name>.py`. RED first: cover at minimum (a) the happy path, (b) skipped-when-inputs-missing, (c) the schema slice validates, (d) every emitted lifecycle event uses a `Final[str]` constant from `codegenie.logging` (never an inline literal — the literal-drift guard at [`tests/unit/test_no_event_literal_drift.py`](tests/unit/test_no_event_literal_drift.py) will block you otherwise), (e) deterministic re-run produces an identical artifact.
 
-6. **External binaries** — if your probe shells out, route through [`src/codegenie/exec.py`](src/codegenie/exec.py)'s `run_allowlisted(...)`. **Do not call `subprocess.run` or `asyncio.create_subprocess_exec` directly anywhere outside `exec.py`**; the `forbidden-patterns` hook will reject the commit. To add a new binary to `ALLOWED_BINARIES`, write a phase-level ADR first (see [Phase 1 ADR 0001](docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md) as a worked example) — the closed-set negative regression at `tests/unit/test_exec.py::test_allowed_binaries_closed_set_regression` keeps drift honest.
+6. **External binaries** — if your probe shells out, route through [`codegenie.exec`](src/codegenie/exec/)'s `run_allowlisted(...)`. **Do not call `subprocess.run` or `asyncio.create_subprocess_exec` directly anywhere outside the `exec/` package**; the `forbidden-patterns` hook will reject the commit. To add a new binary to `ALLOWED_BINARIES`, write a phase-level ADR first (see [Phase 1 ADR 0001](docs/phases/01-context-gather-layer-a-node/ADRs/0001-add-node-to-allowed-binaries.md) as a worked example) — the closed-set negative regression at `tests/unit/test_exec.py::test_allowed_binaries_closed_set_regression` keeps drift honest.
 
 7. **No LLM, ever.** The gather pipeline is deterministic end-to-end. `import-linter` (CI `lint` job + the `fence` job) refuses any module under `src/codegenie/` that imports an LLM SDK. This is ADR-0002 and it's load-bearing.
 
@@ -164,7 +172,7 @@ $ pytest                            # full unit suite
 $ pre-commit run --files <touched>  # all hooks on every touched file
 ```
 
-CI runs six jobs (see [`README.md` § CI pipeline](README.md#ci-pipeline)). The `fence` job is non-negotiable — it asserts no LLM SDK ever enters the gather-pipeline runtime closure. Story authors who break `fence` have introduced a structural defect, not a flaky test.
+CI runs a SHA-pinned job set across four workflow files (see [`README.md` § CI pipeline](README.md#ci-pipeline)). The `fence` job is non-negotiable — it asserts no LLM SDK ever enters the gather-pipeline runtime closure. Story authors who break `fence` have introduced a structural defect, not a flaky test.
 
 **Pre-existing failures.** A small handful of pre-existing CI advisory failures are documented in prior `_attempts/*.md` logs (e.g., the S1-05 `yaml.load(` forbidden-pattern false positive). When you encounter one, confirm against the prior attempt logs and surface it as "pre-existing" in your own log rather than papering over it. Fixing them is its own story.
 
