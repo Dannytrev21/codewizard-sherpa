@@ -46,29 +46,25 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from codegenie.errors import DepGraphRegistryError
-from codegenie.probes.base import ProbeContext
 
-# DO NOT redefine PackageManager — Phase 1 ADR-0013 owns the enum; the
-# kernel-tier alias surface is :mod:`codegenie.types.identifiers` (S1-05
-# re-export). Importing from the types package is the canonical interface
-# (production ADR-0033 §3).
-#
-# Import-cycle note: the import is TYPE_CHECKING-guarded because
-# ``codegenie.types.identifiers`` re-exports ``PackageManager`` from
-# ``codegenie.probes.node_build_system`` (line 31 of identifiers.py), and
-# ``probes/__init__.py`` eagerly loads ``layer_b/dep_graph.py`` which
-# imports this module. A runtime import here would form a cycle the first
-# time anything outside ``probes`` (e.g., ``transforms.outcomes`` via
-# ``adapters.confidence``) triggers ``types.identifiers``. Since this
-# module has ``from __future__ import annotations`` on line 41, every use
-# of ``PackageManager`` below is a stringified annotation — no runtime
-# reference exists, so the TYPE_CHECKING guard is sound.
+# ``PackageManager`` is the typed registry key (Phase 1 ADR-0013; production
+# ADR-0033 §3 — newtype every domain identifier). Its definition home is the
+# kernel-tier :mod:`codegenie.types.identifiers` (ADR-0013 Amendment
+# 2026-05-20), so this is a plain top-level import — no cycle: the ``types``
+# package is a leaf that imports only stdlib.
+from codegenie.types.identifiers import PackageManager
+
 if TYPE_CHECKING:
     import networkx
 
-    from codegenie.types.identifiers import PackageManager
+    # ``ProbeContext`` appears only in annotations and as a quoted forward
+    # reference inside the ``DepGraphStrategy`` alias below. A runtime import
+    # would pull in ``codegenie.probes/__init__`` — which eagerly loads every
+    # layer probe — and re-form the ``depgraph ↔ probes`` cold-start cycle
+    # (ADR-0013 Amendment 2026-05-20; mirrors the ``networkx`` guard above).
+    from codegenie.probes.base import ProbeContext
 
-DepGraphStrategy = Callable[[ProbeContext, list[Mapping[str, Any]]], "networkx.DiGraph"]
+DepGraphStrategy = Callable[["ProbeContext", list[Mapping[str, Any]]], "networkx.DiGraph"]
 """Function shape every ecosystem strategy must satisfy.
 
 The ``manifests`` parameter is ``list[Mapping[str, Any]]`` — Phase 1's

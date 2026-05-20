@@ -26,7 +26,7 @@ Sources:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import assert_never
+from typing import TYPE_CHECKING, assert_never
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -42,7 +42,13 @@ from codegenie.conventions.model import (
     NotApplicable,
     Pass,
 )
-from codegenie.probes.base import RepoSnapshot
+
+if TYPE_CHECKING:
+    # ``RepoSnapshot`` is used only in parameter annotations (stringified by
+    # ``from __future__ import annotations``). A runtime import would trigger
+    # ``codegenie.probes/__init__``'s eager probe load and re-form the
+    # ``conventions ↔ probes`` cold-start cycle (ADR-0013 Amendment 2026-05-20).
+    from codegenie.probes.base import RepoSnapshot
 
 __all__ = ["Catalog"]
 

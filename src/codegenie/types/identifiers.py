@@ -7,10 +7,11 @@ expected is a type error); at runtime each is identity-to-``str`` (zero
 overhead, full ``str`` interop). ``AttemptNumber`` is the lone ``int``-backed
 member of the catalog (Phase-3 retry counter).
 
-``PackageManager`` is re-exported **by import** from its Phase 1 ADR-0013
-owning module (:mod:`codegenie.probes.node_build_system`). This module never
-redefines it — extension is by ADR amendment to Phase 1, not silent
-duplication here.
+``PackageManager`` (the Phase 1 ADR-0013 closed-set Literal) is **defined
+here**: ``codegenie.types`` is the kernel-tier home for every domain
+identifier and closed-set enum, and leaf packages (``probes``, ``depgraph``,
+``indices``) import it from this module — the reverse direction is forbidden
+(ADR-0013 Amendment 2026-05-20, which broke a 28-module cold-start cycle).
 
 The Phase-3 catalog (14 names) lands the kernel-tier types every Step-1+
 story imports: plugin contract IDs, recipe + transform IDs, workflow / event
@@ -27,30 +28,30 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final, Literal, NewType, TypeAlias
 
-# DO NOT redefine — Phase 1 ADR-0013 owns this enum; this module re-exports
-# it. The re-export is **lazy** via :func:`__getattr__` below: a top-level
-# ``from codegenie.probes.node_build_system import PackageManager`` would
-# fire ``probes/__init__.py`` (which eagerly loads ``layer_b/*`` probes
-# whose modules also reach back into ``codegenie.types.identifiers``),
-# forming a cycle the first time anything outside ``probes`` triggers this
-# module (e.g., ``transforms.outcomes`` via ``adapters.confidence``). The
-# TYPE_CHECKING import below keeps the static-typing contract intact
-# (mypy --strict still sees ``PackageManager`` as a re-exported name).
-if TYPE_CHECKING:  # pragma: no cover — type-checker-only re-export
+if TYPE_CHECKING:  # pragma: no cover — type-checker-only imports
     # Phase 7 S1-01 — forward refs for the S2-01 enums (lands
     # ``Layer`` / ``Ecosystem`` in ``codegenie.primitives.vuln_provenance.registry``).
     # Aliased to underscored names to break the symbol collision with the
     # Phase 3 ``Ecosystem`` Literal defined later in this module — the Phase 7
     # enum lives in a DIFFERENT module with DIFFERENT membership (ADR-0006).
+    # These stay TYPE_CHECKING-guarded because both sides are type-only — no
+    # runtime cycle exists (contrast the former runtime ``PackageManager``
+    # re-export, removed in ADR-0013 Amendment 2026-05-20).
     from codegenie.primitives.vuln_provenance.registry import (  # noqa: F401
         Ecosystem as _PhVnEcosystem,
     )
     from codegenie.primitives.vuln_provenance.registry import (  # noqa: F401
         Layer as _PhVnLayer,
     )
-    from codegenie.probes.node_build_system import (
-        PackageManager as PackageManager,
-    )
+
+# --- Phase-1 catalog (ADR-0013) -------------------------------------------
+
+# Closed-set Node package-manager tag. Phase 1 ADR-0013 fixes the five values
+# (yarn split into classic/berry for plugin dispatch). ADR-0013 Amendment
+# 2026-05-20 moved the definition home here, so the kernel ``types`` package
+# no longer depends on the ``probes`` leaf; ``probes`` / ``depgraph`` import
+# this name FROM here. A ``Literal`` (closed set), not a ``NewType``.
+PackageManager = Literal["bun", "pnpm", "yarn-classic", "yarn-berry", "npm"]
 
 # --- Phase-2 catalog (5 + 3 amendments) -----------------------------------
 
@@ -234,7 +235,9 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "ProbeId": "Phase-2 probe id (ADR-0010 lineage; ADR-0033).",
     "Language": "Phase-2 programming-language id (ADR-0010 lineage; ADR-0033).",
     "ConventionId": "Phase-2 convention id (ADR-0010 lineage; ADR-0033).",
-    "PackageManager": "Phase-1 package-manager Literal re-export (ADR-0013; ADR-0010 §catalogue).",
+    "PackageManager": (
+        "Phase-1 package-manager Literal (ADR-0013 + Amendment 2026-05-20; ADR-0010 §catalogue)."
+    ),
     # Phase-3 (S1-01).
     "PluginId": "Phase-3 plugin id (ADR-0010); S2-01 PluginRegistry key.",
     "RecipeId": "Phase-3 recipe id (ADR-0010); S5-01 RecipeRegistry key.",
@@ -285,23 +288,3 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
         "Phase-7 Dockerfile AS-stage name (ADR-0004); BaseImageStage.name + Dockerfile recipes."
     ),
 }
-
-
-def __getattr__(name: str) -> object:
-    """Lazy re-export of :data:`PackageManager` from
-    :mod:`codegenie.probes.node_build_system`.
-
-    Resolved on first attribute access (after the ``probes`` package
-    finishes initialising) so the kernel-tier ``types.identifiers`` module
-    can be imported by ``transforms.outcomes`` / ``adapters.confidence``
-    without forming the ``types ↔ probes`` cycle (see the TYPE_CHECKING
-    import block at the top of this file). All other names in
-    :data:`__all__` are bound at module load — only ``PackageManager`` is
-    resolved lazily.
-    """
-
-    if name == "PackageManager":
-        from codegenie.probes.node_build_system import PackageManager
-
-        return PackageManager
-    raise AttributeError(f"module 'codegenie.types.identifiers' has no attribute {name!r}")

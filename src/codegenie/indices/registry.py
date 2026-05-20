@@ -47,21 +47,10 @@ from typing import TYPE_CHECKING
 import structlog
 
 from codegenie.errors import FreshnessRegistryError
+from codegenie.types.identifiers import IndexName
 
 if TYPE_CHECKING:
     from codegenie.indices.freshness import IndexFreshness
-
-    # ``IndexName`` is a ``NewType("IndexName", str)`` — identity-to-``str`` at
-    # runtime, so we never need the symbol at runtime in this module. Pulling
-    # it in eagerly would trip the import cycle that crystallizes once
-    # ``codegenie.probes.__init__`` transitively triggers a Phase 2 layer-B
-    # probe whose own imports come back through this very module:
-    #     types.identifiers → probes.node_build_system → probes/__init__
-    #     → probes.layer_b.index_health → indices.registry (mid-load) → BOOM
-    # Type-checking-only import keeps the cycle broken without losing
-    # nominal typing (mypy still treats ``IndexName`` as distinct from
-    # ``str`` under ``--strict``).
-    from codegenie.types.identifiers import IndexName
 
 # JSONValue forward-reference is intentionally lenient. See module docstring.
 FreshnessCheck = Callable[[dict[str, object], str], "IndexFreshness"]

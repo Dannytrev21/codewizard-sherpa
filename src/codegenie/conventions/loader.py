@@ -44,7 +44,6 @@ from codegenie.errors import (
 from codegenie.indices.freshness import IndexFreshness
 from codegenie.indices.registry import register_index_freshness_check
 from codegenie.parsers import safe_yaml
-from codegenie.probes._shared.version_freshness import compare_versions
 from codegenie.result import Err, Ok, Result
 from codegenie.types.identifiers import IndexName
 
@@ -328,4 +327,12 @@ class ConventionsCatalogLoader:
 @register_index_freshness_check(IndexName("conventions"))
 def _conventions_freshness(slice_: dict[str, object], _head: str) -> IndexFreshness:
     """S6-08 — Open/Closed registration in the owning module (not B2)."""
+    # Deferred import: ``version_freshness`` lives under ``codegenie.probes``,
+    # whose package ``__init__`` eagerly loads every layer probe. Importing it
+    # at module top would trigger that load from a ``conventions`` module and
+    # re-form the ``conventions ↔ probes`` cold-start cycle (ADR-0013
+    # Amendment 2026-05-20) — the same lazy-import discipline ``cli.py`` uses
+    # for cold-start hygiene.
+    from codegenie.probes._shared.version_freshness import compare_versions
+
     return compare_versions(slice_, "conventions", "catalog_version")

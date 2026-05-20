@@ -365,6 +365,20 @@ as_packages = false
 forbidden_modules = ["yaml", "jsonschema", "pydantic", "blake3", "structlog"]
 
 # ---------------------------------------------------------------------------
+# ADR-0013 Amendment 2026-05-20 — `PackageManager`'s definition home moved to
+# the kernel-tier `codegenie.types.identifiers` so `types` stops depending on
+# the `probes` leaf (the inversion broke a 28-module cold-start cycle). This
+# contract is the static guard that the inversion never returns; the runtime
+# guard is the all-green `tests/fence/test_per_submodule_cold_start.py` sweep.
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "codegenie.types.identifiers must not import the probes package"
+type = "forbidden"
+source_modules = ["codegenie.types.identifiers"]
+forbidden_modules = ["codegenie.probes"]
+
+# ---------------------------------------------------------------------------
 # Phase 3 LLM-SDK contracts (S1-05). The whole `codegenie.{plugins,transforms}`
 # tree must remain LLM-SDK-free — Phase 3 is the deterministic-recipe loop,
 # and the gather-pipeline ADR-0002 closure already excludes these SDKs from

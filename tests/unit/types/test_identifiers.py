@@ -1,8 +1,8 @@
 """Phase 2 S1-05 — ADR-0033 newtype identifier guards.
 
 Verifies the four kernel-tier ``NewType`` aliases declared in
-``src/codegenie/types/identifiers.py`` and the ``PackageManager`` re-export
-from Phase 1 ADR-0013's owning module.
+``src/codegenie/types/identifiers.py`` and the ``PackageManager`` Literal,
+whose definition home moved to this module in ADR-0013 Amendment 2026-05-20.
 """
 
 from __future__ import annotations
@@ -38,37 +38,41 @@ def test_newtypes_runtime_identity_to_str() -> None:
     assert isinstance(val, str)
 
 
-def test_package_manager_reexported_from_phase1_adr_0013_location() -> None:
-    """AC-5 — same object identity, no re-wrapping.
+def test_package_manager_carries_the_five_adr_0013_values() -> None:
+    """ADR-0013 Amendment 2026-05-20 — ``PackageManager``'s definition home
+    is the kernel-tier ``codegenie.types.identifiers``. It is the closed
+    ``Literal`` of the five ADR-0013 package-manager tags (yarn split into
+    classic/berry for plugin dispatch)."""
+    from typing import get_args
 
-    Phase 1 ADR-0013 currently lives at ``codegenie.probes.node_build_system``;
-    if it moves to ``.layer_a.*`` that is a deliberate Phase 1 ADR amendment.
-    """
-    try:
-        from codegenie.probes.node_build_system import PackageManager as P1
-    except ImportError:  # pragma: no cover - future re-org guard
-        from codegenie.probes.layer_a.node_build_system import (  # type: ignore[no-redef,import-untyped]
-            PackageManager as P1,
-        )
-
-    assert ids.PackageManager is P1, (
-        "PackageManager must be re-exported from its Phase 1 ADR-0013 location; "
-        "a redefinition violates ADR-0013 and ADR-0033."
-    )
+    assert set(get_args(ids.PackageManager)) == {
+        "bun",
+        "pnpm",
+        "yarn-classic",
+        "yarn-berry",
+        "npm",
+    }
 
 
-def test_no_package_manager_redefinition_in_types_module() -> None:
-    """AC-4 — guard against silent shadowing in ``identifiers.py``."""
+def test_package_manager_is_defined_here_not_reexported() -> None:
+    """ADR-0013 Amendment — ``identifiers.py`` now DEFINES ``PackageManager``
+    as ``Literal[...]`` directly. The old lazy ``__getattr__`` re-export (a
+    band-aid for the ``types ↔ probes`` import cycle) and the
+    ``TYPE_CHECKING`` re-import from ``probes.node_build_system`` must both
+    be gone — their presence would mean the inverted dependency returned."""
     src_path = inspect.getsourcefile(ids)
     assert src_path is not None
     src = pathlib.Path(src_path).read_text()
-    assert "class PackageManager" not in src, "Do not redefine PackageManager"
-    # Disallow ``PackageManager = <not-an-import>`` reassignment.
-    assert not re.search(r"^PackageManager\s*=\s*(?!.*import)", src, flags=re.MULTILINE), (
-        "Only `from ... import PackageManager as PackageManager` is allowed"
+    assert "class PackageManager" not in src, "ADR-0013 PackageManager is a Literal, not a class"
+    assert re.search(r"^PackageManager\s*=\s*Literal\[", src, flags=re.MULTILINE), (
+        "identifiers.py must define `PackageManager = Literal[...]` (ADR-0013 Amendment)"
     )
-    matches = re.findall(r"^\s*from .* import .*PackageManager", src, flags=re.MULTILINE)
-    assert len(matches) == 1, f"expected one PackageManager import; found {matches}"
+    assert "def __getattr__" not in src, (
+        "the lazy __getattr__ PackageManager re-export band-aid must be gone"
+    )
+    assert "import PackageManager" not in src, (
+        "identifiers.py must not import PackageManager — it is the definition home"
+    )
 
 
 def test_all_exports_include_five_names() -> None:

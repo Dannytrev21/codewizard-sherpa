@@ -78,6 +78,29 @@ Priority 6 (the safe-default) emits the warning `node_build_system.yarn_variant_
 
 **Low cost.** The probe shipped this week; the only blast radius is the schema enum + the detection function + two new fixtures + the test additions. Reverse migration (collapsing back to `"yarn"`) would require coordinated edits across the probe + schema + tests, plus accepting that Phase 8's Supervisor cannot dispatch on Yarn variant — which would force a re-engineering at the orchestration layer. Recommended direction: keep the split; revisit only if Yarn Berry's adoption stalls and the variant distinction stops mattering operationally (extremely unlikely — Berry's PnP model is now the default in new projects).
 
+## Amendment — 2026-05-20: `PackageManager` definition home moves to `codegenie.types.identifiers`
+
+**Status:** Accepted · **Supersedes:** the implicit "the probe owns the type" placement only — the enum *values* and the detection algorithm above are unchanged.
+
+### Context
+
+The original implementation defined the `PackageManager` Literal inside the probe module `src/codegenie/probes/node_build_system.py` and had the kernel-tier `codegenie.types.identifiers` *re-export* it (via a lazy module-level `__getattr__`). That inverted the dependency direction: the kernel `types` package depended on the leaf `probes` package. Because `probes/__init__.py` eagerly loads every layer probe, a cold first import of `codegenie.types.identifiers` (REPL, SDK, notebook) could drag in the whole `probes` subtree and re-enter mid-initialisation. `tests/fence/test_per_submodule_cold_start.py` tracked **28 modules** broken by this single cycle:
+`types/identifiers → probes/node_build_system → probes/__init__ → layer_b/dep_graph → depgraph/__init__ → depgraph/registry → types/identifiers`.
+
+### Decision
+
+The **definition home** of the `PackageManager` Literal moves from `codegenie.probes.node_build_system` to the kernel-tier `codegenie.types.identifiers`. `probes/node_build_system.py` now *imports* `PackageManager` from `codegenie.types.identifiers` (and re-exports the name for intra-`probes` callers such as `layer_b/dep_graph.py`).
+
+Governing principle: **domain identifiers, newtypes, and closed-set enums live in `codegenie.types`; leaf packages (`probes`, `indices`, `depgraph`, `plugins`, `primitives`) import from `types`, never the reverse.** This makes `codegenie.types.identifiers` a true leaf (stdlib + `typing` only) and removes the lazy `__getattr__` re-export and the `TYPE_CHECKING`-guarded cycle band-aids in `indices/registry.py` and `depgraph/registry.py`.
+
+The enum **values** (`bun`, `pnpm`, `yarn-classic`, `yarn-berry`, `npm`), the schema, and the `_detect_yarn_variant` algorithm are untouched — this amendment is a relocation, not a contract change.
+
+### Consequences
+
+- `tests/fence/test_per_submodule_cold_start.py`'s `_KNOWN_BROKEN_PRE_FIX` set empties to zero; the `xfail` sentinel is removed.
+- An import-linter `layers` contract pins `codegenie.types` below the leaf packages so the inversion cannot silently return.
+- Closes the spawned task *"Break circular import in codegenie.plugins.manifest"* — `plugins.manifest` was a victim of this same cycle.
+
 ## Evidence / sources
 
 - `src/codegenie/probes/node_build_system.py` — the shipped probe; `_LOCKFILE_PRECEDENCE` is the Open/Closed seam this ADR extends

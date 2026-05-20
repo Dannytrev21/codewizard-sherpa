@@ -26,16 +26,18 @@ import sys
 
 import pytest
 
-# Entry points whose first transitive hop is ``codegenie.types.identifiers``.
-# ``codegenie.depgraph.registry`` itself sits on a separate, pre-existing
-# cycle through ``codegenie.probes.base`` (Phase 2 S1-10) and is out of
-# scope here — flagged in Phase 3 ADR-0013 §Consequences for follow-up.
+# Cold-start entry points — each, run first in a fresh interpreter, once
+# tripped an import cycle. All are fixed by ADR-0013 Amendment 2026-05-20:
+# the ``types/identifiers ↔ probes`` cycle (``PackageManager`` relocated to
+# the kernel ``types`` package) and the ``depgraph.registry ↔ probes.base``
+# cycle (``ProbeContext`` demoted to a TYPE_CHECKING forward-ref).
 _COLD_IMPORT_ENTRY_POINTS = [
     "from codegenie.plugins.manifest import PluginManifest",
     "from codegenie.types.identifiers import PackageManager",
     "from codegenie.types import PackageManager",
     "from codegenie.transforms.outcomes import Trusted, Degraded, Unavailable",
     "from codegenie.adapters.confidence import AdapterConfidence",
+    "import codegenie.depgraph.registry",
 ]
 
 

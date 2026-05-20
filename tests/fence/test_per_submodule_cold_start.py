@@ -48,44 +48,15 @@ _SKIP: Final[frozenset[str]] = frozenset(
     }
 )
 
-# Modules known to fail the cold-start import today due to the
-# ``types/identifiers → probes/node_build_system → probes/__init__ → layer_b/dep_graph
-# → depgraph/__init__ → depgraph/registry → types/identifiers`` circular.
-# Spawned task "Break circular import in codegenie.plugins.manifest" owns the
-# fix; when it lands, EMPTY this set and the sentinel test below xpasses
-# under strict=True, forcing the marker removal.
-_KNOWN_BROKEN_PRE_FIX: Final[frozenset[str]] = frozenset(
-    {
-        "codegenie.cli_summary",
-        "codegenie.conventions",
-        "codegenie.conventions.catalog",
-        "codegenie.conventions.loader",
-        "codegenie.conventions.model",
-        "codegenie.depgraph",
-        "codegenie.depgraph.model",
-        "codegenie.depgraph.registry",
-        "codegenie.exec.tool_versions",
-        "codegenie.plugins.errors",
-        "codegenie.plugins.manifest",
-        "codegenie.plugins.registry",
-        "codegenie.plugins.scope",
-        "codegenie.skills",
-        "codegenie.skills.loader",
-        "codegenie.skills.model",
-        "codegenie.tccm",
-        "codegenie.tccm.loader",
-        "codegenie.tccm.model",
-        "codegenie.tccm.queries",
-        "codegenie.transforms",
-        "codegenie.transforms.apply_context",
-        "codegenie.transforms.outcomes",
-        "codegenie.transforms.transform",
-        "codegenie.types",
-        "codegenie.types.errors",
-        "codegenie.types.identifiers",
-        "codegenie.types.parsers",
-    }
-)
+# Empty. The ``types/identifiers → probes/node_build_system → probes/__init__
+# → layer_b/dep_graph → depgraph/__init__ → depgraph/registry →
+# types/identifiers`` circular that quarantined 28 modules was fixed by
+# ADR-0013 Amendment 2026-05-20 — ``PackageManager``'s definition home moved
+# to the kernel-tier ``codegenie.types.identifiers``, so ``types`` no longer
+# depends on the ``probes`` leaf. The set stays declared (and
+# ``test_known_broken_set_is_empty`` keeps it empty) as a re-quarantine
+# mechanism: a future regression may add an entry ONLY alongside a tracked fix.
+_KNOWN_BROKEN_PRE_FIX: Final[frozenset[str]] = frozenset()
 
 
 def _discover_submodules() -> list[str]:
@@ -135,10 +106,10 @@ def test_submodule_imports_in_fresh_subprocess(module: str) -> None:
     use ``TYPE_CHECKING`` to defer the cyclic reference (cf. the
     canonical Phase 3 ``codegenie.plugins.protocols`` pattern).
 
-    Modules in :data:`_KNOWN_BROKEN_PRE_FIX` are skipped today; the
-    sentinel test :func:`test_known_broken_set_is_empty_after_fix` xpasses
-    under ``strict=True`` once the circular fix lands, forcing those
-    entries to be removed from the set.
+    :data:`_KNOWN_BROKEN_PRE_FIX` is empty (the cold-start cycle was fixed —
+    ADR-0013 Amendment 2026-05-20); the skip branch below is the
+    re-quarantine mechanism, and :func:`test_known_broken_set_is_empty`
+    guards that the set stays empty.
     """
     if module in _KNOWN_BROKEN_PRE_FIX:
         pytest.skip(
@@ -160,26 +131,17 @@ def test_submodule_imports_in_fresh_subprocess(module: str) -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The 28-module cold-start failure set must shrink to zero once the spawned "
-        "task 'Break circular import in codegenie.plugins.manifest' lands. When it "
-        "does, this test xpasses under strict=True and CI fails until the xfail "
-        "marker is removed and the parametrised tests above run unguarded."
-    ),
-)
-def test_known_broken_set_is_empty_after_fix() -> None:
-    """Sentinel — fires when the cold-start circular gets fixed.
+def test_known_broken_set_is_empty() -> None:
+    """The cold-start quarantine set MUST stay empty.
 
-    Pairs with the ``_KNOWN_BROKEN_PRE_FIX`` skip set above. Today, the
-    set has 28 entries (one per module that transitively hits the
-    ``types/identifiers → probes → depgraph → types/identifiers`` cycle).
-    Once the cycle is broken, EMPTY the set, this test xpasses, CI fails
-    until the ``@pytest.mark.xfail`` marker is removed — at which point
-    the parametrised tests above run all 127 modules unguarded.
+    The 28-module ``types/identifiers → probes → depgraph →
+    types/identifiers`` cycle was fixed by ADR-0013 Amendment 2026-05-20.
+    This is now a permanent guard: re-adding an entry to
+    ``_KNOWN_BROKEN_PRE_FIX`` (re-quarantining a module instead of fixing
+    the regression) fails here.
     """
     assert _KNOWN_BROKEN_PRE_FIX == frozenset(), (
-        f"_KNOWN_BROKEN_PRE_FIX still has {len(_KNOWN_BROKEN_PRE_FIX)} entries; "
-        f"the cold-start circular hasn't been fixed yet."
+        f"_KNOWN_BROKEN_PRE_FIX has {len(_KNOWN_BROKEN_PRE_FIX)} entries "
+        f"({sorted(_KNOWN_BROKEN_PRE_FIX)}); a cold-start circular import "
+        f"regressed — fix it, do not quarantine."
     )
