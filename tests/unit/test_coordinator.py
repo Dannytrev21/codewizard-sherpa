@@ -327,7 +327,7 @@ async def test_cache_hit_short_circuits_chain(tmp_path, fresh_cache, fresh_sanit
 
     snap, task = make_snapshot(tmp_path), make_task()
     key = fresh_cache.key_for(probe, snap, task)
-    fresh_cache.put(key, cached)
+    fresh_cache.put(key, cached, probe_name=probe.name, probe_version=probe.version)
 
     with (
         patch("codegenie.coordinator.validator._ProbeOutputValidator.model_validate") as mv,
@@ -495,6 +495,8 @@ async def test_executions_dict_covers_all_dispatched_probes(
     fresh_cache.put(
         fresh_cache.key_for(p_hit, snap, task),
         ProbeOutput({"warm": True}, [], "high", 1, [], []),
+        probe_name=p_hit.name,
+        probe_version=p_hit.version,
     )
 
     result = await gather(

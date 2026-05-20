@@ -67,6 +67,19 @@ def _make_output(**overrides: Any) -> ProbeOutput:
     return ProbeOutput(**defaults)  # type: ignore[arg-type]
 
 
+def _put(
+    store: Any,
+    key: str,
+    output: ProbeOutput,
+    *,
+    name: str = "synth",
+    version: str = "1.0",
+) -> None:
+    """Test wrapper for ``CacheStore.put`` — supplies the probe metadata the
+    index record needs. Defaults match :class:`_SynthProbe`."""
+    store.put(key, output, probe_name=name, probe_version=version)
+
+
 def _store_with_key(
     tmp_path: Path,
     *,
@@ -74,7 +87,7 @@ def _store_with_key(
     schema_slice: dict[str, Any] | None = None,
 ) -> tuple[Any, str, ProbeOutput]:
     """Build a fresh ``CacheStore``, register a synthetic probe, and return
-    ``(store, key, output)`` ready for ``store.put(key, output)``."""
+    ``(store, key, output)`` ready for ``_put(store,key, output)``."""
     from codegenie.cache.store import CacheStore
 
     cache_dir = tmp_path / "cache"
@@ -104,7 +117,7 @@ def test_put_then_get_returns_equivalent_output(tmp_path: Path) -> None:
     """AC: round-trip happy path. A ``put`` that silently no-ops fails here;
     a ``get`` that returns a partial reconstruction fails here."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     got = store.get(key)
     assert got is not None
     assert got.schema_slice == output.schema_slice
@@ -131,9 +144,9 @@ def test_last_write_wins_on_multi_record(tmp_path: Path) -> None:
     """AC: a ``get`` that returns the first matching index line (instead of the
     last) regresses here. Two ``put`` calls land two records; the second must win."""
     store, key, out1 = _store_with_key(tmp_path, schema_slice={"v": 1})
-    store.put(key, out1)
+    _put(store, key, out1)
     out2 = _make_output(schema_slice={"v": 2})
-    store.put(key, out2)
+    _put(store, key, out2)
     got = store.get(key)
     assert got is not None and got.schema_slice == {"v": 2}
 
@@ -142,7 +155,7 @@ def test_index_record_schema_pin(tmp_path: Path) -> None:
     """AC: every ``index.jsonl`` line is a JSON object with the named fields,
     ``sort_keys`` + compact separators (no whitespace)."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     line = (tmp_path / "cache" / "index.jsonl").read_text().splitlines()[0]
     record = json.loads(line)
     assert set(record) >= {
@@ -176,7 +189,7 @@ def test_get_none_on_corrupt_blob_zero_bytes(tmp_path: Path) -> None:
     Mutation-killer: a ``get`` that doesn't validate JSON-decodability
     raises here instead of returning ``None``."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     blob = _resolve_blob_path(store, key)
     os.chmod(blob, 0o600)  # ensure writable; cache may have applied 0400
     blob.write_bytes(b"")
@@ -190,7 +203,7 @@ def test_get_none_on_blob_sha256_mismatch(tmp_path: Path) -> None:
     ``blob_sha256``. Mutation-killer: a ``CacheStore`` that skips the SHA-256
     verification step returns the tampered output instead of ``None``."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     blob = _resolve_blob_path(store, key)
     os.chmod(blob, 0o600)
     blob.write_text(
@@ -205,7 +218,7 @@ def test_get_none_on_blob_sha256_mismatch(tmp_path: Path) -> None:
 def test_get_none_on_missing_blob(tmp_path: Path) -> None:
     """AC 5c: orphan index record — blob file is gone but the record remains."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     blob = _resolve_blob_path(store, key)
     os.chmod(blob, 0o600)
     blob.unlink()
@@ -220,7 +233,7 @@ def test_get_none_on_ttl_stale_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     Mutation-killer: a ``CacheStore`` that ignores ``ttl_hours`` returns the
     value here instead of ``None``."""
     store, key, output = _store_with_key(tmp_path, ttl_hours=1)
-    store.put(key, output)
+    _put(store, key, output)
     frozen = time.time() + 2 * 3600  # 2 hours ahead — past the 1-hour TTL
     monkeypatch.setattr("codegenie.cache.store.time.time", lambda: frozen)
     with structlog.testing.capture_logs() as captured:
@@ -233,8 +246,7 @@ def test_get_none_when_key_not_in_index(tmp_path: Path) -> None:
     store, _key, output = _store_with_key(tmp_path)
     # put a different key first so the index file exists
     other_key = "sha256:" + "1" * 64
-    store._key_meta[other_key] = ("synth", "1.0")  # noqa: SLF001
-    store.put(other_key, output)
+    _put(store, other_key, output)
     with structlog.testing.capture_logs() as captured:
         assert store.get("sha256:" + "2" * 64) is None
     assert any(r.get("event") == "cache.miss" for r in captured)
@@ -255,7 +267,7 @@ def test_atomic_write_no_partial_visible(tmp_path: Path) -> None:
         side_effect=OSError("simulated mid-write crash"),
     ):
         with pytest.raises(OSError, match="simulated mid-write crash"):
-            store.put(key, output)
+            _put(store, key, output)
     # final blob path was never made visible by os.replace
     shard_dir = tmp_path / "cache" / "blobs"
     final_blobs = list(shard_dir.rglob("*.json")) if shard_dir.exists() else []
@@ -268,7 +280,7 @@ def test_post_write_modes_pin_dirs_blobs_and_index(tmp_path: Path) -> None:
     ``0600`` (asserted separately so a "forgot to chmod index.jsonl" mutant
     fails distinctly from the blob-mode assertion)."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
+    _put(store, key, output)
     cache_root = tmp_path / "cache"
     assert cache_root.stat().st_mode & 0o777 == 0o700
     index = cache_root / "index.jsonl"
@@ -301,7 +313,7 @@ def test_record_size_guard_refuses_oversize(tmp_path: Path) -> None:
     index = cache_dir / "index.jsonl"
     before = index.read_bytes() if index.exists() else b""
     with pytest.raises(CacheError, match="exceeds PIPE_BUF"):
-        store.put(key, output)
+        _put(store, key, output, version=huge_probe.version)
     after = index.read_bytes() if index.exists() else b""
     assert before == after
 
@@ -322,8 +334,8 @@ def test_index_jsonl_records_separated_by_single_newline(tmp_path: Path) -> None
     no trailing whitespace, no extra blank lines. ``O_APPEND`` atomicity
     requires the record to fit in one ``write(2)`` call."""
     store, key, output = _store_with_key(tmp_path)
-    store.put(key, output)
-    store.put(key, _make_output(schema_slice={"v": 99}))
+    _put(store, key, output)
+    _put(store, key, _make_output(schema_slice={"v": 99}))
     raw = (tmp_path / "cache" / "index.jsonl").read_bytes()
     lines = raw.split(b"\n")
     # two records + one trailing empty (from terminator)

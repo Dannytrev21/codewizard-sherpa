@@ -219,12 +219,12 @@ def test_perm_restoration_after_concurrent_runs(tmp_path: Path) -> None:
     """ADR-0011 metamorphic perm-restoration check.
 
     After the concurrent pair completes, dirty one cached blob's mode to
-    0644; a subsequent ``gather`` whose cache key differs (so a fresh
-    ``put`` fires) MUST result in ALL blob files at mode 0600 — the
-    ``_reapply_modes`` walk in :meth:`CacheStore.put` is the only thing
-    that restores the dirtied file. Catches a "chmod-on-CacheStore.__init__-
-    only, never on subsequent puts" regression that the post-run mode walk
-    on a fresh cache alone would not.
+    0644; a subsequent ``gather`` MUST result in ALL blob files at mode
+    0600. The once-per-process ``_reapply_modes`` walk in
+    :meth:`CacheStore.__init__` restores the dirtied blob when the next
+    gather process starts (a restore-time umask flatten is the real-world
+    analog). Catches a regression where the cache stops re-asserting modes
+    on pre-existing blobs across process restarts.
     """
     fixture = tmp_path / "js_only"
     shutil.copytree(_FIXTURE_SRC, fixture)
@@ -237,9 +237,10 @@ def test_perm_restoration_after_concurrent_runs(tmp_path: Path) -> None:
     os.chmod(blob, 0o644)
     assert stat.S_IMODE(blob.stat().st_mode) == 0o644
 
-    # Mutate a tracked input so the next gather's cache key differs and a
-    # fresh ``put`` fires — the ``put`` call's tail ``_reapply_modes`` walk
-    # is what restores any 0644-dirtied sibling blob to 0600.
+    # Mutate a tracked input so the next gather also fires a fresh ``put``
+    # (exercising the per-put own-file chmod); the new process's
+    # ``CacheStore.__init__`` runs the one-shot ``_reapply_modes`` walk that
+    # restores any 0644-dirtied sibling blob to 0600.
     target = fixture / "a.js"
     target.write_text(target.read_text() + "// change\n")
     assert _run_gather(fixture).returncode == 0

@@ -306,7 +306,8 @@ async def _dispatch_one(
 
         from codegenie.cache.keys import _ProbeLike
 
-        key = cache.key_for(cast(_ProbeLike, probe), per_probe_snap, task)
+        probe_like = cast(_ProbeLike, probe)
+        key = cache.key_for(probe_like, per_probe_snap, task)
         cached: ProbeOutput | None = cache.get(key)
         if cached is not None:
             sanitized = SanitizedProbeOutput(**asdict(cached))
@@ -399,10 +400,14 @@ async def _dispatch_one(
         # 7) cache.put — only for clean successes (no errors). ``SanitizedProbeOutput``
         # mirrors ``ProbeOutput`` field-for-field (see ``output/sanitizer.py:50``);
         # ``cache.put`` reads them duck-typed, but its typed signature wants
-        # ``ProbeOutput`` so cast at the boundary. Story Validation-notes
-        # follow-up #2 tracks widening the signature in a separate PR.
+        # ``ProbeOutput`` so cast at the boundary.
         if not sanitized.errors:
-            cache.put(key, cast(ProbeOutput, sanitized))
+            cache.put(
+                key,
+                cast(ProbeOutput, sanitized),
+                probe_name=probe_like.name,
+                probe_version=probe_like.version,
+            )
 
         return name, sanitized, Ran(output=sanitized, key=key)
 

@@ -352,8 +352,7 @@ def populated_run(tmp_path, writer):
     cache = CacheStore(cache_dir, ttl_hours=24)
     sanitized = _sanitized()
     key = "sha256:" + "e" * 64
-    cache._key_meta[key] = ("p_ok", "1.0.0")
-    cache.put(key, sanitized)
+    cache.put(key, sanitized, probe_name="p_ok", probe_version="1.0.0")
     result = _gather_result({"p_ok": Ran(output=sanitized, key=key)})
     yaml_path = tmp_path / "repo-context.yaml"
     yaml_bytes = b"schema_version: 0.1.0\nprobes:\n  p_ok:\n    v: 1\n"
