@@ -160,6 +160,16 @@ def test_scanner_catches_each_planted_sdk_under_primitive(
                 sys.modules.pop(mod_name, None)
         for mod_name, mod in snapshot.items():
             sys.modules[mod_name] = mod  # type: ignore[assignment]
+            # ``importlib.import_module`` rebinds each submodule as an attribute
+            # on its parent package (e.g. ``codegenie.primitives.vuln_provenance``
+            # on ``codegenie.primitives``). Restoring ``sys.modules`` alone is
+            # NOT enough — without re-setting the parent attribute, subsequent
+            # ``from pkg import submod`` resolves to the fresh class, breaking
+            # ``is``-identity for any name captured at collection time
+            # (e.g. ``Layer``, ``Ecosystem``). Re-set the parent attribute now.
+            parent_name, _, child_name = mod_name.rpartition(".")
+            if parent_name and parent_name in sys.modules:
+                setattr(sys.modules[parent_name], child_name, mod)
 
 
 # ---------------------------------------------------------------------------

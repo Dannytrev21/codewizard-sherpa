@@ -158,6 +158,16 @@ def test_scanner_catches_each_planted_sdk_under_phase3(
                 sys.modules.pop(mod_name, None)
         for mod_name, mod in snapshot.items():
             sys.modules[mod_name] = mod  # type: ignore[assignment]
+            # ``importlib.import_module`` rebinds each submodule as an attribute
+            # on its parent package. Restoring ``sys.modules`` alone leaves the
+            # parent's attribute pointing at the fresh module — breaking
+            # ``is``-identity for any class captured at collection time. Re-set
+            # the parent attribute now so ``from codegenie import plugins``
+            # and ``from codegenie.plugins import submod`` resolve to the same
+            # objects subsequent tests already hold references to.
+            parent_name, _, child_name = mod_name.rpartition(".")
+            if parent_name and parent_name in sys.modules:
+                setattr(sys.modules[parent_name], child_name, mod)
 
 
 # ---------------------------------------------------------------------------
