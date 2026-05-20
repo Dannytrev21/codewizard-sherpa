@@ -114,14 +114,17 @@ def _fingerprint_from_fd(
             True,
         )
     # Stream the hash straight off the fd in 64 KiB chunks rather than
-    # materializing the whole body — ``content_hash_fd`` yields a digest
-    # identical to ``content_hash_bytes`` of the same span.
+    # materializing the whole body. ``size`` is omitted (hash to EOF) so the
+    # digest reflects the file's actual content — the ``os.fstat`` size is
+    # the cap-check input, not a read-length assertion (a probe's declared
+    # input can legitimately be shorter than a stale stat under a test
+    # ``os.fstat`` patch or a concurrent truncation).
     return (
         InputFingerprint(
             path=abs_path,
             mtime_ns=mtime_ns,
             size=size,
-            content_hash=content_hash_fd(fd, offset=0, size=size),
+            content_hash=content_hash_fd(fd, offset=0),
         ),
         False,
     )

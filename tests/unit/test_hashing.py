@@ -453,3 +453,24 @@ def test_content_hash_fd_short_read_raises_oserror(tmp_path: Path) -> None:
             content_hash_fd(fd, offset=0, size=100)
     finally:
         os.close(fd)
+
+
+def test_content_hash_fd_size_none_streams_to_eof(tmp_path: Path) -> None:
+    """``size=None`` hashes ``offset``→EOF and never raises a short read —
+    the digest equals ``content_hash_bytes`` of the actual remaining bytes
+    regardless of any independently-stat'd length."""
+    import os
+
+    from codegenie.hashing import content_hash_bytes, content_hash_fd
+
+    body = bytes((i * 17) & 0xFF for i in range(150 * 1024))  # multi-chunk
+    p = tmp_path / "f"
+    p.write_bytes(b"head" + body)
+    fd = os.open(p, os.O_RDONLY)
+    try:
+        whole = content_hash_fd(fd, offset=0)
+        tail = content_hash_fd(fd, offset=len(b"head"))
+    finally:
+        os.close(fd)
+    assert whole == content_hash_bytes(b"head" + body)
+    assert tail == content_hash_bytes(body)
