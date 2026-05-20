@@ -754,7 +754,7 @@ Run; confirm `ImportError` / `ModuleNotFoundError`; commit; implement.
 | `tests/fence/test_engines_no_module_state.py` | New (AC-Surface-4) — AST fence: no module-level mutable state |
 | `tests/fence/test_npm_lockfile_pure_helpers.py` | New (AC-Pure-1) — AST fence: pure helpers carry no `await` / `os` / `subprocess` |
 | `tests/fence/test_golden_lockfile_regen_guard.py` | New (AC-Gold-2) — fence: golden modifications require `.regen-justification.md` sidecar |
-| `tests/bench/test_engine_overhead.py` | New — `@pytest.mark.bench` micro-bench on pure-Python overhead |
+| ~~`tests/bench/test_engine_overhead.py`~~ | **Dropped (executor 2026-05-20).** A 4th `@pytest.mark.bench` test trips the CI `bench-collection-guard` (`ci.yml` pins exactly 3) and the S8-03 guard-test `test_bench_collection_guard_unchanged.py`, which states the threshold change "needs an ADR amendment". The bench is advisory (never gates merge) and the engine's <50 ms pure-Python budget is already exercised thousands of times by the unit suite; adding an ADR-gated 4th bench is disproportionate scope for this story. Bumping the bench count to 4 is a separate, ADR-gated follow-up. |
 | `tests/golden/lockfiles/express-cve-2024-21501.before.json` | New — fixture (also referenced by S8-02) |
 | `tests/golden/lockfiles/express-cve-2024-21501.after.json` | New — golden post-apply lockfile |
 | `tests/golden/lockfiles/express-cve-2024-21501.regen-justification.md` | New — initial sidecar (`Reason: initial golden`) |

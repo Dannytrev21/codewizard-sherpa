@@ -239,3 +239,17 @@ phase-story-executor runs in this phase. New entries at the bottom.
     any phase-era forbidden-dep test that pre-emptively banned the name
     (`test_no_lcov_parse_pypi_dep_added` banned `orjson` repo-wide; the
     ban was over-broad and was narrowed per Rule 7).
+
+22. **CI has guards a local `make check` cannot see** (observed
+    2026-05-20, S5-02): `.github/workflows/ci.yml`'s
+    `bench-collection-guard` step (`pytest --collect-only -m bench`,
+    `-ne 3`) runs only in CI — a 4th `@pytest.mark.bench` test passes
+    every local gate then fails CI. And `test_packaging.py`'s
+    runtime-dep-closure assertion reads *installed* metadata, so a
+    stale editable install masks a `pyproject.toml` dep addition
+    locally. Before pushing a change that adds a dep or a bench test,
+    grep CI YAML for collection guards and re-run `pip install -e .`
+    so installed metadata is fresh. When a CI-only guard pins a count
+    "changing needs an ADR" (S8-03 `test_bench_collection_guard_unchanged.py`),
+    do not bump it from inside an unrelated story — drop the advisory
+    artifact instead and file the bump as an ADR-gated follow-up.
