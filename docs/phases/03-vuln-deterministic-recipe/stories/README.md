@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-43 stories across the 9 implementation steps of Phase 3 (Step 7 gained S7-05 on 2026-05-18 per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md)). Per-step distribution: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=5, S8=4, S9=4. The dependency DAG is roughly linear across steps (Step N+1 depends on Step N's contracts landing) with intra-step fan-out: Step 1 fans out into newtypes / sum-type / fence work that Step 2's `PluginRegistry` consumes; Steps 3–5 can begin sub-stories in parallel once Step 2's kernel is in; Step 6 is the integration choke point that gates Steps 7–9. The longest dependency chain is 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). Cross-cutting work — LLM-SDK fences, newtype discipline, tagged-union exhaustiveness, capability lint — is woven into Step 1 stories and reasserted in Step 9's CI-gate stories. Gap-1 (`SubgraphNode` Protocol), Gap-2 (`LockfilePolicy` YAML), Gap-3 (per-plugin `RecipeRegistry`), Gap-4 (`BundleCacheGc`), and Gap-5 (`TrustScorer` constructor injection) are first-class stories — see S6-03, S5-04, S5-02, S3-05, and S6-02 respectively. S7-05 is the Phase-3 refuse-mode precursor to Phase 7's full `vuln.provenance` primitive.
+44 stories across the 9 implementation steps of Phase 3 (Step 7 gained S7-05 on 2026-05-18 per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md); Step 5 gained S5-01b on 2026-05-20 per [ADR-0014](../ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md) to unblock the engine layer). Per-step distribution: S1=5, S2=4, S3=5, S4=5, S5=6, S6=6, S7=5, S8=4, S9=4. The dependency DAG is roughly linear across steps (Step N+1 depends on Step N's contracts landing) with intra-step fan-out: Step 1 fans out into newtypes / sum-type / fence work that Step 2's `PluginRegistry` consumes; Steps 3–5 can begin sub-stories in parallel once Step 2's kernel is in; Step 6 is the integration choke point that gates Steps 7–9. The longest dependency chain is 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). Cross-cutting work — LLM-SDK fences, newtype discipline, tagged-union exhaustiveness, capability lint — is woven into Step 1 stories and reasserted in Step 9's CI-gate stories. Gap-1 (`SubgraphNode` Protocol), Gap-2 (`LockfilePolicy` YAML), Gap-3 (per-plugin `RecipeRegistry`), Gap-4 (`BundleCacheGc`), and Gap-5 (`TrustScorer` constructor injection) are first-class stories — see S6-03, S5-04, S5-02, S3-05, and S6-02 respectively. S7-05 is the Phase-3 refuse-mode precursor to Phase 7's full `vuln.provenance` primitive.
 
 ## How to use this backlog
 1. Start at a story whose dependencies are satisfied.
@@ -62,8 +62,10 @@ graph TD
   S1-04 --> S5-01
   S2-01 --> S5-01
   S4-02 --> S5-01
-  S5-01 --> S5-02
-  S5-01 --> S5-03
+  S5-01 --> S5-01b
+  S5-01b --> S5-02
+  S5-01b --> S5-03
+  S5-02 --> S5-03
   S5-02 --> S5-04
   S5-01 --> S5-05
   S2-04 --> S6-01
@@ -155,8 +157,9 @@ Direct deps only; transitive omitted.
 | ID | Title (slug → file) | Effort | Depends on | Summary |
 |---|---|---|---|---|
 | S5-01 | [RecipeEngine Protocol + RecipeRegistry (Gap 3) (`S5-01-recipe-registry`)](S5-01-recipe-registry.md) | M | S1-04, S2-01, S4-02 | `RecipeEngine` Protocol; per-plugin `RecipeRegistry` + `@register_recipe(plugin_id)` decorator mirroring `PluginRegistry` shape; first-`Applies(plan)`-wins iteration; all-`NotApplies` short-circuits with `RecipeOutcome.NotApplicable(reason=ALL_RECIPES_NOT_APPLICABLE)` (Gap 3 fix). |
-| S5-02 | [NpmLockfileRecipeEngine (production) (`S5-02-npm-lockfile-recipe-engine`)](S5-02-npm-lockfile-recipe-engine.md) | L | S5-01 | Pure-Python `package.json` parse (orjson, 1 MiB cap), in-mem edit (preserve key order), `O_NOFOLLOW` write-back, `SubprocessJail.run(npm install --package-lock-only --ignore-scripts --no-audit --prefer-offline)`, parse new lockfile (32 MiB / depth 24); returns `RecipeOutcome.Applied(NpmLockfileTransform(...))`. |
-| S5-03 | [OpenRewriteRecipeEngine scaffold (`S5-03-openrewrite-engine-scaffold`)](S5-03-openrewrite-engine-scaffold.md) | M | S5-01 | Protocol-conformant JVM subprocess wrapped in `SubprocessJail`; one Phase-7-tagged Dockerfile-base-image-swap fixture; `@pytest.mark.phase_7_preview` test (ADR-0009). |
+| S5-01b | [TransformRegistry — engine→orchestrator Transform channel (`S5-01b-transform-registry`)](S5-01b-transform-registry.md) | S | S1-01, S1-04, S5-01 | Per-workflow `TransformRegistry` keyed by `TransformId`; `register`/`get` + typed `TransformAlreadyRegistered`/`TransformNotFound`; the channel by which a `RecipeEngine` surfaces its produced `Transform` (`apply` stays `-> RecipeOutcome`). Unblocks S5-02/S5-03 ([ADR-0014](../ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md)). Added 2026-05-20. |
+| S5-02 | [NpmLockfileRecipeEngine (production) (`S5-02-npm-lockfile-recipe-engine`)](S5-02-npm-lockfile-recipe-engine.md) | L | S5-01, S5-01b | Pure-Python `package.json` parse (orjson, 1 MiB cap), in-mem edit (preserve key order), `O_NOFOLLOW` write-back, `SubprocessJail.run(npm install --package-lock-only --ignore-scripts --no-audit --prefer-offline)`, parse new lockfile (32 MiB / depth 24); returns `RecipeOutcome.Applied(NpmLockfileTransform(...))`. |
+| S5-03 | [OpenRewriteRecipeEngine scaffold (`S5-03-openrewrite-engine-scaffold`)](S5-03-openrewrite-engine-scaffold.md) | M | S5-01, S5-01b, S5-02 | Protocol-conformant JVM subprocess wrapped in `SubprocessJail`; one Phase-7-tagged Dockerfile-base-image-swap fixture; `@pytest.mark.phase_7_preview` test (ADR-0009). |
 | S5-04 | [LockfilePolicy YAML + Pydantic loader (Gap 2) (`S5-04-lockfile-policy-yaml`)](S5-04-lockfile-policy-yaml.md) | M | S5-02 | `tools/policy/lockfile-policy.yaml` (codegenie-owned); `LockfilePolicy.from_yaml(path) -> Result`; `evaluate(lockfile_doc) -> list[PolicyViolation]`; `PolicyViolation = UnauthorizedRegistry(registry, package)` Phase-3 variant; `UnauthorizedRegistry` correctly detected on attacker-`.npmrc` fixture (Gap 2 fix). |
 | S5-05 | [RemediationReport Pydantic + writer (`S5-05-remediation-report-writer`)](S5-05-remediation-report-writer.md) | S | S5-01 | `RemediationReport` Pydantic + writer for `remediation-report.yaml`; round-trip a hand-built instance. |
 
@@ -245,7 +248,7 @@ From phase-arch-design.md §Open questions deferred to implementation:
 - **`vuln-index.sqlite` staleness threshold** (7 days mtime → warn, not block; `CODEGENIE_VULN_INDEX_MAX_AGE_DAYS`) — S3-02 ships the default.
 
 ## Backlog stats
-- Total stories: 43 (was 42; S7-05 added 2026-05-18 per [production ADR-0038](../../../production/adrs/0038-vulnerability-provenance-attribution.md) Phase-3 refuse-mode commitment).
-- Per step: S1=5, S2=4, S3=5, S4=5, S5=5, S6=6, S7=5, S8=4, S9=4.
-- Effort: 13·S + 19·M + 9·L (S7-05 is S).
+- Total stories: 44 (was 43; S5-01b added 2026-05-20 per [ADR-0014](../ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md) to unblock the S5-02/S5-03 engine layer).
+- Per step: S1=5, S2=4, S3=5, S4=5, S5=6, S6=6, S7=5, S8=4, S9=4.
+- Effort: 14·S + 19·M + 9·L (S5-01b and S7-05 are S).
 - Longest dep chain: 9 stories (S1-01 → S2-01 → S3-01 → S4-01 → S5-01 → S6-01 → S6-04 → S7-01 → S8-03). S7-05's chain length (8) is shorter.

@@ -23,6 +23,7 @@ Architecture Decision Records for Phase 3, in Nygard format. Each ADR captures o
 | [0011](0011-honest-framing-capability-sandboxedpath-pluginslock.md) | Honest framing — `Capability` is audit + lint (NOT runtime-unforgeable); `SandboxedPath` is in-jail-at-construction; `PLUGINS.lock` is integrity check (NOT cryptographic signature) | threat-model · honest-framing · capability · phase-11-precursor |
 | [0012](0012-amend-allowed-binaries-npm-bwrap-sandbox-exec-jq.md) | Amend `ALLOWED_BINARIES` with `npm`, `bwrap`, `sandbox-exec`, `jq` (amends Phase 2 ADR-0001) | subprocess-discipline · allowed-binaries · amendment · supply-chain |
 | [0013](0013-lazy-package-manager-reexport-breaks-types-probes-cycle.md) | Lazy `PackageManager` re-export breaks the `types` ↔ `probes` cold-start cycle (documents commit `0ffbd07`) | typed-identifiers · circular-import · module-layering · lazy-resolution |
+| [0014](0014-recipe-engine-surfaces-transform-via-transform-registry.md) | A `RecipeEngine` surfaces its produced `Transform` via a per-workflow `TransformRegistry` (`apply` stays `-> RecipeOutcome`) — unblocks the S5-02/S5-03 engine layer | registry · contract · open-closed · dependency-inversion · engine-layer-unblock |
 
 ## Conventions
 

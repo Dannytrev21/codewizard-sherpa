@@ -1,10 +1,24 @@
 # Story S5-03 — `OpenRewriteRecipeEngine` scaffold (Protocol-conformant, Phase-7 preview)
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** BLOCKED — 2026-05-20 (phase-story-executor Stage-1 hard gate; see [`_attempts/S5-03.md`](_attempts/S5-03.md)). Inherits S5-02's root contradiction: AC-Contract-1 (`apply` returns a 2-tuple) and AC-Surface-2(b) (`apply` is `mypy --strict` `RecipeEngine`-Protocol-conformant) are mutually unsatisfiable against the landed S5-01 `RecipeEngine.apply(...) -> RecipeOutcome`. Secondary blockers: `NpmLockfileRecipeEngine` and the S5-02-introduced engine fences do not exist (S5-02 shipped no code). Needs `/phase-architect` + `/phase-story-writer` rework before re-execution.
+**Status:** HARDENED — un-blocked 2026-05-20 by [ADR-0014](../ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md) + story S5-01b (`TransformRegistry`, GREEN). The prior BLOCKED `apply`-2-tuple-vs-Protocol-conformance contradiction is resolved: `apply` returns a bare `RecipeOutcome` and the produced `DockerfileBaseImageTransform` is surfaced via a constructor-injected `TransformRegistry`. The secondary blocker (`NpmLockfileRecipeEngine` absent) is sequenced away — S5-03 now `Depends on` S5-02 being GREEN. See the **Re-execution note** below — it is authoritative and supersedes every conflicting AC / outline / TDD-plan statement elsewhere in this file.
 **Effort:** M
-**Depends on:** S5-01 (HARDENED — `RecipeEngine` Protocol at `transforms/recipe_engine.py` + `ApplicationPlan`), S1-03 (GREEN — `outcomes.py` discriminated unions), S1-04 (GREEN — `Transform` ABC + `TransformProvenance`), S4-01 (HARDENED — `SubprocessJail` Port + `JailedSubprocessSpec` + `JailedEnv` discriminated sum), S4-04 (HARDENED — `SandboxedPath` typealias)
-**ADRs honored:** ADR-0009, ADR-0006, ADR-0012, ADR-0010, ADR-0001 (Phase-5 contract — additive `JailedEnv` widening for `JvmEnv` is logged), Phase-1 ADR-0007 (`ErrorId` dotted-snake format)
+**Depends on:** S5-01 (HARDENED — `RecipeEngine` Protocol at `transforms/recipe_engine.py` + `ApplicationPlan`), S5-01b (GREEN — `TransformRegistry` at `transforms/transform_registry.py`), S5-02 (must be GREEN first — AC-Surface-2(c) imports `NpmLockfileRecipeEngine` and the `tests/fence/test_engines_no_*` engine fences S5-02 introduces), S1-03 (GREEN — `outcomes.py` discriminated unions), S1-04 (GREEN — `Transform` ABC + `TransformProvenance`), S4-01 (HARDENED — `SubprocessJail` Port + `JailedSubprocessSpec` + `JailedEnv` discriminated sum), S4-04 (HARDENED — `SandboxedPath` typealias)
+**ADRs honored:** ADR-0009, ADR-0006, ADR-0012, ADR-0010, ADR-0014 (`TransformRegistry` channel), ADR-0001 (Phase-5 contract — additive `JailedEnv` widening for `JvmEnv` is logged), Phase-1 ADR-0007 (`ErrorId` dotted-snake format)
+
+## Re-execution note (2026-05-20 — `codewizard-executer`; un-blocks this story)
+
+This story was `BLOCKED` on 2026-05-20: it inherited S5-02's `apply`-2-tuple-vs-Protocol-conformance contradiction against the landed S5-01 `RecipeEngine.apply(...) -> RecipeOutcome`. [ADR-0014](../ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md) resolves the design question and story **S5-01b** (`TransformRegistry`, GREEN) ships the missing component. The **corrected contract below is authoritative** — it supersedes every conflicting statement elsewhere in this file: Validation note #2, Validation note #10's `_map_jail_result` *public* framing, the Goal paragraph's 2-tuple `apply` signature, the "### `apply()` return contract" heading, AC-Surface-2(c), AC-Contract-1, AC-Surface-4, Implementation outline §3–§6, and **every `outcome, transform = await ...apply(...)` destructure in the TDD plan**.
+
+**Corrected contract (authoritative):**
+
+1. **`apply` returns a bare `RecipeOutcome`** — `async def apply(self, repo: SandboxedPath, plan: ApplicationPlan, capability: NpmInstallCapability) -> RecipeOutcome`. NOT a 2-tuple. This is the as-built S5-01 Protocol surface verbatim (ADR-0001 / ADR-0009 frozen); the harden-pass 2-tuple rewrite is withdrawn. AC-Surface-2(c) still holds — both engines share this *same* `-> RecipeOutcome` annotation.
+2. **The constructor takes the registry** — `__init__(self, jail: SubprocessJail, transform_registry: TransformRegistry, *, cli_jar_path: str | None = None)`. `TransformRegistry` is imported from `codegenie.transforms.transform_registry`. No module-level mutable state (the `test_engines_no_module_state.py` fence is unchanged).
+3. **The produced `DockerfileBaseImageTransform` is surfaced via the registry.** On the happy path the engine `register`s the transform into the injected `TransformRegistry` and returns `Applied(transform_id=transform.transform_id, …)`.
+4. **The pure helper stays a tuple — only the public surface changes.** `_map_jail_result(result, plan, repo) -> tuple[RecipeOutcome, Transform | None]` remains a *pure* internal helper returning `(outcome, transform)` (functional core). The *impure* `apply` calls it, and on an `Applied` outcome does `self._transform_registry.register(transform)` before returning the bare `outcome`. The pure/impure split is preserved; only `apply`'s public return type narrows to `RecipeOutcome`.
+5. **Tests obtain the Transform by lookup.** Where a TDD-plan test wrote `outcome, transform = await engine.apply(...)`, the corrected form is `outcome = await engine.apply(...)` then `transform = transform_registry.get(outcome.transform_id)`.
+
+Nothing else changes: the Phase-7-preview fixture, the JVM-under-`SubprocessJail` integration test, and the closed error-id taxonomy all stand.
 
 ## Validation notes (2026-05-19, phase-story-validator)
 
@@ -80,7 +94,7 @@ The conformance test (`tests/integration/test_recipe_engine_protocol.py` — per
 
 ## Goal
 
-Ship `src/codegenie/transforms/engines/openrewrite.py` exposing `OpenRewriteRecipeEngine` and `DockerfileBaseImageTransform`. The engine structurally satisfies the `RecipeEngine` Protocol (S5-01) and matches S5-02's 2-tuple return contract: `async def apply(self, repo: SandboxedPath, plan: ApplicationPlan, capability: NpmInstallCapability) -> tuple[RecipeOutcome, Transform | None]`. One Phase-7-preview fixture (`tests/fixtures/openrewrite/dockerfile-base-image-swap/`) carries the recipe YAML + a Dockerfile + the expected post-rewrite Dockerfile. One `@pytest.mark.phase_7_preview` integration test asserts the engine, when invoked under a real `SubprocessJail` with `java` available, returns `(Applied(transform_id=…), DockerfileBaseImageTransform(diff_bytes=…))` where `diff_bytes` matches the golden byte-for-byte. The conformance test at `tests/integration/test_recipe_engine_protocol.py` (S5-01) is **amended additively** to also assert `OpenRewriteRecipeEngine` satisfies the Protocol.
+Ship `src/codegenie/transforms/engines/openrewrite.py` exposing `OpenRewriteRecipeEngine` and `DockerfileBaseImageTransform`. The engine structurally satisfies the `RecipeEngine` Protocol (S5-01) — `async def apply(self, repo: SandboxedPath, plan: ApplicationPlan, capability: NpmInstallCapability) -> RecipeOutcome` (a bare `RecipeOutcome`, per the Re-execution note + ADR-0014; the same shape S5-02 ships). One Phase-7-preview fixture (`tests/fixtures/openrewrite/dockerfile-base-image-swap/`) carries the recipe YAML + a Dockerfile + the expected post-rewrite Dockerfile. One `@pytest.mark.phase_7_preview` integration test asserts the engine, when invoked under a real `SubprocessJail` with `java` available, returns `Applied(transform_id=…)` and `transform_registry.get(outcome.transform_id)` yields a `DockerfileBaseImageTransform` whose `diff_bytes` matches the golden byte-for-byte. The conformance test at `tests/integration/test_recipe_engine_protocol.py` (S5-01) is **amended additively** to also assert `OpenRewriteRecipeEngine` satisfies the Protocol.
 
 > **`apply` return contract** — mirrors S5-02 (HARDENED). The Transform instance is returned **alongside** the outcome; `Applied` carries the BLAKE3-hex `transform_id` (lookup key) only. Every non-Applied branch returns `(<outcome>, None)`.
 
@@ -91,9 +105,9 @@ Ship `src/codegenie/transforms/engines/openrewrite.py` exposing `OpenRewriteReci
 ### Surface + module shape
 
 - [ ] **AC-Surface-1.** `from codegenie.transforms.engines.openrewrite import OpenRewriteRecipeEngine, DockerfileBaseImageTransform` succeeds. Module's `__all__` is exactly `{"OpenRewriteRecipeEngine", "DockerfileBaseImageTransform"}` (private helpers — leading underscore — never re-exported); a meta-test asserts `set(openrewrite.__all__) == EXPECTED`.
-- [ ] **AC-Surface-2.** `OpenRewriteRecipeEngine` structurally satisfies the S5-01 `RecipeEngine` Protocol both at runtime and under mypy: (a) `isinstance(OpenRewriteRecipeEngine(jail=fake_jail), RecipeEngine) is True` (Protocol is `@runtime_checkable`); (b) a mypy-strict assignment `_engine: RecipeEngine = OpenRewriteRecipeEngine(jail=fake_jail)` type-checks (fence file `tests/unit/transforms/test_openrewrite_typing.py` runs `mypy --strict` on a tiny module containing the assignment and asserts exit code 0); (c) `inspect.signature(OpenRewriteRecipeEngine.apply).return_annotation` equals `inspect.signature(NpmLockfileRecipeEngine.apply).return_annotation` — both engines share the 2-tuple return contract verbatim (Design-Patterns D4).
+- [ ] **AC-Surface-2.** `OpenRewriteRecipeEngine` structurally satisfies the S5-01 `RecipeEngine` Protocol both at runtime and under mypy: (a) `isinstance(OpenRewriteRecipeEngine(jail=fake_jail, transform_registry=registry), RecipeEngine) is True` (Protocol is `@runtime_checkable`); (b) a mypy-strict assignment `_engine: RecipeEngine = OpenRewriteRecipeEngine(jail=fake_jail, transform_registry=registry)` type-checks (fence file `tests/unit/transforms/test_openrewrite_typing.py` runs `mypy --strict` on a tiny module containing the assignment and asserts exit code 0); (c) `inspect.signature(OpenRewriteRecipeEngine.apply).return_annotation` equals `inspect.signature(NpmLockfileRecipeEngine.apply).return_annotation` — both engines share the `-> RecipeOutcome` return annotation verbatim (Design-Patterns D4).
 - [ ] **AC-Surface-3.** `DockerfileBaseImageTransform(Transform)` is an ABC subclass declaring the four class-level annotations: `transform_id: TransformId`, `diff_bytes: bytes`, `files_changed: tuple[SandboxedPath, ...]` (tuple, NOT list, length 1 — just `Dockerfile` — for the scaffold; Phase 7 multi-stage may widen), `provenance: TransformProvenance`. Inherits the `TypeError` on direct `Transform(...)` instantiation. Direct `DockerfileBaseImageTransform(...)` is **also rejected** in favor of the smart constructor (AC-Smart-1).
-- [ ] **AC-Surface-4.** `OpenRewriteRecipeEngine.__init__(self, jail: SubprocessJail, *, cli_jar_path: str | None = None)` is the only public constructor; no global registry write at import time; no module-level mutable state. The existing `tests/fence/test_engines_no_module_state.py` fence (introduced by S5-02) covers `transforms/engines/*.py` — `openrewrite.py` MUST pass it without amendment.
+- [ ] **AC-Surface-4.** `OpenRewriteRecipeEngine.__init__(self, jail: SubprocessJail, transform_registry: TransformRegistry, *, cli_jar_path: str | None = None)` is the only public constructor — `jail` and `transform_registry` are constructor-injected (ADR-0014); no global registry write at import time; no module-level mutable state. The existing `tests/fence/test_engines_no_module_state.py` fence (introduced by S5-02) covers `transforms/engines/*.py` — `openrewrite.py` MUST pass it without amendment.
 
 ### Error-id taxonomy (closed sum)
 
@@ -111,13 +125,13 @@ Ship `src/codegenie/transforms/engines/openrewrite.py` exposing `OpenRewriteReci
 
 ### Pure-helper / functional-core fence
 
-- [ ] **AC-Pure-1 (Design-Patterns D5).** `_build_openrewrite_spec(repo, plan, cli_jar_path) -> JailedSubprocessSpec` and `_map_jail_result(result, plan, repo) -> tuple[RecipeOutcome, Transform | None]` are pure: AST-walk fence in `tests/fence/test_engines_pure_helpers.py` rejects `await`, `os.*`, `time.*`, `subprocess`, `logging`, `pathlib.Path.open`, raw `open(` calls inside their function bodies (mirrors S5-02 + S1-05 `_no_io_in_pure_helpers` precedent). `apply()` is the *only* impure surface; AST-walk asserts `apply()` body is exactly three statements: build, await jail.run, map. `await` is allowed only inside `apply()`.
+- [ ] **AC-Pure-1 (Design-Patterns D5).** `_build_openrewrite_spec(repo, plan, cli_jar_path) -> JailedSubprocessSpec` and `_map_jail_result(result, plan, repo) -> tuple[RecipeOutcome, Transform | None]` are pure: AST-walk fence in `tests/fence/test_engines_pure_helpers.py` rejects `await`, `os.*`, `time.*`, `subprocess`, `logging`, `pathlib.Path.open`, raw `open(` calls inside their function bodies (mirrors S5-02 + S1-05 `_no_io_in_pure_helpers` precedent). `apply()` is the *only* impure surface; AST-walk asserts `apply()` body is the thin orchestration of the Re-execution note §4 — build spec, `await jail.run`, `_map_jail_result`, conditionally `transform_registry.register(transform)`, return the bare `RecipeOutcome`. `await` is allowed only inside `apply()`.
 - [ ] **AC-Pure-2 — Raw I/O fence.** `openrewrite.py` passes the existing `tests/fence/test_engines_no_raw_os_open.py` AST-walk fence (introduced by S5-02): no `os.open`, no `pathlib.Path.open`, no `builtins.open`, no `io.open`. Only `SandboxedPath.open(...)` is permitted.
 
-### `apply()` return contract — 2-tuple
+### `apply()` return contract — bare `RecipeOutcome`
 
-- [ ] **AC-Contract-1 (Design-Patterns D4).** `OpenRewriteRecipeEngine.apply` return annotation is exactly `tuple[RecipeOutcome, Transform | None]`. A test asserts `inspect.signature(...).return_annotation` equals the str `"tuple[RecipeOutcome, Transform | None]"` after `from __future__ import annotations` resolution (mirrors S5-02).
-- [ ] **AC-Contract-2.** On every non-Applied branch, the second tuple element is `None`. Tests assert `transform is None` whenever `not isinstance(outcome, Applied)`.
+- [ ] **AC-Contract-1 (Design-Patterns D4).** `OpenRewriteRecipeEngine.apply` return annotation is exactly `RecipeOutcome` (per the Re-execution note + ADR-0014). A test asserts `inspect.signature(...).return_annotation` resolves to `"RecipeOutcome"` after `from __future__ import annotations` resolution, and that it equals `NpmLockfileRecipeEngine.apply`'s annotation (both engines share the as-built S5-01 Protocol surface).
+- [ ] **AC-Contract-2.** The pure helper `_map_jail_result` returns `(outcome, None)` on every non-`Applied` branch — tests assert the second tuple element is `None` whenever `not isinstance(outcome, Applied)`, so `apply` registers nothing and a non-`Applied` outcome leaves the injected `TransformRegistry` empty.
 
 ### Spec construction (build phase — pure helper)
 
@@ -221,19 +235,22 @@ Ship `src/codegenie/transforms/engines/openrewrite.py` exposing `OpenRewriteReci
    )
    ```
 
-3. **`OpenRewriteRecipeEngine.__init__(self, jail: SubprocessJail, *, cli_jar_path: str | None = None)`** — constructor-injected jail; `cli_jar_path` overridable for test fixtures (default `_OPENREWRITE_CLI_JAR`). No global registry write at import time; no module-level mutable state.
+3. **`OpenRewriteRecipeEngine.__init__(self, jail: SubprocessJail, transform_registry: TransformRegistry, *, cli_jar_path: str | None = None)`** — constructor-injected `jail` and `transform_registry` (ADR-0014); `cli_jar_path` overridable for test fixtures (default `_OPENREWRITE_CLI_JAR`). No global registry write at import time; no module-level mutable state.
 
-4. **`async def apply` — the only impure surface (three statements):**
+4. **`async def apply` — the only impure surface:**
    ```python
    async def apply(
        self,
        repo: SandboxedPath,
        plan: ApplicationPlan,
        capability: NpmInstallCapability,  # TODO(Phase-7): widen capability union — see Notes §"Capability mismatch"
-   ) -> tuple[RecipeOutcome, Transform | None]:
+   ) -> RecipeOutcome:
        spec = _build_openrewrite_spec(repo, plan, self._cli_jar_path)
        result = await self._jail.run(spec)
-       return _map_jail_result(result, plan, repo)
+       outcome, transform = _map_jail_result(result, plan, repo)
+       if transform is not None:
+           self._transform_registry.register(transform)
+       return outcome
    ```
    AST-walk fence asserts the body is exactly these three statements (Design-Patterns D5).
 

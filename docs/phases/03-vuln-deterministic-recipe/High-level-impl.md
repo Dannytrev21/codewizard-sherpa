@@ -134,6 +134,7 @@ Phase 3 lands the first **plugin** (`vulnerability-remediation--node--npm`), the
 **Features delivered:**
 - `src/codegenie/plugins/recipe_registry.py`: `RecipeRegistry` + `@register_recipe(plugin_id, *, registry=None)` mirroring `PluginRegistry` shape. (Gap 3 fix.)
 - `src/codegenie/transforms/recipe_engine.py`: `RecipeEngine` Protocol + `NpmLockfileTransform` and `DockerfileBaseImageTransform` (Phase-7-preview, never invoked by Phase 3).
+- `src/codegenie/transforms/transform_registry.py`: `TransformRegistry` (per-workflow, keyed by `TransformId`; `register`/`get` + typed markers) — the channel by which a `RecipeEngine` surfaces its produced `Transform` to the orchestrator without widening `apply`'s frozen `-> RecipeOutcome` return ([ADR-0014](ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md); story S5-01b).
 - `src/codegenie/transforms/engines/npm_lockfile.py`: `NpmLockfileRecipeEngine` — pure-Python parse `package.json` (orjson, 1 MiB cap), in-mem edit (preserve key order), `O_NOFOLLOW` write-back, `SubprocessJail.run(npm install --package-lock-only --ignore-scripts --no-audit --prefer-offline)`, parse new lockfile (32 MiB / depth 24 cap), return `RecipeOutcome.Applied(NpmLockfileTransform(...))`.
 - `src/codegenie/transforms/engines/openrewrite.py`: `OpenRewriteRecipeEngine` scaffold — Protocol-conformant, JVM subprocess wrapped in `SubprocessJail`, one Phase-7-tagged Dockerfile-base-image-swap fixture, `@pytest.mark.phase_7_preview` test.
 - `tools/policy/lockfile-policy.yaml` (codegenie-owned) + `src/codegenie/transforms/policy/lockfile_policy.py`: `LockfilePolicy.from_yaml(path) -> Result[LockfilePolicy, ParseError]`, `LockfilePolicy.evaluate(lockfile_doc) -> list[PolicyViolation]`, `PolicyViolation = UnauthorizedRegistry(registry, package)` (Phase 7 widens additively). (Gap 2 fix.)
@@ -143,6 +144,7 @@ Phase 3 lands the first **plugin** (`vulnerability-remediation--node--npm`), the
 - [ ] `pytest tests/unit/transforms/test_npm_lockfile_engine.py` covers happy path + size/depth-cap rejection + `O_NOFOLLOW` enforcement.
 - [ ] `pytest tests/unit/transforms/test_openrewrite_engine.py -m phase_7_preview` boots JVM under `SubprocessJail`, runs the one fixture, returns `RecipeOutcome.Applied`.
 - [ ] `pytest tests/unit/plugins/test_recipe_registry.py` — `@register_recipe` + first-`Applies(plan)`-wins iteration; all-`NotApplies` short-circuits with `RecipeOutcome.NotApplicable(reason=ALL_RECIPES_NOT_APPLICABLE)`.
+- [ ] `pytest tests/unit/transforms/test_transform_registry.py` — `TransformRegistry` `register`/`get`, duplicate-id + miss raise typed markers, per-workflow-instance independence (S5-01b).
 - [ ] `pytest tests/unit/transforms/test_lockfile_policy.py` — parse + evaluate; `UnauthorizedRegistry` correctly detected on an attacker-`.npmrc` fixture.
 - [ ] Golden file `tests/golden/lockfiles/express-cve-2024-21501.before.json` and `.after.json` byte-equal under `NpmLockfileRecipeEngine`.
 - [ ] `remediation-report.yaml` writer round-trips a hand-built `RemediationReport` instance.

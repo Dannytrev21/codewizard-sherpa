@@ -162,7 +162,7 @@ The `/phase-story-writer`, `/phase-story-validator`, and `/phase-story-executor`
 A story's `**Status:**` line is the source of truth:
 - `Ready` / `HARDENED` — validated, awaiting executor.
 - `GREEN` / `Done` — shipped with runtime evidence.
-- `BLOCKED` / `BLOCKED-PARTIAL` — explicit precondition not met; check the attempt log for the resolution path. As of 2026-05-20 three stories are `BLOCKED` pending architecture rework: phase-7 `S3-02` (npm plugin directory not yet built), phase-3 `S5-02` (`RecipeEngine.apply` 2-tuple vs. Protocol-conformance contradiction), and phase-3 `S5-03` (inherits S5-02's contradiction — same `apply` shape against the same S5-01 Protocol — and depends on engine artifacts S5-02 never shipped). The phase-3 engine layer (`S5-02` → `S5-03` → `S5-04`) is gated behind one `/phase-architect` decision on how a `RecipeEngine` surfaces its produced `Transform`.
+- `BLOCKED` / `BLOCKED-PARTIAL` — explicit precondition not met; check the attempt log for the resolution path. As of 2026-05-20 one story is `BLOCKED`: phase-7 `S3-02` (npm plugin directory not yet built). The phase-3 engine layer is **unblocked** — the `RecipeEngine.apply` 2-tuple-vs-Protocol contradiction that previously `BLOCKED` `S5-02` and `S5-03` was resolved by phase-3 [ADR-0014](docs/phases/03-vuln-deterministic-recipe/ADRs/0014-recipe-engine-surfaces-transform-via-transform-registry.md): a `RecipeEngine` surfaces its produced `Transform` via a constructor-injected `TransformRegistry` (`apply` stays `-> RecipeOutcome`). Story `S5-01b` shipped the `TransformRegistry` GREEN; `S5-02` and `S5-03` are de-contradicted and back to `HARDENED`.
 
 ## Global rules (also in `~/.claude/CLAUDE.md`)
 

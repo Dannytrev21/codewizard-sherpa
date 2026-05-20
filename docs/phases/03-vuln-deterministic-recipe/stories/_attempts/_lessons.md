@@ -181,3 +181,36 @@ phase-story-executor runs in this phase. New entries at the bottom.
     A `HARDENED` status only means the story was self-consistent
     when validated; a *sibling* story later turning BLOCKED can
     still invalidate it.
+
+18. **A two-AC contradiction in a story cone is fixed by one
+    architecture decision, not by editing the loudest story**
+    (S5-02 / S5-03 unblocked via S5-01b). The S5-02/S5-03 BLOCKED
+    contradiction (lesson #16) was the *symptom* of a missing
+    component: a `RecipeEngine` had no sanctioned channel to
+    surface its produced `Transform`. The resolution was not to
+    patch either engine story's ACs in isolation but to (a) take
+    the architecture decision (ADR-0014 — a per-workflow
+    `TransformRegistry`; `apply` stays `-> RecipeOutcome`), (b)
+    write + execute one small new story (S5-01b) for the missing
+    component, then (c) de-contradict S5-02/S5-03 against the now-
+    existing component. Lesson: when the executor's Stage-1 hard
+    gate fires on a cross-story contradiction, look for the
+    *missing collaborator* the contradiction implies — the fix is
+    usually a new story slotted upstream, plus a surgical AC
+    rewrite downstream, not a forced edit to the story that
+    happened to surface it.
+
+19. **`scripts/regen_golden.py --check --portfolio` is
+    environment-sensitive** (observed 2026-05-20, macOS / Python
+    3.13). Run standalone on a clean tree it materializes
+    `tsconfig.json` into portfolio fixtures and the live
+    `codegenie gather` output diverges from the committed
+    (Linux-generated) goldens, failing
+    `tests/golden/test_goldens_match.py::test_goldens_match_live_output`.
+    The committed goldens were generated under the CI Linux /
+    Python-3.11-3.12 toolchain. Lesson: a `make check` failure on
+    that one test, on a macOS dev box, is most likely this
+    pre-existing toolchain mismatch — confirm by reverting your
+    change from the import graph and running the script
+    standalone before treating it as a regression. Do not "fix"
+    it by committing macOS-regenerated goldens — that breaks CI.
