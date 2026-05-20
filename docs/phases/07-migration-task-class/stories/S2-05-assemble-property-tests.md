@@ -1,7 +1,7 @@
 # Story S2-05 — Property tests: dispatch-order invariance + idempotence
 
 **Step:** Step 2 — Registry kernel, `_ADAPTER_DISPATCH_ORDER`, `assemble_provenance` free function
-**Status:** Ready
+**Status:** GREEN (shipped 2026-05-20; see `_attempts/S2-05-assemble-property-tests.md`)
 **Effort:** S
 **Depends on:** S2-04 (`assemble_provenance` callable + four-arm `match` composition); transitively: S2-01 (`Layer`, `Ecosystem`, `_REGISTRY`, `@register_provenance_adapter`), S2-03 (`_ADAPTER_DISPATCH_ORDER`, `iter_adapters_for_layer_set`)
 **ADRs honored:** Phase 7 ADR-0006 (dispatch-order discipline — this story's 50-permutation property test is the load-bearing locking mechanism), Phase 7 ADR-0007 (registry stores classes — property tests use class-substitution for adapter behavior fixtures), Phase 7 ADR-0001 (no `MultiPluginCoordinator` — `Both` is evidence, this story pins `Both` no-recursion invariant), Phase 7 ADR-0008 (no vuln.provenance cache — idempotence holds without caching).
