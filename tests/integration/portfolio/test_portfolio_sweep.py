@@ -12,7 +12,9 @@ Runs ``codegenie gather`` against every fixture under
   via the project's ``codegenie.parsers.safe_yaml`` chokepoint.
 - AC-28 — ``scripts/regen_golden.py --check --portfolio`` returns 0
   against the canonical fixture tree (delegates the byte-level diff to
-  S7-03's harness).
+  S7-03's harness). The portfolio ``index_health`` goldens assert SCIP
+  freshness, so ``@requires_tool`` skips the whole test loudly when
+  ``scip-typescript`` is absent (CI installs the pinned tool).
 - AC-29 — total wall-clock ≤ 360 s (the Phase-2 ``portfolio`` job budget).
 - AC-30 — serial dispatch only (``@pytest.mark.serial``; for-loop
   iteration; no xdist / no asyncio.gather). ADR-0009 honored.
@@ -61,6 +63,7 @@ import pytest
 
 from codegenie.parsers import safe_yaml
 from codegenie.schema.validator import validate as validate_envelope
+from tests._ci_support.requires_tool import requires_tool
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PORTFOLIO = _REPO_ROOT / "tests" / "fixtures" / "portfolio"
@@ -142,6 +145,7 @@ def _assert_stderr_is_clean(fixture_name: str, stderr_text: str) -> None:
     assert outcome == "ok", f"{fixture_name}: cli.end carries outcome={outcome!r}, expected 'ok'"
 
 
+@requires_tool("scip-typescript")  # AC-28 golden check needs SCIP freshness
 @pytest.mark.serial  # AC-30 — ADR-0009; never xdist
 def test_portfolio_sweep(tmp_path: Path) -> None:
     """Gather every fixture serially and assert exit/schema/golden + budget."""
