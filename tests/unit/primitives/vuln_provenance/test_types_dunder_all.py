@@ -70,10 +70,14 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "UnknownReason",
     # S1-04 — Protocol port.
     "VulnProvenanceAdapter",
+    # S2-04 — provenance composition free function.
+    "assemble_provenance",
     # S2-02 — all-None convenience factory singleton (lowercase).
     "default_adapter_factory",
     # S2-03 — Ecosystem-sorted intra-layer adapter-iteration helper.
     "iter_adapters_for_layer_set",
+    # S2-04 — re-export alias of assemble_provenance (TCCM compute target).
+    "provenance",
     # S2-01 — decorator (lowercase, sorts after VulnProvenanceAdapter).
     "register_provenance_adapter",
 )

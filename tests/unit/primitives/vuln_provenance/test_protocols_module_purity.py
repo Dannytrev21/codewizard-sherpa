@@ -24,6 +24,9 @@ _ALLOWED_PROTOCOLS_IMPORTS: Final[frozenset[str]] = frozenset(
         "typing",
         "codegenie.types.identifiers",
         "codegenie.primitives.vuln_provenance.types",
+        # S2-04 — the former placeholder `SyftSbom` is swapped for the real
+        # S1-05 model; the import is TYPE_CHECKING-guarded (annotation-only).
+        "codegenie.primitives.vuln_provenance.syft_reader",
     }
 )
 

@@ -29,12 +29,10 @@ and is intentionally minimal:
   only** (not signatures); signature mismatches surface at call time as
   typed errors. ``mypy --strict`` at the registration site is the gate
   for the signatures.
-- **`sbom: SyftSbom` forward reference** — S1-05 lands the real Pydantic
-  model. Until then a ``TYPE_CHECKING``-guarded placeholder keeps
-  ``mypy --strict`` clean today; the runtime annotation is the bare
-  string ``"SyftSbom"`` (via ``from __future__ import annotations``).
-  When S1-05 lands, the placeholder is replaced by the real import and
-  ``typing.get_type_hints(...)`` resolves to the concrete model.
+- **`sbom: SyftSbom`** — the real S1-05 Pydantic model, imported under
+  ``TYPE_CHECKING`` (annotation-only). The runtime annotation stays the
+  bare string ``"SyftSbom"`` (via ``from __future__ import annotations``);
+  ``typing.get_type_hints(...)`` resolves it to the concrete model.
 
 ADRs honored: Phase 7 ADR-0004 (module home), Phase 7 ADR-0007 (registry
 stores classes; Protocol is the duck-typed contract, not an ABC),
@@ -50,15 +48,14 @@ from codegenie.primitives.vuln_provenance.types import AdapterConfidence, Proven
 from codegenie.types.identifiers import CveId, ImageRef, PackageId
 
 if TYPE_CHECKING:
-    # S1-05 lands the real `SyftSbom` Pydantic model under
-    # ``codegenie.primitives.vuln_provenance.syft_reader``. Until then the
-    # ``TYPE_CHECKING`` placeholder keeps ``mypy --strict`` clean — the
-    # runtime annotation is the bare string ``"SyftSbom"`` (PEP 563 via
-    # ``from __future__ import annotations``). When S1-05 lands, replace
-    # this block with the concrete import and the AC-6 forward-reference
-    # test flips to assert the resolved class.
-    class SyftSbom:  # noqa: D101 — placeholder; real model ships in S1-05.
-        ...
+    # S1-05 shipped the real `SyftSbom` Pydantic model; S2-04 — the first
+    # `attribute(...)` caller (`assemble_provenance`) — swaps the former
+    # placeholder for the concrete import so `mypy --strict` resolves the
+    # `sbom` parameter to the real type. The import stays `TYPE_CHECKING`-
+    # guarded (annotation-only): the runtime annotation is still the bare
+    # string ``"SyftSbom"`` (PEP 563 via ``from __future__ import
+    # annotations``), so the AC-6 forward-reference test is unchanged.
+    from codegenie.primitives.vuln_provenance.syft_reader import SyftSbom
 
 
 __all__ = ["VulnProvenanceAdapter"]

@@ -533,17 +533,13 @@ For each component: **Purpose / Public interface / Internal structure / Dependen
   from .errors import ProvenanceError, RegistryError
   from .syft_reader import SyftSbom
 
-  def provenance(
-      cve_id: CveId,
-      package_id: PackageId,
-      image_ref: ImageRef | None,
-      *,
-      sbom: SyftSbom,
-  ) -> Provenance:
-      """Query-time join over gather-time SBOM evidence. ADR-0038."""
-      return assemble_provenance(cve_id, package_id, image_ref, sbom)
+  # `provenance` is a pure re-export ALIAS of `assemble_provenance` (S2-04)
+  # — `provenance is assemble_provenance`. TCCM `derived_queries:` resolves
+  # `compute: vuln.provenance` to this name; aliasing keeps one callable
+  # and one signature rather than a wrapper that could drift.
+  from .assembly import assemble_provenance as provenance
   ```
-- **Internal structure.** Thin wrapper that defers to `assemble_provenance`. The wrapper exists so TCCM `derived_queries:` resolves `compute: vuln.provenance` to a callable without needing the assembly internals.
+- **Internal structure.** `provenance` is a pure re-export *alias* of `assemble_provenance` (S2-04 — `provenance is assemble_provenance`), not a separate wrapper function. TCCM `derived_queries:` resolves `compute: vuln.provenance` to this name without needing the assembly internals; the alias guarantees one callable and one signature.
 - **Dependencies.** None beyond stdlib + Pydantic + the primitive's own modules.
 - **State.** None. Pure function over inputs. No SQLite, no LRU.
 - **Performance envelope.** p99 ≤ 50 ms uncached (ADR-0038 §Tradeoffs).

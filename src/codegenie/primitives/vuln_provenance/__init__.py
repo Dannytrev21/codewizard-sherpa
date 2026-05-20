@@ -35,11 +35,23 @@ S2-03 grows the surface by one name — `iter_adapters_for_layer_set`, the
 `Ecosystem`-sorted intra-layer adapter-iteration helper. The dispatch-order
 tuple `_ADAPTER_DISPATCH_ORDER` stays module-private (see `assembly.py`);
 S2-04's `assemble_provenance` reaches it via the module path.
+
+S2-04 grows the surface by two names — `assemble_provenance`, the composition
+free function that walks `_ADAPTER_DISPATCH_ORDER` and folds adapter results
+into one `Provenance`, and `provenance`, a re-export alias of the same
+callable that TCCM `derived_queries:` (S8-02) resolves `compute:
+vuln.provenance` to.
 """
 
 from __future__ import annotations
 
-from codegenie.primitives.vuln_provenance.assembly import iter_adapters_for_layer_set
+from codegenie.primitives.vuln_provenance.assembly import (
+    assemble_provenance,
+    iter_adapters_for_layer_set,
+)
+from codegenie.primitives.vuln_provenance.assembly import (
+    assemble_provenance as provenance,
+)
 from codegenie.primitives.vuln_provenance.errors import (
     AdapterError,
     ProvenanceError,
@@ -102,7 +114,9 @@ __all__ = [
     "Unknown",
     "UnknownReason",
     "VulnProvenanceAdapter",
+    "assemble_provenance",
     "default_adapter_factory",
     "iter_adapters_for_layer_set",
+    "provenance",
     "register_provenance_adapter",
 ]
