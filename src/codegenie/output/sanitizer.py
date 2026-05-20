@@ -101,6 +101,7 @@ __all__ = [
     "SECRET_FIELD_PATTERN",
     "SanitizedProbeOutput",
     "SecretFinding",
+    "redact_raw_artifact_bytes",
     "redact_secrets",
 ]
 
@@ -301,6 +302,15 @@ _PATTERNS: list[tuple[PatternClass, re.Pattern[str]]] = [
 _ENTROPY_THRESHOLD_BITS_PER_CHAR: float = 4.5
 _ENTROPY_MIN_LEN: int = 32
 
+# 02-ADR-0012 — bytes-form mirror of ``_PATTERNS`` for raw-artifact redaction
+# at the writer-marshalling boundary (``cli.py:618``). Compiled once at
+# module import from the same pattern sources so a pattern change in
+# ``_PATTERNS`` is automatically reflected here (single canonical list). The
+# entropy fallback is deliberately NOT mirrored — see 02-ADR-0012 Tradeoffs.
+_PATTERNS_BYTES: list[tuple[PatternClass, re.Pattern[bytes]]] = [
+    (pc, re.compile(pat.pattern.encode("utf-8"))) for pc, pat in _PATTERNS
+]
+
 
 def _shannon_entropy(s: str) -> float:
     """Return the Shannon entropy of ``s`` in bits-per-character.
@@ -438,3 +448,47 @@ def redact_secrets(
         ),
         findings,
     )
+
+
+def redact_raw_artifact_bytes(
+    payload: bytes, probe_name: ProbeId
+) -> tuple[bytes, list[SecretFinding]]:
+    """Byte-level redaction of a probe's raw-artifact payload (02-ADR-0012).
+
+    Runs every named pattern in :data:`_PATTERNS_BYTES` against ``payload``
+    and replaces each match with the ASCII ``<REDACTED:fingerprint=<8hex>>``
+    marker (same shape as :func:`redact_secrets` so slice-side and raw-side
+    findings carry the same fingerprint for the same cleartext). Each match
+    emits a :class:`SecretFinding` into the returned list so the CLI summary
+    accounts for raw-artifact-origin secrets alongside slice-origin secrets.
+
+    The Shannon-entropy fallback (used by :func:`redact_secrets` for
+    unstructured string leaves) is **deliberately not** mirrored here —
+    entropy over arbitrary protobuf / binary bytes is statistically
+    meaningless and a positive match would corrupt unrelated structural
+    bytes. Adding a seventh named pattern class is an ADR amendment per
+    02-ADR-0012 §Tradeoffs.
+
+    Idempotent: re-applying named patterns to already-redacted bytes is a
+    no-op because the cleartext is gone (``gitleaks`` pre-redacts its own
+    raw bytes per S6-07; that defense-in-depth rung is unchanged).
+    """
+    findings: list[SecretFinding] = []
+    out = payload
+    for pattern_class, pattern in _PATTERNS_BYTES:
+
+        def _repl_bytes(m: re.Match[bytes], _pc: PatternClass = pattern_class) -> bytes:
+            cleartext = m.group(0)
+            fp = content_hash_bytes(cleartext).removeprefix("blake3:")[:8]
+            findings.append(
+                SecretFinding(
+                    probe_name=probe_name,
+                    fingerprint=fp,
+                    pattern_class=_pc,
+                    cleartext_len=len(cleartext),
+                )
+            )
+            return f"<REDACTED:fingerprint={fp}>".encode()
+
+        out = pattern.sub(_repl_bytes, out)
+    return out, findings

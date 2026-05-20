@@ -615,6 +615,18 @@ def _run_gather_pipeline(
 
     import os as _os
 
+    # 02-ADR-0012 — raw-artifact byte redaction at the writer-marshalling
+    # boundary. The slice-side ``redact_secrets`` does not walk
+    # ``ProbeOutput.raw_artifacts``; without this step a secret embedded in
+    # an opaque binary blob (e.g. ``scip-index.scip``'s embedded source
+    # text — F-03) rides verbatim through ``Writer.write`` onto disk. The
+    # function is the single chokepoint so every probe's raw bytes inherit
+    # the invariant — see 02-ADR-0012 §Decision.
+    raw_redactor_mod = importlib.import_module("codegenie.output.sanitizer")
+    redact_raw_artifact_bytes = raw_redactor_mod.redact_raw_artifact_bytes
+    probe_id_mod = importlib.import_module("codegenie.types.identifiers")
+    raw_artifact_findings: list[Any] = []
+
     raw_artifacts: list[tuple[str, bytes]] = []
     for probe_name, output in gather_result.outputs.items():
         budget = budgets_by_probe.get(probe_name, default_resource_budget)
@@ -660,7 +672,15 @@ def _run_gather_pipeline(
                         path=str(raw_path),
                         run_id=run_id,
                     )
-                raw_artifacts.append((raw_path.name, out_bytes))
+                # 02-ADR-0012 — apply named-pattern byte redaction AFTER
+                # truncation (so the bound is ``min(file_size, budget)``)
+                # and BEFORE bytes flow into the writer. Findings accumulate
+                # for the audit summary alongside slice-side findings.
+                redacted_bytes, probe_raw_findings = redact_raw_artifact_bytes(
+                    out_bytes, probe_id_mod.ProbeId(probe_name)
+                )
+                raw_artifact_findings.extend(probe_raw_findings)
+                raw_artifacts.append((raw_path.name, redacted_bytes))
 
     output_dir = path / ".codegenie" / "context"
 
@@ -702,6 +722,22 @@ def _run_gather_pipeline(
     # 02-ADR-0005: fingerprints only, no plaintext, 8-hex.
     skills_output = gather_result.outputs.get("skills_index")
     skills_slice = skills_output.schema_slice if skills_output is not None else None
+    # 02-ADR-0012 — raw-artifact-origin findings are NOT merged into the
+    # stdout summary or the ``envelope.written`` event. Both surfaces report
+    # only envelope-redactor (slice-side) findings, which preserves the
+    # ``stdout_count == event.secrets_redacted_count`` invariant
+    # (``tests/integration/cli/test_summary_count_matches_event.py``) and
+    # mirrors the ``gitleaks`` precedent (probe-side redaction is invisible
+    # to the envelope count). The redaction itself still fires — see the
+    # marshalling block above. Surfacing raw-origin findings on a dedicated
+    # field/line is an ADR amendment per 02-ADR-0012 §Reversibility.
+    if raw_artifact_findings:
+        raw_log.info(
+            "raw_artifacts.redacted",
+            count=len(raw_artifact_findings),
+            fingerprints=sorted({f.fingerprint for f in raw_artifact_findings}),
+            run_id=run_id,
+        )
     _emit_phase2_summary(
         redacted_envelope.findings_count,
         list(redacted_envelope.fingerprints),

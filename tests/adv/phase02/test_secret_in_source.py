@@ -262,6 +262,61 @@ def test_warm_cache_lane_still_zero_plaintext(fresh_fixture: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 02-ADR-0012: every probe's raw_artifact bytes inherit the marshalling-step
+# redaction. Future probes that add raw_artifacts get this defense
+# automatically — no per-probe cooperation required.
+# ---------------------------------------------------------------------------
+
+
+def test_every_probe_raw_artifact_carries_zero_plaintext(fresh_fixture: Path) -> None:
+    """02-ADR-0012 invariant. F-03 surfaced this: ``scip-index.scip``
+    embedded the indexed source text and rode verbatim onto disk. The
+    marshalling-step redactor in ``cli.py`` now runs every probe's raw
+    bytes through ``redact_raw_artifact_bytes`` (named-pattern only —
+    entropy fallback omitted for binary blobs per the ADR §Tradeoffs).
+
+    This test enumerates every file the writer published under
+    ``.codegenie/context/raw/`` and asserts the seed appears in NONE of
+    them. The next probe to add ``raw_artifacts`` inherits the invariant
+    automatically; a regression names the offending file.
+
+    Mutation caught:
+
+    - A new probe writes raw bytes via a path that bypasses the
+      marshalling step (e.g., directly into ``output_dir/raw/`` without
+      reporting in ``ProbeOutput.raw_artifacts``) — the writer never
+      sees the bytes and the test fails on the unredacted file.
+    - The ``cli.py`` marshalling step stops invoking
+      ``redact_raw_artifact_bytes`` — every probe's raw bytes leak; the
+      test names them all.
+    - ``_PATTERNS_BYTES`` drifts out of sync with ``_PATTERNS`` —
+      ``aws_access_key`` no longer matches the AKIA seed and the seed
+      leaks through.
+    """
+    _run_gather(fresh_fixture)
+    raw_dir = fresh_fixture / ".codegenie" / "context" / "raw"
+    assert raw_dir.exists(), "gather did not produce .codegenie/context/raw/"
+
+    raw_files = [p for p in raw_dir.iterdir() if p.is_file()]
+    assert raw_files, (
+        "no raw artifacts written under .codegenie/context/raw/ — expected "
+        "at least gitleaks and (when scip-typescript is on PATH) scip-index"
+    )
+
+    leaks: list[str] = []
+    for path in raw_files:
+        if SEED.encode("utf-8") in path.read_bytes():
+            leaks.append(path.name)
+    assert not leaks, (
+        f"02-ADR-0012 invariant broken — raw artifacts leaked plaintext: "
+        f"{sorted(leaks)}. Either a new probe was added without inheriting "
+        f"the byte redactor, the marshalling step in cli.py stopped applying "
+        f"redact_raw_artifact_bytes, or _PATTERNS_BYTES drifted out of sync "
+        f"with _PATTERNS."
+    )
+
+
+# ---------------------------------------------------------------------------
 # AC-15: audit anchor lane (canonical path)
 # ---------------------------------------------------------------------------
 
