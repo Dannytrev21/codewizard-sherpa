@@ -66,6 +66,13 @@ from `$PATH`, the CLI prints an actionable error and exits non-zero. Do not
 try to monkey-patch the probe to "tolerate" a missing tool — fail loudly
 (global rule 12).
 
+The portfolio golden tests (`tests/golden/test_goldens_match.py`,
+`tests/integration/portfolio/test_portfolio_sweep.py`) assert SCIP index
+freshness, so they need `scip-typescript@0.4.0` on `$PATH`
+(`npm install -g @sourcegraph/scip-typescript@0.4.0`). Without it they skip
+loudly (`SKIPPED LOUD`) rather than fail; CI installs the pinned tool
+itself.
+
 ## Adding a probe
 
 The "extension by addition" rule is load-bearing: adding a probe is never
