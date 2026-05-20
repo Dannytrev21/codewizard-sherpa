@@ -78,6 +78,7 @@ def test_module_exports_exact() -> None:
         "JailSetupFailed",
         "NpmEnv",
         "GitEnv",
+        "JvmEnv",
         "NetworkPolicy",
         "DenyAll",
         "RegistryAllowlist",

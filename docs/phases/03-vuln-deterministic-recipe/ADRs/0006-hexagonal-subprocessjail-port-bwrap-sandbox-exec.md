@@ -54,6 +54,27 @@ Implements **Hexagonal architecture / Ports and adapters** (toolkit §Architectu
 - Adversarial tests: `tests/adversarial/test_postinstall_canary.py` (postinstall does not write canary); `tests/adversarial/test_malicious_npmrc.py` (`.npmrc` redirect to attacker host → `NetworkDenied`); `tests/adversarial/test_symlink_toctou.py` (`SandboxedPath` `O_NOFOLLOW` raises `ELOOP`).
 - Defers ADR-0019 (sandbox stack final choice) — Phase 5 sharpens it, Phase 13 resolves it with bench evidence.
 
+## Amendment — 2026-05-20 — additive `JvmEnv` widening of the `JailedEnv` sum (S5-03)
+
+Story S5-03 (`OpenRewriteRecipeEngine` scaffold) needs to run a JVM subprocess
+under this Port. The `JailedEnv` discriminated sum is widened **additively**
+with a third variant:
+
+- `JvmEnv` — `frozen=True`, `extra="forbid"` Pydantic model; `kind:
+  Literal["jvm"]`, `java_home: str`, `max_heap_mib: int`. `to_env_mapping()`
+  emits `JAVA_HOME` + a `JAVA_TOOL_OPTIONS=-Xmx{max_heap_mib}m` heap cap.
+- `JailedEnv = Annotated[NpmEnv | GitEnv | JvmEnv, Field(discriminator="kind")]`.
+
+The pre-existing `NpmEnv` / `GitEnv` shapes are byte-identical preserved — this
+is the OCP extension path the original `JailedEnv` docstring promised ("adding
+a new env type is one new model + one `Literal` row, no changes to existing
+dispatch"). `JailedEnv` is internal to `transforms/`; Phase 5 reads
+`RecipeOutcome`, not `JailedEnv`, so the ADR-0001 Phase-5 contract snapshot is
+**not** re-baked. The `java` binary is deliberately **not** added to
+`ALLOWED_BINARIES` (ADR-0012 stands) — the scaffold builds the JVM
+`JailedSubprocessSpec` but the integration test that actually spawns `java` is
+gated behind `@pytest.mark.phase_7_preview`.
+
 ## Reversibility
 
 **High.** Adding a third Adapter (or substituting Phase 5's Firecracker) is a new module + constructor injection — zero edits to existing code. Removing the Port entirely (collapse back to direct `subprocess.run`) would require unpicking every recipe engine's `SubprocessJail` dependency — feasible but loses the substitution property. The Port is the easy-to-extend direction; the no-jail direction is the hard one.

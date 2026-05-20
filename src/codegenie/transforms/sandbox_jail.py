@@ -27,8 +27,9 @@ The contract surface this module ships:
   is non-negative (validators on each variant). The umbrella deliberately
   forbids untyped escape hatches (no untyped dict; no bare exceptions
   returned) — every failure mode is a discriminated variant.
-* :data:`JailedEnv` — ``Annotated[NpmEnv | GitEnv, Field(discriminator="kind")]``
-  typed env wrapper. ``NpmEnv.to_env_mapping()`` *unconditionally* sets
+* :data:`JailedEnv` — ``Annotated[NpmEnv | GitEnv | JvmEnv,
+  Field(discriminator="kind")]`` typed env wrapper (S5-03 widened it
+  additively with :class:`JvmEnv`). ``NpmEnv.to_env_mapping()`` *unconditionally* sets
   ``npm_config_ignore_scripts="true"`` — the env half of ADR-0006's split
   defence (the CLI half lives at the consumer's ``cmd``). ``GitEnv``
   unconditionally sets ``GIT_TERMINAL_PROMPT="0"`` and
@@ -71,6 +72,7 @@ __all__ = [
     "JailedSubprocessResult",
     "JailedSubprocessSpec",
     "JailSetupFailed",
+    "JvmEnv",
     "NetworkDenied",
     "NetworkPolicy",
     "NpmEnv",
@@ -118,10 +120,37 @@ class GitEnv(BaseModel):
         }
 
 
-JailedEnv = Annotated[NpmEnv | GitEnv, Field(discriminator="kind")]
+class JvmEnv(BaseModel):
+    """Typed env for JVM invocations inside the jail (ADR-0006 §2026-05-20
+    Amendment — the additive :data:`JailedEnv` widening S5-03's
+    :class:`~codegenie.transforms.engines.openrewrite.OpenRewriteRecipeEngine`
+    scaffold needs).
+
+    ``to_env_mapping`` emits ``JAVA_HOME`` plus a ``JAVA_TOOL_OPTIONS`` heap
+    cap derived from ``max_heap_mib`` — the env channel a JVM reads its
+    ``-Xmx`` bound from (the ``cmd`` half stays a plain ``java -jar``). Both
+    fields are load-bearing; neither carries the env-key as a substring, so
+    there is no extension trapdoor (the :class:`NpmEnv` / :class:`GitEnv`
+    discipline)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["jvm"] = "jvm"
+    java_home: str
+    max_heap_mib: int
+
+    def to_env_mapping(self) -> dict[str, str]:
+        return {
+            "JAVA_HOME": self.java_home,
+            "JAVA_TOOL_OPTIONS": f"-Xmx{self.max_heap_mib}m",
+        }
+
+
+JailedEnv = Annotated[NpmEnv | GitEnv | JvmEnv, Field(discriminator="kind")]
 """Discriminated union over jail-aware env wrappers — OCP-correct extension
-path: adding a third env type is one new model + one ``Literal`` row, no
-changes to existing dispatch."""
+path: adding a fourth env type is one new model + one ``Literal`` row, no
+changes to existing dispatch. S5-03 widened this additively with
+:class:`JvmEnv`; the pre-existing :class:`NpmEnv` / :class:`GitEnv` shapes
+are byte-identical preserved."""
 
 
 # ---------------------------------------------------------------------------

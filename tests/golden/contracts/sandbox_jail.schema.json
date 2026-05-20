@@ -237,6 +237,32 @@
         "title": "GitEnv",
         "type": "object"
       },
+      "JvmEnv": {
+        "additionalProperties": false,
+        "description": "Typed env for JVM invocations inside the jail (ADR-0006 \u00a72026-05-20\nAmendment \u2014 the additive :data:`JailedEnv` widening S5-03's\n:class:`~codegenie.transforms.engines.openrewrite.OpenRewriteRecipeEngine`\nscaffold needs).\n\n``to_env_mapping`` emits ``JAVA_HOME`` plus a ``JAVA_TOOL_OPTIONS`` heap\ncap derived from ``max_heap_mib`` \u2014 the env channel a JVM reads its\n``-Xmx`` bound from (the ``cmd`` half stays a plain ``java -jar``). Both\nfields are load-bearing; neither carries the env-key as a substring, so\nthere is no extension trapdoor (the :class:`NpmEnv` / :class:`GitEnv`\ndiscipline).",
+        "properties": {
+          "java_home": {
+            "title": "Java Home",
+            "type": "string"
+          },
+          "kind": {
+            "const": "jvm",
+            "default": "jvm",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_heap_mib": {
+            "title": "Max Heap Mib",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "java_home",
+          "max_heap_mib"
+        ],
+        "title": "JvmEnv",
+        "type": "object"
+      },
       "NpmEnv": {
         "additionalProperties": false,
         "description": "Typed env for npm invocations inside the jail (ADR-0006 \u00a7Decision).\n\n``to_env_mapping`` ALWAYS emits ``npm_config_ignore_scripts=\"true\"`` \u2014\nthe env half of the ``--ignore-scripts`` split defence. The CLI half\n(``--ignore-scripts`` in ``cmd``) lives at the consumer; S4-05's\ncapability-fence test ties them together.",
@@ -311,6 +337,7 @@
         "discriminator": {
           "mapping": {
             "git": "#/$defs/GitEnv",
+            "jvm": "#/$defs/JvmEnv",
             "npm": "#/$defs/NpmEnv"
           },
           "propertyName": "kind"
@@ -321,6 +348,9 @@
           },
           {
             "$ref": "#/$defs/GitEnv"
+          },
+          {
+            "$ref": "#/$defs/JvmEnv"
           }
         ],
         "title": "Env"

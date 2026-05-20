@@ -353,3 +353,23 @@ async def test_aws_prefix_match_strips_arbitrary_key_for_new_binary(
     ]
     assert drop_events, "expected a drop event for AWS_FOO"
     assert drop_events[0]["log_level"] == "warning"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# S5-03 AC-CI-2 — `java` is NOT in `ALLOWED_BINARIES` for Phase 3.
+# ───────────────────────────────────────────────────────────────────────────
+
+
+def test_java_not_in_allowed_binaries_phase3() -> None:
+    """S5-03 AC-CI-2 — the `OpenRewriteRecipeEngine` scaffold builds a JVM
+    `JailedSubprocessSpec` whose `cmd` starts with `java`, but `java` is
+    deliberately absent from `ALLOWED_BINARIES` in Phase 3 (03-ADR-0012 amends
+    the closed set with `npm`/`bwrap`/`sandbox-exec`/`jq` — no `java`; ADR-0009
+    §Consequences). The engine is structurally complete but the binary it
+    would spawn is gated; the real-JVM test is `@pytest.mark.phase_7_preview`.
+    Phase 7's first PR deletes this case and amends 03-ADR-0012 to add `java`.
+    """
+    assert "java" not in ALLOWED_BINARIES, (
+        "`java` must stay out of ALLOWED_BINARIES until Phase 7 enables the "
+        "OpenRewriteRecipeEngine (ADR-0009 / 03-ADR-0012)"
+    )

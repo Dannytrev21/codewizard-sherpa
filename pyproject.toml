@@ -261,7 +261,7 @@ pythonpath = ["."]
 # in S6-02 with the 85/75 per-module carve-outs declared in
 # `[tool.coverage_carve_outs]` already in place (ADR-0005). Do NOT raise
 # ahead.
-addopts = "-ra --strict-markers -m \"not bench\" --cov=src/codegenie --cov-branch --cov-fail-under=85"
+addopts = "-ra --strict-markers -m \"not bench and not phase_7_preview\" --cov=src/codegenie --cov-branch --cov-fail-under=85"
 # Registered markers. `bench` partitions the advisory cold-start /
 # coordinator-overhead / cache-hit-dispatch canaries that ship in
 # `tests/bench/` (S5-01); they never gate merge — the structural
@@ -272,6 +272,7 @@ markers = [
   "phase02_adv: Phase 2 adversarial tests (CI-gating; see tests/adv/phase02/)",
   "serial: tests that MUST run serially (ADR-0009 — pytest-xdist veto)",
   "nightly_macos: macOS-substrate live tests run only on the nightly darwin runner (S4-03 AC-12)",
+  "phase_7_preview: Phase 7 preview tests; skipped in Phase 3 CI by default — collected only with -m phase_7_preview",
 ]
 
 [tool.coverage.run]

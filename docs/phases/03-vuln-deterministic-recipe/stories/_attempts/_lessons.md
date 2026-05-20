@@ -253,3 +253,29 @@ phase-story-executor runs in this phase. New entries at the bottom.
     "changing needs an ADR" (S8-03 `test_bench_collection_guard_unchanged.py`),
     do not bump it from inside an unrelated story — drop the advisory
     artifact instead and file the bump as an ADR-gated follow-up.
+
+23. **An additive sum-widening trips module-local golden snapshots the
+    story may not name** (observed 2026-05-20, S5-03). Adding `JvmEnv` to the
+    `JailedEnv` discriminated union changed `JailedSubprocessSpec
+    .model_json_schema()`, which broke `test_sandbox_jail_contract_snapshot
+    .py` against the golden `tests/golden/contracts/sandbox_jail.schema.json`
+    — a *module-local* contract snapshot (S4-01 AC-15) **distinct** from the
+    ADR-0001 Phase-5 contract snapshot the story's AC explicitly said it
+    leaves alone. Lesson: a story that says "the contract snapshot is NOT
+    re-baked" usually means *one specific* snapshot; before widening any
+    discriminated union, `grep -rl '<TypeName>\|schema_json\|model_json_schema'
+    tests/golden tests/**/contract*` for *every* golden that digests the
+    type. The fix for a genuinely-additive widening is to regenerate that
+    golden + amend the owning ADR — not to revert the widening.
+
+24. **The smart-constructor `cls.__new__(cls)` shape fails mypy-strict when
+    the base ABC's `__new__` is annotated `-> BaseABC`** (observed 2026-05-20,
+    S5-03). `Transform.__new__` returns `-> Transform`; a `create` classmethod
+    that does `instance = cls.__new__(cls); ...; return instance` then fails
+    `--strict` with `Incompatible return value type (got "Transform", expected
+    "<Subclass>")`. AC-Tool-1 forbids `cast`. The fix: give the concrete
+    subclass a normal keyword-only `__init__` (the S5-02 `NpmLockfileTransform`
+    shape) and have `create` build via `cls(...)` — mypy infers `cls(...)` as
+    the subclass, and an AST fence "no `<Subclass>(` outside `create`" still
+    holds because `create` calls `cls(`, not the class name. Prefer this over
+    the `cls.__new__` form whenever a story outline prescribes the latter.

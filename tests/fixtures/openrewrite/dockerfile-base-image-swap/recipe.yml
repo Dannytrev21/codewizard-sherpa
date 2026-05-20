@@ -1,0 +1,13 @@
+# OpenRewrite recipe — Dockerfile base-image swap (PLACEHOLDER).
+#
+# Phase 3 ships this fixture so the OpenRewriteRecipeEngine scaffold has a
+# real recipe path to invoke; the rewrite content itself is Phase 7's job
+# (see ../README.md). Phase 7 replaces this stub with the authored
+# `org.openrewrite.docker`-style recipe that rewrites the `FROM` line from a
+# stock base image to its Chainguard distroless equivalent.
+type: specs.openrewrite.org/v1beta/recipe
+name: org.codegenie.docker.SwapBaseImageToChainguard
+displayName: Swap Dockerfile base image to a Chainguard distroless image
+description: >-
+  Placeholder recipe — Phase 7 authors the real Dockerfile FROM-line rewrite.
+recipeList: []
