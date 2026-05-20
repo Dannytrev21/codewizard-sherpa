@@ -108,14 +108,23 @@ def identity_hash_bytes(b: bytes) -> str:
     return f"sha256:{hashlib.sha256(b).hexdigest()}"
 
 
-def content_hash_fd(fd: int, *, offset: int, size: int) -> str:
-    """Return ``blake3:<64-hex>`` of ``size`` bytes starting at ``offset`` in ``fd``.
+def content_hash_fd(fd: int, *, offset: int, size: int | None = None) -> str:
+    """Return ``blake3:<64-hex>`` of bytes from ``offset`` in ``fd``.
 
     Streams ``os.read(fd, 64 KiB)`` chunks through the running BLAKE3 hasher
     without materializing the body as a single ``bytes`` value — the budget
     that ``SkillsLoader`` (S2-01) protects with a ``tracemalloc`` peak of
     < 20 KB on a 100 MB body. The digest is identical to
     :func:`content_hash_bytes` of the same span.
+
+    ``size`` selects two modes:
+
+    - ``size`` is an ``int`` — hash exactly that many bytes; a short read
+      (e.g. the file was truncated mid-read) raises :class:`OSError`. Use
+      this when the length is independently pinned (a span inside a file).
+    - ``size`` is ``None`` — hash from ``offset`` to end-of-file, however
+      many bytes that turns out to be. Use this to hash a whole file whose
+      length is not separately asserted; it cannot raise a short-read error.
 
     The function ``os.lseek(fd, offset, os.SEEK_SET)`` first; the caller's
     file-descriptor position is therefore mutated. Callers that share the
@@ -125,30 +134,33 @@ def content_hash_fd(fd: int, *, offset: int, size: int) -> str:
         fd: Open file descriptor (from ``os.open``). The function does not
             close it — fd lifecycle remains the caller's responsibility.
         offset: Byte offset from start-of-file to begin hashing.
-        size: Number of bytes to hash. Reading fewer bytes than ``size``
-            (e.g., file truncated mid-read) raises :class:`OSError`.
+        size: Exact byte count to hash, or ``None`` to hash to EOF.
 
     Returns:
         ``f"blake3:{hexdigest}"`` — same format as :func:`content_hash`.
 
     Raises:
-        OSError: ``os.lseek`` or ``os.read`` fails; fewer than ``size``
-            bytes available.
+        OSError: ``os.lseek`` or ``os.read`` fails; or ``size`` is an int
+            and fewer than ``size`` bytes were available.
     """
     from blake3 import blake3 as _blake3
 
     os.lseek(fd, offset, os.SEEK_SET)
     hasher = _blake3()
-    remaining = size
-    while remaining > 0:
-        chunk = os.read(fd, min(_CHUNK_BYTES, remaining))
-        if not chunk:
-            raise OSError(
-                f"content_hash_fd: short read — expected {size} bytes from offset "
-                f"{offset}, got {size - remaining}"
-            )
-        hasher.update(chunk)
-        remaining -= len(chunk)
+    if size is None:
+        while chunk := os.read(fd, _CHUNK_BYTES):
+            hasher.update(chunk)
+    else:
+        remaining = size
+        while remaining > 0:
+            chunk = os.read(fd, min(_CHUNK_BYTES, remaining))
+            if not chunk:
+                raise OSError(
+                    f"content_hash_fd: short read — expected {size} bytes from offset "
+                    f"{offset}, got {size - remaining}"
+                )
+            hasher.update(chunk)
+            remaining -= len(chunk)
     return f"blake3:{hasher.hexdigest()}"
 
 

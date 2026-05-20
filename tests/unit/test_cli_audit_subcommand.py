@@ -57,7 +57,8 @@ def populated_run(tmp_path: Path) -> dict[str, Path]:
         config={},
     )
     task = Task(type="__bullet_tracer__", options={})
-    key = cache.key_for(_FakeProbe(), snap, task)  # type: ignore[arg-type]
+    probe = _FakeProbe()
+    key = cache.key_for(probe, snap, task)  # type: ignore[arg-type]
 
     output = SanitizedProbeOutput(
         schema_slice={"language_stack": {"counts": {"javascript": 1}, "primary": "javascript"}},
@@ -70,7 +71,7 @@ def populated_run(tmp_path: Path) -> dict[str, Path]:
     # Put the blob through the real cache machinery — the verifier looks
     # it up by ``cache_key`` so the blob has to exist.
     probe_output = ProbeOutput(**asdict(output))
-    cache.put(key, probe_output)
+    cache.put(key, probe_output, probe_name=probe.name, probe_version=probe.version)
 
     gather_result = GatherResult(
         outputs={"language_detection": output},

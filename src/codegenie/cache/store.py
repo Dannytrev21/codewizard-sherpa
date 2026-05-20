@@ -24,10 +24,13 @@ whose serialized length would exceed ``PIPE_BUF=4096`` bytes breaks the
 ``O_APPEND`` atomicity invariant from edge-case 12, so ``put`` rejects it
 loudly rather than tearing concurrent records.
 
-**Permissions (ADR-0011).** Directories ``0700``, files ``0600``. After every
-write, ``os.chmod`` is walked across the cache tree to defeat the CI
-``actions/cache`` restore that flattens modes to umask defaults. Tests assert
-post-``put`` state, not the transient post-restore window.
+**Permissions (ADR-0011).** Directories ``0700``, files ``0600``. The full
+mode re-walk runs once in ``__init__`` to defeat the CI ``actions/cache``
+restore that flattens modes to umask defaults — a restore happens at process
+start, so one walk per process catches it. Each ``put`` then re-asserts modes
+only on the blob and index line it just wrote; nothing else flattens modes
+mid-process. Tests assert post-``put`` state, not the transient post-restore
+window.
 
 **Concurrency.** ``index.jsonl`` is opened ``O_APPEND`` and written with a
 single ``os.write`` call so the kernel guarantees record-level atomicity for
@@ -178,11 +181,19 @@ class CacheStore:
     def __init__(self, cache_dir: Path, ttl_hours: int) -> None:
         self._cache_dir = cache_dir
         self._ttl_hours = ttl_hours
-        # populated by ``key_for``; ``put`` reads ``(name, version)`` from
-        # here when stamping the index record so the public signature stays
-        # ``put(key, output)`` as the story sketches.
-        self._key_meta: dict[str, tuple[str, str]] = {}
+        # In-memory {key: latest_record} view of index.jsonl, lazily built
+        # and reused while the file size is unchanged. index.jsonl is
+        # append-only, so its size strictly increases — a changed size is a
+        # cheap, exact signal that a record was appended (by this process or
+        # a concurrent one) and the map must be rebuilt.
+        self._index_cache: dict[str, dict[str, Any]] | None = None
+        self._index_size: int = -1
         _ensure_dir(self._cache_dir)
+        # One full mode re-walk per process. The ``actions/cache`` restore
+        # that flattens modes to umask defaults happens at process start, so
+        # a single walk here catches it; each ``put`` re-asserts modes only
+        # on what it wrote.
+        _reapply_modes(self._cache_dir)
 
     # ------------------------------------------------------------------ paths
 
@@ -197,16 +208,13 @@ class CacheStore:
     # ------------------------------------------------------------------ keys
 
     def key_for(self, probe: _ProbeLike, snapshot: RepoSnapshot, task: Task) -> str:
-        """Delegate to :func:`codegenie.cache.keys.key_for` and stash metadata.
+        """Delegate to :func:`codegenie.cache.keys.key_for`.
 
-        ``put`` later reads the ``(probe.name, probe.version)`` tuple keyed
-        by the returned hash to populate the index record. The coordinator
-        always calls ``key_for`` before ``put``; tests follow the same
-        sequence.
+        Pure pass-through — the ``(probe.name, probe.version)`` pair the
+        index record needs is passed explicitly to :meth:`put`, so there is
+        no ordering coupling between ``key_for`` and ``put``.
         """
-        key = _key_for_module(probe, snapshot, task)
-        self._key_meta[key] = (probe.name, probe.version)
-        return key
+        return _key_for_module(probe, snapshot, task)
 
     # ------------------------------------------------------------------ get
 
@@ -256,59 +264,78 @@ class CacheStore:
             return None
 
     def get_index_record(self, key: str) -> dict[str, Any] | None:
-        """Linear scan; return the LAST index record whose ``"key"`` equals ``key``.
+        """Return the LAST index record whose ``"key"`` equals ``key``.
 
-        Last-write-wins is the cache's contract: two ``put`` calls with the
-        same key result in two index records; this returns the most recent.
-        A mutant returning the first match regresses.
+        Served from an in-memory ``{key: latest_record}`` map that is rebuilt
+        only when ``index.jsonl``'s size changes — the file is append-only so
+        a changed size means a record was added (by this process or a
+        concurrent one). Last-write-wins is preserved: the rebuild replays
+        every line in order, so a later record for the same key overwrites an
+        earlier one. A mutant returning the first match regresses.
 
-        Public for the S3-06 audit verifier — promoted from the previous
-        private ``_latest_record_for`` so ``codegenie.audit.verify_runs`` can
-        resolve a ``cache_key`` to its on-disk blob path without going
+        Public for the S3-06 audit verifier — ``codegenie.audit.verify_runs``
+        resolves a ``cache_key`` to its on-disk blob path without going
         through :meth:`get` (which would re-deserialize and mask byte-level
         tampering). Returns ``None`` if no record matches or the index file
         does not exist.
         """
-        if not self._index_path.exists():
+        try:
+            current_size = self._index_path.stat().st_size
+        except FileNotFoundError:
             return None
-        latest: dict[str, Any] | None = None
-        with self._index_path.open("r", encoding="utf-8") as fh:
+        if self._index_cache is None or current_size != self._index_size:
+            self._index_cache = self._load_index()
+            self._index_size = current_size
+        return self._index_cache.get(key)
+
+    def _load_index(self) -> dict[str, dict[str, Any]]:
+        """Parse ``index.jsonl`` into ``{key: latest_record}`` (last-write-wins).
+
+        A torn partial line (edge-case 12) fails ``json.loads`` and is
+        skipped; the rest of the index stays valid.
+        """
+        out: dict[str, dict[str, Any]] = {}
+        try:
+            fh = self._index_path.open("r", encoding="utf-8")
+        except FileNotFoundError:
+            return out
+        with fh:
             for line in fh:
                 if not line.strip():
                     continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
-                    # Edge-case 12: a partial line from a torn write. Skip
-                    # and keep walking; the rest of the index stays valid.
                     continue
-                if record.get("key") == key:
-                    latest = record
-        return latest
+                rec_key = record.get("key")
+                if isinstance(rec_key, str):
+                    out[rec_key] = record
+        return out
 
     # ------------------------------------------------------------------ put
 
-    def put(self, key: str, output: ProbeOutput) -> None:
+    def put(
+        self,
+        key: str,
+        output: ProbeOutput,
+        *,
+        probe_name: str,
+        probe_version: str,
+    ) -> None:
         """Persist ``output`` under ``key`` — atomic blob + appended index line.
 
         Sequence: serialize → record-size guard → write blob (atomic) →
-        append index line → re-apply ``0700``/``0600`` modes across the
-        cache tree. The blob write is atomic so a crash between the two
-        writes leaves no orphan record pointing at a missing blob (the next
-        ``get`` would surface ``cache.blob.invalid`` and the coordinator
-        would re-run anyway). Raises :class:`CacheError` only for the
-        record-size precondition violation; every other failure surface is
-        the OS layer (filesystem full / permissions) and propagates.
+        append index line → re-assert ``0700``/``0600`` modes on the blob
+        and index just written. The blob write is atomic so a crash between
+        the two writes leaves no orphan record pointing at a missing blob
+        (the next ``get`` would surface ``cache.blob.invalid`` and the
+        coordinator would re-run anyway). ``probe_name`` / ``probe_version``
+        stamp the index record — passed explicitly so ``put`` carries no
+        hidden dependency on a prior ``key_for`` call. Raises
+        :class:`CacheError` only for the record-size precondition violation;
+        every other failure surface is the OS layer (filesystem full /
+        permissions) and propagates.
         """
-        try:
-            probe_name, probe_version = self._key_meta[key]
-        except KeyError as exc:
-            raise CacheError(
-                f"CacheStore.put({key!r}, ...) called before key_for(...) populated "
-                "probe metadata. The coordinator must compute the key via "
-                "CacheStore.key_for(probe, snapshot, task) before storing the output."
-            ) from exc
-
         blob_bytes = serialize_output(output)
         blob_blake3 = content_hash_bytes(blob_bytes)
         blob_sha256 = identity_hash_bytes(blob_bytes)
@@ -347,4 +374,16 @@ class CacheStore:
         finally:
             os.close(fd)
 
-        _reapply_modes(self._cache_dir)
+        # Re-assert modes only on what this put wrote — the blob's parent
+        # dirs are already chmod'd by ``_ensure_dir`` above, and the full
+        # cache-tree re-walk ran once in ``__init__``.
+        os.chmod(blob_file, _FILE_MODE)
+        os.chmod(index, _FILE_MODE)
+
+        # Keep the in-memory index view coherent with our own append so a
+        # following get() needn't re-parse the file. A concurrent process's
+        # append changes the file size, which get_index_record's size guard
+        # catches independently.
+        if self._index_cache is not None:
+            self._index_cache[key] = record
+            self._index_size = index.stat().st_size

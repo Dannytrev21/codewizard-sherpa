@@ -75,7 +75,7 @@ def ingest_records(
             raise TypeError(f"ingest_records: unexpected type {type(item).__name__}")
     conn = idx._require_open()  # noqa: SLF001 — intentional test seam
     rows = (_record_to_row_with_blob(r) for r in successes)
-    inserted, skipped = _persist(conn, rows)
+    inserted, skipped = _persist(conn, rows, attempted=len(successes))
     return IngestStats(
         inserted=inserted,
         skipped=skipped,
@@ -87,30 +87,41 @@ def ingest_records(
 def _persist(
     conn: sqlite3.Connection,
     rows: Iterable[tuple[object, ...]],
+    *,
+    attempted: int,
 ) -> tuple[int, int]:
-    """Run ``INSERT OR IGNORE`` per row; return ``(inserted, skipped)``.
+    """Bulk ``INSERT OR IGNORE`` in one transaction; return ``(inserted, skipped)``.
 
-    sqlite's ``changes()`` reports the rowcount of the most-recent
-    statement. ``INSERT OR IGNORE`` returns ``1`` on insert, ``0`` on
-    constraint-violation skip — exactly the idempotency signal AC-D4
-    requires.
+    The whole batch commits atomically — a mid-batch failure rolls back and
+    re-running is free (``INSERT OR IGNORE`` is idempotent). ``inserted`` is
+    the delta of :attr:`sqlite3.Connection.total_changes` (rows actually
+    modified) across the ``executemany``; an ignored constraint violation
+    modifies nothing, so ``skipped = attempted - inserted`` — the same
+    idempotency signal AC-D4 requires. This replaces a per-row commit plus a
+    per-row ``SELECT changes()`` round-trip: a ~200k-record NVD refresh drops
+    from ~400k statements + 200k transactions to one ``executemany`` in one
+    transaction.
+
+    ``rows`` is consumed lazily by ``executemany`` so the per-row blob is
+    never all held in memory at once; ``attempted`` is supplied by the caller
+    (which already holds the record list) to avoid materializing it here.
     """
-    inserted = 0
-    skipped = 0
-    for row in rows:
-        conn.execute(
+    before = conn.total_changes
+    conn.execute("BEGIN")
+    try:
+        conn.executemany(
             "INSERT OR IGNORE INTO vulnerabilities ("
             "cve_id, ecosystem, package, introduced, fixed, last_affected, "
             "severity, published_at, source, raw_payload"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            row,
+            rows,
         )
-        changes = conn.execute("SELECT changes()").fetchone()[0]
-        if changes == 1:
-            inserted += 1
-        else:
-            skipped += 1
-    return inserted, skipped
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
+    inserted = conn.total_changes - before
+    return inserted, attempted - inserted
 
 
 def _record_to_row_with_blob(record: VulnerabilityRecord) -> tuple[object, ...]:

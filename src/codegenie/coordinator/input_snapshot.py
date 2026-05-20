@@ -56,7 +56,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 import structlog
 
 from codegenie.coordinator.parsed_manifest_memo import ParsedManifestMemo
-from codegenie.hashing import content_hash_bytes
+from codegenie.hashing import content_hash_fd
 from codegenie.probes.base import InputFingerprint
 
 __all__ = ["compute_input_snapshot", "make_parsed_manifest_adapter"]
@@ -113,13 +113,18 @@ def _fingerprint_from_fd(
             ),
             True,
         )
-    data = os.read(fd, size) if size > 0 else b""
+    # Stream the hash straight off the fd in 64 KiB chunks rather than
+    # materializing the whole body. ``size`` is omitted (hash to EOF) so the
+    # digest reflects the file's actual content — the ``os.fstat`` size is
+    # the cap-check input, not a read-length assertion (a probe's declared
+    # input can legitimately be shorter than a stale stat under a test
+    # ``os.fstat`` patch or a concurrent truncation).
     return (
         InputFingerprint(
             path=abs_path,
             mtime_ns=mtime_ns,
             size=size,
-            content_hash=content_hash_bytes(data),
+            content_hash=content_hash_fd(fd, offset=0),
         ),
         False,
     )

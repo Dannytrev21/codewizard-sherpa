@@ -181,6 +181,41 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # package). adr: docs/phases/01-context-gather-layer-a-node/ADRs/
         # 0013-yarn-variants-as-distinct-package-managers.md §Amendment 2026-05-20.
         Path("src/codegenie/conventions/loader.py"),
+        # ADR-0044 — performance-hardening migration of the gather kernel.
+        # CacheStore scopes its mode re-walk to __init__, drops the
+        # _key_meta side-channel, and serves the index from an in-memory
+        # size-guarded map. adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/cache/store.py"),
+        # ADR-0044 — content-addressed cache key derived from the input
+        # snapshot's content hashes (replaces the size-only fingerprint);
+        # adds an explicit _CACHE_KEY_VERSION. adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/cache/keys.py"),
+        # ADR-0044 — coordinator reorders snapshot/key derivation and
+        # offloads the blocking per-probe prelude via asyncio.to_thread.
+        # adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/coordinator/coordinator.py"),
+        # ADR-0044 — input snapshot streams file hashes (content_hash_fd)
+        # and matches declared globs against the shared filesystem index.
+        # adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/coordinator/input_snapshot.py"),
+        # ADR-0044 — new module: one descent-pruning os.walk per gather,
+        # shared by cache-key derivation and the input snapshot.
+        # adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/coordinator/file_index.py"),
+        # ADR-0044 — tree-sitter Parser + compiled Query built once per
+        # language; cooperative yields so the declared timeout can fire.
+        # adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/probes/layer_b/tree_sitter_import_graph.py"),
+        # ADR-0044 — tree-sitter Parser reused across files (performance-
+        # hardening migration). adr: docs/production/adrs/
+        # 0044-performance-hardening-of-the-gather-kernel.md
+        Path("src/codegenie/probes/layer_b/node_reflection.py"),
     }
 )
 

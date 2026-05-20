@@ -283,9 +283,14 @@ def test_extract_imports_is_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     """``_extract_imports`` is the functional core: in → out, no I/O.
     Monkeypatch ``Path.read_bytes`` to a sentinel so any filesystem touch
     raises (Rule 9: tests verify intent — the discipline is the contract)."""
+    from tree_sitter import Parser, Query
+
     from codegenie.grammars.lock import language_for
+    from codegenie.probes.layer_b.tree_sitter_import_graph import _TS_IMPORT_QUERY
 
     lang_ts = language_for("typescript")
+    parser = Parser(lang_ts)
+    query = Query(lang_ts, _TS_IMPORT_QUERY)
 
     def _no_io(*_args: Any, **_kw: Any) -> bytes:
         raise AssertionError("filesystem touched from pure helper")
@@ -293,7 +298,7 @@ def test_extract_imports_is_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Path, "read_bytes", _no_io)
 
     src_bytes = b'import x from "lodash";\nimport "./bootstrap";\n'
-    edges = _extract_imports(lang_ts, src_bytes, "src/index.ts")
+    edges = _extract_imports(parser, query, src_bytes, "src/index.ts")
     assert Edge(**{"from": "src/index.ts", "to": "lodash"}) in edges
     assert Edge(**{"from": "src/index.ts", "to": "./bootstrap"}) in edges
 
