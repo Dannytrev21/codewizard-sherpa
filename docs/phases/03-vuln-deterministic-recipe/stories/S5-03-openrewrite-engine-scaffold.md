@@ -1,7 +1,7 @@
 # Story S5-03 — `OpenRewriteRecipeEngine` scaffold (Protocol-conformant, Phase-7 preview)
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** HARDENED
+**Status:** BLOCKED — 2026-05-20 (phase-story-executor Stage-1 hard gate; see [`_attempts/S5-03.md`](_attempts/S5-03.md)). Inherits S5-02's root contradiction: AC-Contract-1 (`apply` returns a 2-tuple) and AC-Surface-2(b) (`apply` is `mypy --strict` `RecipeEngine`-Protocol-conformant) are mutually unsatisfiable against the landed S5-01 `RecipeEngine.apply(...) -> RecipeOutcome`. Secondary blockers: `NpmLockfileRecipeEngine` and the S5-02-introduced engine fences do not exist (S5-02 shipped no code). Needs `/phase-architect` + `/phase-story-writer` rework before re-execution.
 **Effort:** M
 **Depends on:** S5-01 (HARDENED — `RecipeEngine` Protocol at `transforms/recipe_engine.py` + `ApplicationPlan`), S1-03 (GREEN — `outcomes.py` discriminated unions), S1-04 (GREEN — `Transform` ABC + `TransformProvenance`), S4-01 (HARDENED — `SubprocessJail` Port + `JailedSubprocessSpec` + `JailedEnv` discriminated sum), S4-04 (HARDENED — `SandboxedPath` typealias)
 **ADRs honored:** ADR-0009, ADR-0006, ADR-0012, ADR-0010, ADR-0001 (Phase-5 contract — additive `JailedEnv` widening for `JvmEnv` is logged), Phase-1 ADR-0007 (`ErrorId` dotted-snake format)

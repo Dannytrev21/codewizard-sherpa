@@ -159,3 +159,25 @@ phase-story-executor runs in this phase. New entries at the bottom.
     `TransformRegistry` exists. Decide that (architect scope:
     widen `Applied`, change the Protocol, or add a registry story)
     *before* any engine story can be executed.
+
+17. **One unresolved architecture contradiction blocks every story
+    in its dependency cone — not just the one that surfaced it**
+    (S5-03 — BLOCKED). S5-03 (`OpenRewriteRecipeEngine` scaffold)
+    was `HARDENED` and is the next un-executed story after the
+    BLOCKED S5-02, yet it could not run: it carries the *same*
+    `apply` 2-tuple vs. `RecipeEngine`-Protocol-conformance
+    contradiction (lesson #16), because it implements the same
+    S5-01 Protocol the same way. It also fails on secondary
+    prerequisites — `NpmLockfileRecipeEngine` and the
+    `tests/fence/test_engines_no_*` engine fences are S5-02
+    deliverables that never shipped, so S5-03's AC-Surface-2(c),
+    AC-Surface-4 and AC-Pure-2 reference artifacts that do not
+    exist. Lesson: when a story is BLOCKED on an architecture
+    decision, do not advance to the next story in the same cone
+    hoping it is independent — first diff the next story's
+    contract against the *as-built* code and against what the
+    BLOCKED story was supposed to ship. The fix for the whole
+    cone is one `/phase-architect` pass, not N executor retries.
+    A `HARDENED` status only means the story was self-consistent
+    when validated; a *sibling* story later turning BLOCKED can
+    still invalidate it.
