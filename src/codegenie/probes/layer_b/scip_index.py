@@ -241,6 +241,15 @@ class ScipIndexProbe(Probe):
         if head_warning:
             warnings.append("scip_index.head_unresolvable")
 
+        # ``scip-typescript --infer-tsconfig`` writes a ``tsconfig.json`` into
+        # the analyzed repo root when none exists. Gather must never mutate the
+        # repo outside ``.codegenie/`` — a stray ``tsconfig.json`` both dirties
+        # the user's tree and perturbs the tsconfig-reading probes
+        # (``node_build_system``, ``semantic_index_meta``). Record pre-existence
+        # so the ``finally`` below removes only a file this probe created.
+        tsconfig_path = repo.root / "tsconfig.json"
+        tsconfig_preexisted = tsconfig_path.is_file()
+
         try:
             result = await _exec.run_external_cli(
                 _PROBE_ID,
@@ -275,6 +284,15 @@ class ScipIndexProbe(Probe):
                 extra_warnings=warnings,
                 t0=t0,
             )
+        finally:
+            # Remove the ``--infer-tsconfig`` artifact on every path (success,
+            # timeout, non-zero exit). ``tool_missing`` never reaches here with
+            # a new file since the tool did not run; the guard makes that safe.
+            if not tsconfig_preexisted and tsconfig_path.is_file():
+                try:
+                    tsconfig_path.unlink()
+                except OSError:
+                    pass
 
         if result.returncode != 0:
             stderr_tail = result.stderr[-_STDERR_TAIL_BYTES:].decode("utf-8", errors="replace")

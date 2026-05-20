@@ -82,6 +82,13 @@ _EXCLUDED_FIELD_NAMES: frozenset[str] = frozenset(
         "duration_ms",  # per-probe elapsed time
         "audit_anchor",  # references a per-run UTC-ISO anchor
         "node_version_resolved_locally",  # local Node runtime version (macOS vs Linux CI runner)
+        # IndexHealth ``scip`` cell — its freshness flips fresh<->stale purely
+        # on whether ``scip-typescript`` is installed in the gather environment
+        # (CI runners lack it; developer boxes may have it). Excluding the cell
+        # keeps the portfolio goldens byte-identical regardless of tool
+        # presence; the scip-index freshness logic itself is covered by the
+        # ``index_health`` unit tests, not the golden harness.
+        "scip",
     }
 )
 
