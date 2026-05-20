@@ -63,7 +63,6 @@ JsonValue: TypeAlias = None | bool | int | float | str | list["JsonValue"] | dic
 _REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 _PORTFOLIO_DIR: Path = _REPO_ROOT / "tests" / "fixtures" / "portfolio"
 _GOLDEN_ROOT: Path = _REPO_ROOT / "tests" / "golden" / "probes"
-_COUNT_FILE: Path = _REPO_ROOT / "tests" / "golden" / "probes" / "COUNT.txt"
 
 # ---------------------------------------------------------------------------
 # Exclusion + inclusion tables (AC-7, AC-8, AC-37)
@@ -441,9 +440,10 @@ def cmd_update(portfolio_root: Path, golden_root: Path) -> int:
         for probe_name, content in slices.items():
             target = golden_root / probe_name / f"{fixture.name}.json"
             _atomic_write_text(target, content)
-    # Refresh COUNT.txt
+    # Refresh COUNT.txt — kept under ``golden_root`` so a ``--golden-root``
+    # override redirects it too (tests must not touch the real golden tree).
     count = sum(1 for _ in golden_root.rglob("*.json"))
-    _atomic_write_text(_COUNT_FILE, f"{count}\n")
+    _atomic_write_text(golden_root / "COUNT.txt", f"{count}\n")
     return 0
 
 
