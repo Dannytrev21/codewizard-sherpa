@@ -64,6 +64,7 @@ The format is **lightweight Nygard-style** (per Michael Nygard's [original 2011 
 | [0041](0041-model-and-prompt-release-qualification.md) | Model and prompt release qualification | llm · release · reproducibility · capability · content-addressed-digest |
 | [0042](0042-multi-plugin-coordination-for-both-workflows.md) | Multi-plugin coordination for `Both` workflows | orchestration · coordination · planning |
 | [0043](0043-extension-by-addition-means-no-silent-edits.md) | Extension by addition means "no silent edits" — category-based fence replaces per-phase allowlists; sanctioned migration path | architecture · extension-by-addition · fences · contracts · migrations |
+| [0044](0044-performance-hardening-of-the-gather-kernel.md) | Performance hardening of the gather kernel — a bounded, conformance-gated migration of existing Phase 0/1/2 components | performance · memory · concurrency · kernel · migration · fences |
 
 ## Index — Deferred decisions
 
