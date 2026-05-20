@@ -72,6 +72,8 @@ _EXPECTED_PUBLIC_ALL: Final[tuple[str, ...]] = (
     "VulnProvenanceAdapter",
     # S2-02 — all-None convenience factory singleton (lowercase).
     "default_adapter_factory",
+    # S2-03 — Ecosystem-sorted intra-layer adapter-iteration helper.
+    "iter_adapters_for_layer_set",
     # S2-01 — decorator (lowercase, sorts after VulnProvenanceAdapter).
     "register_provenance_adapter",
 )

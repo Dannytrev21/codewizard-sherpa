@@ -30,10 +30,16 @@ S2-02 grows the surface by three names — the `AdapterFactory` Protocol,
 the `DefaultAdapterFactory` implementation, and the all-`None`
 `default_adapter_factory` singleton. The closed DI-kwarg vocabulary
 `_DI_KWARGS` stays module-private (see `factory.py`).
+
+S2-03 grows the surface by one name — `iter_adapters_for_layer_set`, the
+`Ecosystem`-sorted intra-layer adapter-iteration helper. The dispatch-order
+tuple `_ADAPTER_DISPATCH_ORDER` stays module-private (see `assembly.py`);
+S2-04's `assemble_provenance` reaches it via the module path.
 """
 
 from __future__ import annotations
 
+from codegenie.primitives.vuln_provenance.assembly import iter_adapters_for_layer_set
 from codegenie.primitives.vuln_provenance.errors import (
     AdapterError,
     ProvenanceError,
@@ -97,5 +103,6 @@ __all__ = [
     "UnknownReason",
     "VulnProvenanceAdapter",
     "default_adapter_factory",
+    "iter_adapters_for_layer_set",
     "register_provenance_adapter",
 ]

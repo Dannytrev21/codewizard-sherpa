@@ -1,7 +1,16 @@
 # Story S2-03 — `_ADAPTER_DISPATCH_ORDER` `Final` tuple + `Ecosystem`-sorted intra-layer iteration
 
+**Status:** Done
+**Completed:** 2026-05-19
+**Attempts:** 1
+**Evidence:**
+- Files: `src/codegenie/primitives/vuln_provenance/assembly.py` (new), `src/codegenie/primitives/vuln_provenance/__init__.py`, `tests/unit/primitives/vuln_provenance/test_assembly_dispatch_order.py` (new), `tests/unit/primitives/vuln_provenance/test_types_dunder_all.py`
+- Tests: `test_assembly_dispatch_order.py` — 7 tests, one+ per AC (AC-1..AC-6 + ADR-0007 classes-not-instances cross-check + package re-export check)
+- Gates: `ruff check` / `ruff format` clean, `mypy --strict src/` clean (194 files), `lint-imports` 5/5 contracts KEPT, `tests/unit/primitives/vuln_provenance/` + `tests/fence/` 475 passed
+- Attempt log: `_attempts/S2-03-adapter-dispatch-order-tuple.md`
+- Commit: (pending human merge)
+
 **Step:** Step 2 — Registry kernel, `_ADAPTER_DISPATCH_ORDER`, `assemble_provenance` free function
-**Status:** Ready
 **Effort:** S
 **Depends on:** S2-01 (`Layer`, `Ecosystem`, `_REGISTRY`)
 **ADRs honored:** Phase 7 ADR-0006 (dispatch order is explicit `Final` tuple, NOT implicit `dict.items()` — closes critic BP-1), Phase 7 ADR-0007 (registry-stores-classes — this story's iteration helper returns classes), Phase 7 ADR-0004 (vuln.provenance primitive home — assembly module lives there), production ADR-0038 (vulnerability provenance attribution — the deferred order-policy question).
@@ -37,15 +46,15 @@ Ship `src/codegenie/primitives/vuln_provenance/assembly.py` containing: (1) `_AD
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — `_ADAPTER_DISPATCH_ORDER` shape and order.** `assembly.py` declares `_ADAPTER_DISPATCH_ORDER: Final[tuple[tuple[Layer, ...], ...]] = ((Layer.APP,), (Layer.BASE_IMAGE,), (Layer.RUNTIME,))`. Test asserts `_ADAPTER_DISPATCH_ORDER == ((Layer.APP,), (Layer.BASE_IMAGE,), (Layer.RUNTIME,))` (exact-tuple equality; catches reordering and member-set changes).
-- [ ] **AC-2 — Tuple is `Final`-typed and immutable in practice.** Test asserts `assembly._ADAPTER_DISPATCH_ORDER` is a `tuple`, not `list`, and each inner element is `tuple`, not `list`. (Python doesn't enforce `Final` at runtime; the test pins the shape.)
-- [ ] **AC-3 — `iter_adapters_for_layer_set` filters by layer.** Given a registry populated with three classes — `(Layer.APP, Ecosystem.NPM, _A)`, `(Layer.BASE_IMAGE, Ecosystem.APK, _B)`, `(Layer.BASE_IMAGE, Ecosystem.DPKG, _C)` — calling `iter_adapters_for_layer_set((Layer.APP,), registry)` yields ONLY the APP entry. Calling with `(Layer.BASE_IMAGE,)` yields ONLY APK and DPKG. Catches "yields everything" and "yields wrong-layer" mutants.
-- [ ] **AC-4 — Intra-layer iteration is `Ecosystem`-declaration-sorted.** Register entries in non-declaration order: `(Layer.BASE_IMAGE, Ecosystem.DPKG, _C)` first, then `(Layer.BASE_IMAGE, Ecosystem.APK, _B)`. Calling `iter_adapters_for_layer_set((Layer.BASE_IMAGE,), registry)` MUST yield APK (index 3 in `tuple(Ecosystem)`) BEFORE DPKG (index 4). Test asserts the order is `(APK_key, DPKG_key)` regardless of registration order. **This is the load-bearing Gap 4 polyglot-tiebreaker assertion** — locks BP-1 at the helper level (S2-05's property test locks it end-to-end).
-- [ ] **AC-5 — Empty layer yields nothing.** `iter_adapters_for_layer_set((Layer.RUNTIME,), registry)` on an empty `RUNTIME` layer yields zero items. Test exhausts the iterator and asserts the resulting list is `[]`. This is the `RUNTIME` reserved-slot smoke check (Phase 7 ADR-0006 §Consequences row 2 — Phase 7 ships no runtime adapter, but the row is reserved).
-- [ ] **AC-6 — Multi-layer layer-set yields filtered + sorted union.** Future-proofing for hypothetical `(Layer.APP, Layer.BASE_IMAGE)` layer-sets: the helper concatenates per-layer iterations in `_ADAPTER_DISPATCH_ORDER`-tuple order, each intra-layer sorted by `Ecosystem`. Test with a synthetic `layer_set = (Layer.APP, Layer.BASE_IMAGE)` registers one APP and two BASE_IMAGE entries; asserts the yielded order is `(APP_key, BASE_IMAGE_APK_key, BASE_IMAGE_DPKG_key)`. (Phase 7's `_ADAPTER_DISPATCH_ORDER` never uses multi-element layer-sets, but the helper supports them — preserving the tuple-of-tuples shape per ADR-0006.)
-- [ ] **AC-7 — `iter_adapters_for_layer_set` is `mypy --strict` clean with `Mapping[ProvenanceAdapterId, type[VulnProvenanceAdapter]]` parameter typing.** Allows callers to pass either `_REGISTRY` (real) or test fixtures (any `Mapping`).
-- [ ] **AC-8 — TDD red test exists, committed, green.** `tests/unit/primitives/vuln_provenance/test_assembly_dispatch_order.py::test_intra_layer_iteration_is_ecosystem_sorted_not_registration_sorted` was the first failing test; impl makes it green.
-- [ ] **AC-9 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/primitives/vuln_provenance/assembly.py` and the test module. `make lint-imports` green.
+- [x] **AC-1 — `_ADAPTER_DISPATCH_ORDER` shape and order.** `assembly.py` declares `_ADAPTER_DISPATCH_ORDER: Final[tuple[tuple[Layer, ...], ...]] = ((Layer.APP,), (Layer.BASE_IMAGE,), (Layer.RUNTIME,))`. Test asserts `_ADAPTER_DISPATCH_ORDER == ((Layer.APP,), (Layer.BASE_IMAGE,), (Layer.RUNTIME,))` (exact-tuple equality; catches reordering and member-set changes).
+- [x] **AC-2 — Tuple is `Final`-typed and immutable in practice.** Test asserts `assembly._ADAPTER_DISPATCH_ORDER` is a `tuple`, not `list`, and each inner element is `tuple`, not `list`. (Python doesn't enforce `Final` at runtime; the test pins the shape.)
+- [x] **AC-3 — `iter_adapters_for_layer_set` filters by layer.** Given a registry populated with three classes — `(Layer.APP, Ecosystem.NPM, _A)`, `(Layer.BASE_IMAGE, Ecosystem.APK, _B)`, `(Layer.BASE_IMAGE, Ecosystem.DPKG, _C)` — calling `iter_adapters_for_layer_set((Layer.APP,), registry)` yields ONLY the APP entry. Calling with `(Layer.BASE_IMAGE,)` yields ONLY APK and DPKG. Catches "yields everything" and "yields wrong-layer" mutants.
+- [x] **AC-4 — Intra-layer iteration is `Ecosystem`-declaration-sorted.** Register entries in non-declaration order: `(Layer.BASE_IMAGE, Ecosystem.DPKG, _C)` first, then `(Layer.BASE_IMAGE, Ecosystem.APK, _B)`. Calling `iter_adapters_for_layer_set((Layer.BASE_IMAGE,), registry)` MUST yield APK (index 3 in `tuple(Ecosystem)`) BEFORE DPKG (index 4). Test asserts the order is `(APK_key, DPKG_key)` regardless of registration order. **This is the load-bearing Gap 4 polyglot-tiebreaker assertion** — locks BP-1 at the helper level (S2-05's property test locks it end-to-end).
+- [x] **AC-5 — Empty layer yields nothing.** `iter_adapters_for_layer_set((Layer.RUNTIME,), registry)` on an empty `RUNTIME` layer yields zero items. Test exhausts the iterator and asserts the resulting list is `[]`. This is the `RUNTIME` reserved-slot smoke check (Phase 7 ADR-0006 §Consequences row 2 — Phase 7 ships no runtime adapter, but the row is reserved).
+- [x] **AC-6 — Multi-layer layer-set yields filtered + sorted union.** Future-proofing for hypothetical `(Layer.APP, Layer.BASE_IMAGE)` layer-sets: the helper concatenates per-layer iterations in `_ADAPTER_DISPATCH_ORDER`-tuple order, each intra-layer sorted by `Ecosystem`. Test with a synthetic `layer_set = (Layer.APP, Layer.BASE_IMAGE)` registers one APP and two BASE_IMAGE entries; asserts the yielded order is `(APP_key, BASE_IMAGE_APK_key, BASE_IMAGE_DPKG_key)`. (Phase 7's `_ADAPTER_DISPATCH_ORDER` never uses multi-element layer-sets, but the helper supports them — preserving the tuple-of-tuples shape per ADR-0006.)
+- [x] **AC-7 — `iter_adapters_for_layer_set` is `mypy --strict` clean with `Mapping[ProvenanceAdapterId, type[VulnProvenanceAdapter]]` parameter typing.** Allows callers to pass either `_REGISTRY` (real) or test fixtures (any `Mapping`).
+- [x] **AC-8 — TDD red test exists, committed, green.** `tests/unit/primitives/vuln_provenance/test_assembly_dispatch_order.py::test_intra_layer_iteration_is_ecosystem_sorted_not_registration_sorted` was the first failing test; impl makes it green.
+- [x] **AC-9 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/primitives/vuln_provenance/assembly.py` and the test module. `make lint-imports` green.
 
 ## Implementation outline
 
