@@ -12,7 +12,7 @@ The shipped surface is a local Python CLI (`codegenie`) that produces a determin
 
 ## Architecture (local POC)
 
-The diagram below is the **gather pipeline** — Phases 0–2 of the [roadmap](docs/roadmap.md): a deterministic context-gathering pipeline with no LLM anywhere in the gather path. Phase 3 builds the transform layer on top of it. The probe contract that ships here is the same one the production service will use, so bugs at this layer propagate.
+The diagram below shows how the tool works today: it scans a code repository — the **gather-context** step — and proposes a fix for a known security vulnerability across the **plan → make the change → validate → hand off** steps. Every step is deterministic; no AI/LLM is involved. (See [`docs/roadmap.md`](docs/roadmap.md) for where this sits in the longer-term plan.)
 
 ![Local POC architecture](docs/architecture/local-poc.svg)
 
@@ -23,30 +23,41 @@ The diagram below is the **gather pipeline** — Phases 0–2 of the [roadmap](d
 
 ```mermaid
 flowchart TD
-    repo[Target repo<br/>any directory]
-    cfg[.codegenie.yaml<br/>config loader]
-    cli["codegenie gather &lt;repo&gt;<br/>Python CLI · click"]
-    coord[Coordinator asyncio<br/>bounded pool · per-probe timeout<br/>failure isolation]
-    reg[Probe Registry<br/>@register_probe]
-    probes[Probes Layers A–G<br/>LanguageDetection · NodeBuildSystem · NodeManifest<br/>CI · Deployment · TestInventory<br/>IndexHealth B2 · BuildGraph · SCIPIndex · …]
-    cache[(Cache<br/>.codegenie/cache/<br/>content-addressed)]
-    allow[Subprocess allowlist<br/>chokepoint — ADR 0012 · 0001]
-    ext[External tools<br/>git · node · semgrep · syft · grype<br/>gitleaks · scip-typescript · tree-sitter]
-    val[Pydantic validator<br/>ADR 0010]
-    san[Sanitizer<br/>two-pass — ADR 0008]
-    wr[Output Writer<br/>YAML + JSON]
-    out[(.codegenie/context/<br/>repo-context.yaml<br/>raw/*.json<br/>audit/log.jsonl)]
-    fence[CI fence<br/>import-linter forbids LLM imports<br/>anywhere in gather/ — ADR 0002]
+    overview["The full workflow:  1 Discover  ›  2 Gather context  ›  3 Plan the fix  ›  4 Make the change  ›  5 Validate  ›  6 Hand off  ›  7 Learn<br/>Steps 2–6 run today and are detailed below; steps 1 and 7 are planned."]
 
-    repo --> cli
-    cfg --> cli
-    cli --> coord
-    coord <--> reg
-    coord --> probes
-    probes <--> cache
-    probes --> allow --> ext
-    probes --> val --> san --> wr --> out
-    fence -. enforces .-> probes
+    subgraph GATHER["Step 2 · GATHER CONTEXT — scan the repository, record the facts"]
+        repo["Target code repository<br/>any folder on disk"]
+        cli["The codegenie command<br/>run from the terminal"]
+        runner["Check runner<br/>runs every check at once, each with a time limit; one failure<br/>never blocks the rest; each check declares the files it reads,<br/>so its result is cached and re-used when nothing changed"]
+        subgraph CHECKS["The checks — dozens of small independent probes, each inspecting one aspect of the repo in parallel"]
+            c1["Project basics<br/>language, build system, dependencies,<br/>tests, deployment — about 6 checks"]
+            c2["Code structure<br/>dependency and import graphs, symbol indexes,<br/>and a freshness check for stale data — about 7 checks"]
+            c3["Security checks<br/>known vulnerabilities, software inventory,<br/>container setup, runtime behavior — about 7 checks"]
+            c4["Project knowledge<br/>the team's conventions, decision records,<br/>policies and internal docs — about 8 checks"]
+            c5["Ownership and operations<br/>who owns the code, service relationships,<br/>reliability targets — about 3 checks"]
+            c6["Targeted scans<br/>searches for leaked secrets and risky code,<br/>plus test-coverage mapping — about 5 checks"]
+        end
+        write["Validate and write safely<br/>check each result, strip absolute paths<br/>and anything secret-shaped"]
+        repo --> cli --> runner
+        runner --> CHECKS
+        CHECKS --> write
+    end
+
+    report[("Context report — repo-context.yaml<br/>the evidence file every later step reads")]
+    write --> report
+
+    subgraph FIX["Steps 3–6 · PROPOSE A FIX — in progress"]
+        plan["Step 3 — Plan the fix<br/>find the vulnerability in a local database of<br/>public vulnerability feeds; pick a fix recipe"]
+        change["Step 4 — Make the change<br/>apply the recipe — e.g. upgrade<br/>the vulnerable package"]
+        validate["Step 5 — Validate<br/>build and test the patched code<br/>in a locked-down sandbox"]
+        handoff[/"Step 6 — Hand off<br/>write the change as a patch on a branch;<br/>a person reviews and merges it — never the tool"/]
+        plan --> change --> validate --> handoff
+    end
+
+    overview -.-> GATHER
+    report --> plan
+    guard["Guardrail — an automated build check blocks<br/>any AI / LLM library from entering the pipeline"]
+    guard -. enforces .-> GATHER
 ```
 
 </details>

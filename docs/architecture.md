@@ -68,7 +68,7 @@ The shape itself is load-bearing — see [ADR-0010](production/adrs/0010-seven-s
 
 ## What's running locally today (the POC)
 
-The repository currently implements only the **gather layer** — Stage 2 in the diagram above. It's a Python CLI (`codegenie gather`) that probes any directory and writes a structured `RepoContext`. No Temporal, no Planner, no LangGraph yet.
+The repository implements the **gather layer** (Stage 2 above) end to end, and is now building the first **transform** slice — deterministic vulnerability remediation (Stages 3–4), in progress. The `codegenie` CLI scans any directory into a structured `RepoContext`; the fix path then reads that context plus a local database of public vulnerability feeds, picks a deterministic fix recipe, applies it, and verifies the patched code in a locked-down sandbox. No Temporal, no Planner, no LangGraph — and no LLM anywhere.
 
 ![Local POC architecture](architecture/local-poc.svg)
 
