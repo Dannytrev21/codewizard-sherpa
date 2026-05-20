@@ -246,7 +246,8 @@ class ScipIndexProbe(Probe):
         # repo outside ``.codegenie/`` — a stray ``tsconfig.json`` both dirties
         # the user's tree and perturbs the tsconfig-reading probes
         # (``node_build_system``, ``semantic_index_meta``). Record pre-existence
-        # so the ``finally`` below removes only a file this probe created.
+        # so the ``finally`` below removes only a file this probe created
+        # (P3-ADR-0014).
         tsconfig_path = repo.root / "tsconfig.json"
         tsconfig_preexisted = tsconfig_path.is_file()
 

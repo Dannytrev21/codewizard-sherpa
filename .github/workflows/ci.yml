@@ -114,6 +114,16 @@ jobs:
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | sudo tar -xzC /usr/local/bin gitleaks
           gitleaks version
+      - name: Install scip-typescript (portfolio index_health goldens assert SCIP freshness)
+        # The portfolio index_health goldens are recorded with a working
+        # scip-typescript on PATH: ScipIndexProbe (B1) indexes each fixture and
+        # B2 reports ``scip: {confidence: high, freshness: fresh}``. Without the
+        # tool the probe takes the ToolMissingError path and the goldens
+        # diverge. ubuntu-24.04 runners ship Node + npm; pin for parity.
+        run: |
+          set -euo pipefail
+          npm install -g @sourcegraph/scip-typescript@0.4.0
+          scip-typescript --version
       - name: Run tests
         run: pytest -q --cov-report=json
       - name: Per-module coverage carve-outs (ADR-0005)
@@ -375,6 +385,15 @@ jobs:
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | sudo tar -xzC /usr/local/bin gitleaks
           gitleaks version
+      - name: Install scip-typescript (index_health goldens assert SCIP freshness)
+        # B1 (ScipIndexProbe) indexes each portfolio fixture; B2's index_health
+        # golden records ``scip: {confidence: high, freshness: fresh}``. Without
+        # the tool the probe hits ToolMissingError and the goldens diverge.
+        # ubuntu-24.04 runners ship Node + npm; pin for parity.
+        run: |
+          set -euo pipefail
+          npm install -g @sourcegraph/scip-typescript@0.4.0
+          scip-typescript --version
       - name: Materialize stale-scip fixture
         # ``regen_golden.py`` (invoked by ``test_portfolio_sweep`` AC-28) runs
         # against the canonical fixtures. ``stale-scip``'s runtime state is
