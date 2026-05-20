@@ -54,7 +54,7 @@ from codegenie.probes.layer_b._indexable_files import _NODE_SOURCE_SUFFIXES, _wa
 from codegenie.probes.registry import register_probe
 
 if TYPE_CHECKING:
-    from tree_sitter import Language
+    from tree_sitter import Language, Parser, Query
 
 __all__ = ["Edge", "ImportGraphArtifact", "TreeSitterImportGraphProbe"]
 
@@ -187,21 +187,24 @@ def _strip_quotes(literal: str) -> str:
     return literal
 
 
-def _extract_imports(language: Language, source_bytes: bytes, relative_path: str) -> list[Edge]:
+def _extract_imports(
+    parser: Parser, query: Query, source_bytes: bytes, relative_path: str
+) -> list[Edge]:
     """Parse *source_bytes* and emit one :class:`Edge` per import-like
     statement. Pure: zero I/O, zero logging.
 
+    *parser* and *query* are built once per language at :meth:`run` entry
+    and reused across every file — rebuilding them per file would
+    recompile the query S-expression thousands of times on a large repo.
     The caller owns the shell concerns (file I/O, size gate); this
     helper assumes pre-loaded inputs so it can be unit-tested against
     in-memory byte strings.
     """
-    from tree_sitter import Parser, Query, QueryCursor
+    from tree_sitter import QueryCursor
 
-    parser = Parser(language)
     tree = parser.parse(source_bytes)
     if tree.root_node.has_error:
         raise _PerFileParseFailed
-    query = Query(language, _TS_IMPORT_QUERY)
     edges: list[Edge] = []
     seen: set[tuple[str, str]] = set()
     for _match_id, captures in QueryCursor(query).matches(tree.root_node):
@@ -225,7 +228,9 @@ def _extract_imports(language: Language, source_bytes: bytes, relative_path: str
     return edges
 
 
-def _read_and_extract(path: Path, language: Language, relative_path: str) -> list[Edge]:
+def _read_and_extract(
+    path: Path, parser: Parser, query: Query, relative_path: str
+) -> list[Edge]:
     """Shell over :func:`_extract_imports` — owns the per-file IO + size
     gate + parse-error gate. Every failure escalates to a sentinel
     exception the caller maps to one ``failed_files`` increment plus
@@ -241,7 +246,7 @@ def _read_and_extract(path: Path, language: Language, relative_path: str) -> lis
     except OSError as exc:
         raise _PerFileParseFailed from exc
     try:
-        return _extract_imports(language, source_bytes, relative_path)
+        return _extract_imports(parser, query, source_bytes, relative_path)
     except _PerFileParseFailed:
         raise
     except Exception as exc:
@@ -343,12 +348,22 @@ class TreeSitterImportGraphProbe(Probe):
         except GrammarLoadRefused as exc:
             return self._emit_grammar_refused(reason=str(exc), t0=t0)
 
-        # 2. Per-file extraction inside an async-cancellable inner coroutine
+        # 2. Build one Parser + compiled Query per language, reused across
+        #    every file. Rebuilding them per file recompiles the query
+        #    S-expression once per file — thousands of times on a large repo.
+        from tree_sitter import Parser, Query
+
+        tooling: dict[SupportedLanguage, tuple[Parser, Query]] = {
+            name: (Parser(lang), Query(lang, _TS_IMPORT_QUERY))
+            for name, lang in languages.items()
+        }
+
+        # 3. Per-file extraction inside an async-cancellable inner coroutine
         #    so wait_for can cancel us at timeout. The body is synchronous.
         accumulator: _Accumulator = _Accumulator()
         try:
             await asyncio.wait_for(
-                self._parse_all(repo, languages, accumulator),
+                self._parse_all(repo, tooling, accumulator),
                 timeout=self.timeout_seconds,
             )
             timed_out = False
@@ -414,7 +429,7 @@ class TreeSitterImportGraphProbe(Probe):
     async def _parse_all(
         self,
         repo: RepoSnapshot,
-        languages: Mapping[SupportedLanguage, Language],
+        tooling: Mapping[SupportedLanguage, tuple[Parser, Query]],
         acc: _Accumulator,
     ) -> None:
         """Sequential per-file walk inside an ``async def`` shell so the
@@ -422,10 +437,10 @@ class TreeSitterImportGraphProbe(Probe):
         *acc* in place — partial progress survives cancellation."""
         for path in _walk_source_files(repo.root, _NODE_SOURCE_SUFFIXES):
             language_name = _SOURCE_SUFFIX_TO_LANGUAGE[path.suffix]
-            language = languages[language_name]
+            parser, query = tooling[language_name]
             relative_path = path.relative_to(repo.root).as_posix()
             try:
-                file_edges = _read_and_extract(path, language, relative_path)
+                file_edges = _read_and_extract(path, parser, query, relative_path)
             except _PerFileTooLarge:
                 acc.failed += 1
                 _accumulate_warning(acc.warning_counts, acc.warnings, "tree_sitter.file_too_large")

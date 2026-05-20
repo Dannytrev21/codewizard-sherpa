@@ -270,6 +270,13 @@ class NodeReflectionProbe(Probe):
             for query_name, query_text in _REFLECTION_QUERIES.items():
                 compiled_queries[(lang_name, query_name)] = Query(lang, query_text)
 
+        # One Parser per language, reused across every file — a Parser
+        # carries no cross-parse state, so rebuilding it per file is
+        # pure overhead.
+        parsers: dict[SupportedLanguage, Parser] = {
+            lang_name: Parser(lang) for lang_name, lang in languages.items()
+        }
+
         counts = _empty_counts()
         affected_files: set[str] = set()
         warnings: list[str] = []
@@ -285,7 +292,7 @@ class NodeReflectionProbe(Probe):
                 continue
             if len(file_bytes) > _FILE_MAX_BYTES:
                 continue
-            parser = Parser(languages[language_name])
+            parser = parsers[language_name]
             try:
                 tree = parser.parse(file_bytes)
             except (ValueError, RuntimeError):
