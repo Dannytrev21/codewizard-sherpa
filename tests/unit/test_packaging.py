@@ -35,6 +35,12 @@ RUNTIME_DEPS = frozenset(
         # vuln_index package at runtime. ADR-0002 fence still excludes LLM
         # SDKs; `alembic` is not an LLM SDK.
         "alembic",
+        # Phase-3 S5-02 adds `orjson` to the runtime closure — the production
+        # JSON parser for `NpmLockfileRecipeEngine` (arch §C12). `OPT_INDENT_2`
+        # (no key-sort) is the byte-identical round-trip pin for the
+        # deterministic-recipe contract. ADR-0002 fence still excludes LLM
+        # SDKs; `orjson` is not an LLM SDK.
+        "orjson",
     }
 )
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
