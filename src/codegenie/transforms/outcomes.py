@@ -37,10 +37,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from codegenie.types.identifiers import (
     BranchName,
     ErrorId,
+    PackageId,
     PluginId,
     RecipeId,
     SignalKind,
     TransformId,
+    TransformKind,
 )
 
 __all__ = [
@@ -173,13 +175,50 @@ class RemediationError(BaseModel):
 
 
 class ApplicationPlan(BaseModel):
-    """Typed application plan returned by :class:`Applies`. Placeholder shape
-    for Phase 3 — S5-01's ``NpmLockfileRecipeEngine`` widens additively with
-    e.g. ``patches: list[LockfilePatch]``. Phase-3 keeps a single ``summary``
-    free-text field so Phase-4+ plugins can ship without re-aligning S1-03."""
+    """Typed application plan returned by :class:`Applies` and consumed by a
+    :class:`~codegenie.transforms.recipe_engine.RecipeEngine`.
+
+    S5-02 widens this **additively** (ADR-0010 amendment): the four optional
+    npm-semver-bump fields below carry ``None`` defaults so every existing
+    ``ApplicationPlan(summary=...)`` / ``ApplicationPlan()`` call site keeps
+    working. Phase 4's ``LLMFallbackEngine`` widens additively again with its
+    own ``for_llm_fallback(...)`` smart constructor — never edit existing
+    fields (extension by addition).
+
+    ``from_version`` / ``to_version`` are npm dependency *range specifiers*
+    (e.g. ``^4.17.1``), not bare semver — caret / tilde / comparator
+    operators are valid, so no semver regex is applied (the S5-02 fixture
+    data ``^4.17.1`` is the canonical counter-example to a strict pin).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     summary: str | None = None
+    package: PackageId | None = None
+    from_version: str | None = None
+    to_version: str | None = None
+    transform_kind: TransformKind | None = None
+
+    @classmethod
+    def for_npm_semver_bump(
+        cls,
+        *,
+        package: PackageId,
+        from_version: str,
+        to_version: str,
+        transform_kind: TransformKind,
+    ) -> ApplicationPlan:
+        """Smart constructor — build a fully-populated npm-semver-bump plan.
+
+        Returns a frozen plan with all four npm fields set and ``summary``
+        left ``None``; this is the plan shape :class:`~codegenie.transforms
+        .engines.npm_lockfile.NpmLockfileRecipeEngine` reads."""
+        return cls(
+            summary=None,
+            package=package,
+            from_version=from_version,
+            to_version=to_version,
+            transform_kind=transform_kind,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,11 @@ repos:
           # mypy hook can resolve the stubs.
           - alembic>=1.13
           - sqlalchemy>=2
+          # Phase 3 S5-02: ``codegenie.transforms.engines.npm_lockfile`` imports
+          # ``orjson`` (the production JSON parser; arch §C12). orjson ships its
+          # own type stubs — mirroring it here lets the isolated mypy hook
+          # resolve them.
+          - orjson>=3.9
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.

@@ -214,3 +214,28 @@ phase-story-executor runs in this phase. New entries at the bottom.
     change from the import graph and running the script
     standalone before treating it as a regression. Do not "fix"
     it by committing macOS-regenerated goldens — that breaks CI.
+
+20. **A "HARDENED" story can still carry as-built contract drift the
+    validator missed** (observed 2026-05-20, S5-02). The story's own
+    Re-execution note said as much: "Doing the reads in this order
+    surfaces all the contract drift you would have otherwise hit at
+    run-time." S5-02 contradicted the as-built `NpmInstallCapability`
+    (no `event_id`), `RegistryAllowlist.hosts` (a `frozenset`, not a
+    bare-hostname tuple), `RecipeError.details` (no `list` values),
+    `JailedSubprocessResult` (six variants, not five), and the
+    repo-wide no-`Any` fence. Lesson: in Stage 1, read every as-built
+    contract type the story *consumes* (not just the ones it edits)
+    and diff each shape against what the ACs assert — fix the test
+    expectations to the as-built shape and document each in the
+    attempt log. Drift in a HARDENED story is the executor's job to
+    resolve, not a reason to re-BLOCK, as long as the goal/scope hold.
+
+21. **New runtime dep ⇒ four files, not one** (observed 2026-05-20,
+    S5-02 added `orjson`): `[project].dependencies` in `pyproject.toml`,
+    `uv.lock` (`uv lock` — `test_uv_lock_is_in_lockstep` gates it), the
+    `mypy` hook's `additional_dependencies` in `.pre-commit-config.yaml`
+    (the hook runs in an isolated venv — `make typecheck` passes locally
+    because the project venv has the dep, but `pre-commit` does not), and
+    any phase-era forbidden-dep test that pre-emptively banned the name
+    (`test_no_lcov_parse_pypi_dep_added` banned `orjson` repo-wide; the
+    ban was over-broad and was narrowed per Rule 7).

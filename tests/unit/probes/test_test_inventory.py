@@ -1074,9 +1074,17 @@ def test_classify_node_test_helper() -> None:
 
 
 def test_no_lcov_parse_pypi_dep_added() -> None:
-    """AC-51 — ADR-0009."""
+    """AC-51 — ADR-0009: the test-inventory / LCOV probe must not pull in an
+    LCOV-parsing pypi dependency — it uses the stdlib.
+
+    ``orjson`` was removed from this list on 2026-05-20: Phase-3 story S5-02
+    legitimately adds it as the production JSON parser for
+    ``NpmLockfileRecipeEngine`` (arch §C12 / S5-02 AC-Tool-4). The ban here
+    was over-broad — its real intent is "no LCOV-specific parser dep", which
+    the remaining four tokens still pin. The test-inventory probe's own purity
+    is enforced separately by ``test_no_subprocess_in_probe_or_scanner``."""
     pyproject = Path("pyproject.toml").read_text()
-    forbidden = ["lcov-parse", "coverage-parse", "python-lcov", "pyjson5", "orjson"]
+    forbidden = ["lcov-parse", "coverage-parse", "python-lcov", "pyjson5"]
     for token in forbidden:
         assert token not in pyproject, f"forbidden dep {token!r} appeared in pyproject.toml"
 

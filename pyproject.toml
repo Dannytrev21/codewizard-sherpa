@@ -59,6 +59,13 @@ dependencies = [
   # ``alembic``/``sqlalchemy`` out of ``sys.modules`` (AC-L2; cold-start
   # fence). Not in ``FORBIDDEN_LLM_SDKS`` — fence (ADR-0002) unaffected.
   "alembic>=1.13",
+  # Phase 3 S5-02: ``NpmLockfileRecipeEngine`` parses + re-serialises
+  # ``package.json`` / ``package-lock.json`` with ``orjson`` — the production
+  # JSON parser (arch §C12). ``OPT_INDENT_2`` (no key-sort) is the
+  # byte-identical round-trip pin for the deterministic-recipe contract (G4).
+  # Not an LLM SDK — ``fence`` (ADR-0002) and the import-linter LLM contracts
+  # are unaffected.
+  "orjson>=3.9",
 ]
 
 [project.optional-dependencies]
