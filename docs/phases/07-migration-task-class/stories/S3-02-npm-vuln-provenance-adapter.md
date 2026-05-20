@@ -1,7 +1,20 @@
 # Story S3-02 — `NpmVulnProvenanceAdapter` body + DI kwargs
 
 **Step:** Step 3 — `NpmVulnProvenanceAdapter` in Phase 3 plugin as additive new file (first byte-edit territory)
-**Status:** Ready
+**Status:** BLOCKED (2026-05-20; see [`_attempts/S3-02-npm-vuln-provenance-adapter.md`](_attempts/S3-02-npm-vuln-provenance-adapter.md))
+
+> **BLOCKED — do not execute until resolved.** S3-02 has unsatisfiable
+> preconditions: (A) the `plugins/vulnerability-remediation--node--npm/`
+> Phase 3 plugin directory does not exist — Phase 3 is designed but not
+> implemented; (B) `bench/vuln-remediation/` cassettes do not exist; (C–E)
+> the landed `attribute(...)` contract, `Provenance` variant fields, and
+> `AdapterConfidence` shape diverged from this story's `repo_context` /
+> lockfile-walk / payload-confidence design; (F) S3-01's integration test
+> queries the same package for both the direct and transitive scenarios
+> (contradictory); (G) AC-12 (S3-01 tests GREEN) contradicts this story's own
+> Out-of-scope deferral of `api.py` wiring to S3-03. Resolution: implement
+> Phase 3 first, then rewrite this story against the landed contract. Full
+> diagnostic + ordered resolution path in the attempt log.
 **Effort:** M
 **Depends on:** S3-01 (the contract test exists in red/xfail state — this story turns its three positive-path scenarios green); S2-01 (`@register_provenance_adapter` decorator + `Layer` / `Ecosystem` enums); S2-02 (`AdapterFactory` Protocol with the closed `{sbom_reader, logger, image_manifest_cache}` DI kwarg vocabulary); S1-03 (seven-variant `Provenance` union with `AppDirect` / `AppTransitive` / `Unknown` constructable); S1-04 (`VulnProvenanceAdapter` Protocol + `ProvenanceError` / `AdapterError` hierarchy); S1-05 (`SyftSbom` reader for cross-verification via the verifier landing in S4-01 — defensive against absence in this story)
 **ADRs honored:** [ADR-0007](../ADRs/0007-provenance-adapter-registry-stores-classes.md) (the decorator registers the **class**, not an instance; construction happens at dispatch time via `AdapterFactory`); [ADR-0004](../ADRs/0004-vuln-provenance-primitive-home.md) (the adapter consumes the primitive's `attribute(...) -> Provenance` Protocol; returns one of seven variants); [ADR-0005](../ADRs/0005-probes-live-under-plugin-not-core-tree.md) (adapter lives under the plugin directory, NOT under `src/codegenie/` — even though it consumes a `src/codegenie/primitives/` Protocol); [ADR-0009](../ADRs/0009-phase-7-byte-edit-allowlist-fence.md) — **this story creates `plugins/vulnerability-remediation--node--npm/adapters/npm_provenance.py`, which is Phase 7 byte-edit allowlist row #1 (an entire new file under an existing Phase 3 plugin directory; the directory is not itself a Phase 3 file, but the plugin tree as a whole is Phase 0–6.5 surface — see ADR-0009 row 1 verbatim)**
