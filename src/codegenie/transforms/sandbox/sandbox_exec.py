@@ -89,9 +89,15 @@ _HELPER_VERBS: Final[frozenset[str]] = frozenset({"build_argv", "render", "trans
 _SANDBOX_DENY_NETWORK_RE: Final[re.Pattern[bytes]] = re.compile(
     rb"Sandbox:[^\n]*deny[^\n]*network-outbound\s+([A-Za-z0-9.\-]+):\d+",
 )
-# Substrate parse / setup error (AC-21): ``Sandbox: sandbox-exec error: parse failure at line 3``.
+# Substrate parse / setup error (AC-21). Two prefixes observed in practice:
+#   1. ``Sandbox: sandbox-exec error: parse failure at line 3`` — kernel-emitted.
+#   2. ``sandbox-exec: execvp() of '/bin/foo' failed: Operation not permitted``
+#      ``sandbox-exec: host must be * or localhost in network address``
+#      — CLI-emitted (profile parse + execvp denials).
+# Both classify as ``JailSetupFailed(reason='kernel-setup-failed')`` — Rule 12.
 _SANDBOX_SETUP_ERROR_RE: Final[re.Pattern[bytes]] = re.compile(
-    rb"Sandbox:[^\n]*error:",
+    rb"(?:Sandbox:[^\n]*error:|^sandbox-exec:)",
+    re.MULTILINE,
 )
 
 # Hostname validation — DNS-label charset only, no schemes / paths.
@@ -199,29 +205,45 @@ def _extract_port(url: RegistryUrl) -> int:
 
 
 def _render_allow_network_clause(host: Hostname, port: int) -> str:
-    """Compose one ``(allow network* (remote tcp "host:port"))`` clause
-    (AC-25 consumer of :class:`Hostname`)."""
+    """Compose one ``(allow network* (remote tcp "host:port"))`` clause.
+
+    Reserved for Phase-5 pf-rule generation. SBPL's ``(remote tcp ...)``
+    target accepts only ``*`` or ``localhost`` for the host field — a
+    hostname here is invalid syntax — so this helper is **not** called
+    from the profile-rendering path. ``_render_allowlist_clauses`` emits
+    port-wildcard SBPL; hostname allowlisting lives at the pf-rule layer
+    per ADR-0006 §Consequences.
+    """
     return f'(allow network* (remote tcp "{host}:{port}"))'
 
 
 def _render_allowlist_clauses(network: NetworkPolicy) -> str:
     """Dispatch on the :data:`NetworkPolicy` sum (AC-24).
 
-    Sorted host iteration (AC-17 determinism — ``frozenset`` iteration
-    is not order-stable). ``assert_never`` in the wildcard arm fences
-    mypy exhaustiveness; the negative meta-test exercises the runtime
-    raise.
+    Emits port-wildcard ``(allow network* (remote tcp "*:PORT"))`` per
+    unique port found in the URL set. SBPL forbids hostnames inside
+    ``(remote tcp ...)`` — only ``*`` or ``localhost`` are accepted — so
+    hostname filtering is **not** enforced at this layer. Per ADR-0006
+    §Consequences, macOS hostname allowlisting is the pf-rule layer's
+    responsibility (Phase 5 substitutes the substrate with Lima/DinD).
+    Hostnames in *network.hosts* are still validated via
+    :func:`_extract_hostname` so malformed URLs fail loud at render time.
+
+    Sorted port iteration (AC-17 determinism — ``frozenset`` is not
+    order-stable). ``assert_never`` in the wildcard arm fences mypy
+    exhaustiveness; the negative meta-test exercises the runtime raise.
     """
     match network:
         case DenyAll():
             return ""
         case RegistryAllowlist(hosts=hosts):
-            clauses: list[str] = []
+            ports: set[int] = set()
             for url in sorted(hosts):
-                host = _extract_hostname(url)
-                port = _extract_port(url)
-                clauses.append(_render_allow_network_clause(host, port))
-            return "\n".join(clauses)
+                # Validate hostname charset even though we don't render it —
+                # malformed URLs must fail loud, not be silently accepted.
+                _extract_hostname(url)
+                ports.add(_extract_port(url))
+            return "\n".join(f'(allow network* (remote tcp "*:{p}"))' for p in sorted(ports))
         case _:  # pragma: no cover — assert_never fences mypy + runtime
             typing.assert_never(network)
 
