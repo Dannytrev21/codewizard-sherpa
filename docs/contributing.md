@@ -245,8 +245,9 @@ have caught it.**
 Extension by addition means **no *silent* edits**, not "no edits"
 ([ADR-0043](production/adrs/0043-extension-by-addition-means-no-silent-edits.md)).
 An edit is a violation only when it changes existing behaviour *silently*.
-Edits the compiler or a fence fully polices are the enforcement mechanism,
-not violations — these **categories** are always safe:
+Edits the compiler or a snapshot test fully polices are the enforcement
+mechanism, not violations — these are always safe and need no special
+ceremony:
 
 - Adding a member to a closed `Literal` / `Enum`.
 - Adding a field to a frozen struct or a new `$ref` to a schema envelope.
@@ -254,9 +255,20 @@ not violations — these **categories** are always safe:
   (`probes/__init__.py`, the language registry, etc.).
 - Adding a new file (probe, plugin, adapter, `LanguagePack`).
 
-The category-based fence (`tests/fence/test_no_silent_edits.py`) checks a
-diff against these categories. It **replaces** the per-phase enumerated
-byte-edit allowlists — do not add new per-phase allowlist rows.
+**No per-phase allowlists.** Phase 7's byte-edit allowlist (Phase 7
+ADR-0009) is the *last* enumerated per-phase list — no future phase adds
+one. A surface that must be protected is a **contract with a snapshot
+test**, following the probe-ABC pattern (`tests/unit/test_probe_contract.py`
+diffs the runtime ABC against `probe_contract.v1.json`): the file stays
+freely editable, and the snapshot test fails iff the frozen contract
+changed. Files and components are not frozen — contracts are. This is a
+forward rule; existing Phase 0–7 surfaces are not retrofitted.
+
+**Freeze discipline.** Freeze only *narrow* contracts — never broad
+components. Freeze only when *earned* (a surface that has survived ~3
+phases of use unchanged), or state plainly why an early freeze is
+necessary. Freeze *provisionally*: a freeze ADR uses `Provisional
+Accepted` with a `Review trigger` (see §ADR lifecycle).
 
 **Migrations.** A genuinely cross-cutting change to existing code — a
 security fix across every probe, a logging-format change, a new required
@@ -264,8 +276,8 @@ field — is a **migration**: a loud, reviewed, all-at-once horizontal
 sweep, explicitly labelled as such in the PR. A migration is *not* a
 silent edit; it is gated by the conformance suite (`tests/conformance/`)
 and golden files, regenerated deliberately, in a single reviewed pass.
-Use a migration rather than forking a near-duplicate component to avoid
-touching the original.
+Use a migration — or generalise the existing component — rather than
+forking a near-duplicate to avoid touching the original.
 
 ### ADR lifecycle
 

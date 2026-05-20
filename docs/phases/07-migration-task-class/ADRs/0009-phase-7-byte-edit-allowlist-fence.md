@@ -3,7 +3,9 @@
 **Status:** Accepted
 **Date:** 2026-05-19
 **Tags:** extension-by-addition · fence · §2.5 · ship-of-theseus
-**Related:** [0003](0003-sandbox-role-additive-enum-on-spawn.md), [0004](0004-vuln-provenance-primitive-home.md), [0005](0005-probes-live-under-plugin-not-core-tree.md), [0015](0015-allowed-binaries-amendment-dive-buildx.md), [0016](0016-tccm-derived-queries-band.md), [Phase 3 ADR-0001](../../03-vuln-deterministic-recipe/ADRs/0001-ship-phase5-contract-surface-by-name.md), [production §2.5](../../../production/design.md)
+**Related:** [0003](0003-sandbox-role-additive-enum-on-spawn.md), [0004](0004-vuln-provenance-primitive-home.md), [0005](0005-probes-live-under-plugin-not-core-tree.md), [0015](0015-allowed-binaries-amendment-dive-buildx.md), [0016](0016-tccm-derived-queries-band.md), [Phase 3 ADR-0001](../../03-vuln-deterministic-recipe/ADRs/0001-ship-phase5-contract-surface-by-name.md), [production ADR-0043](../../../production/adrs/0043-extension-by-addition-means-no-silent-edits.md), [production §2.5](../../../production/design.md)
+
+> **Amendment (2026-05-20) — superseded-in-principle by [production ADR-0043](../../../production/adrs/0043-extension-by-addition-means-no-silent-edits.md).** ADR-0043 establishes that Phase 7's 10-row allowlist is the **last** per-phase enumerated allowlist. Statements below that assume Phase 8+ extend the fence or that the row-set "grows with each phase" (Tradeoffs rows 1 & 3; Consequences final bullet) are superseded: future phases add **no** allowlist rows and **no** new per-phase allowlist fence — a new frozen surface is a contract with a snapshot test (the probe-ABC pattern). The Phase 7 decision itself — the 10-row allowlist for Phase 7 — stands unchanged.
 
 ## Context
 
