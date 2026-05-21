@@ -41,6 +41,12 @@ RUNTIME_DEPS = frozenset(
         # deterministic-recipe contract. ADR-0002 fence still excludes LLM
         # SDKs; `orjson` is not an LLM SDK.
         "orjson",
+        # Phase-3 S6-01 adds `zstandard` to the runtime closure — the
+        # two-stream `EventLog` (`codegenie.plugins.events`) compresses each
+        # event stream as `jsonl.zst`. The gather/remediate pipeline imports
+        # the events module at runtime. ADR-0002 fence still excludes LLM
+        # SDKs; `zstandard` is not an LLM SDK.
+        "zstandard",
     }
 )
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})
