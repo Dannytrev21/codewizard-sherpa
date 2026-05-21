@@ -178,7 +178,8 @@
           "enum": [
             "tool_missing",
             "tool_unhealthy",
-            "upstream_unavailable"
+            "upstream_unavailable",
+            "config_absent"
           ],
           "title": "Reason",
           "type": "string"

@@ -1,6 +1,11 @@
-"""AstGrepProbe — Layer G ast-grep structural scanner (S6-06). Default
-convention: any non-zero exit = ScannerFailed (no exit-1 carve-out).
-NDJSON stdout (--json=stream) one finding per line."""
+"""AstGrepProbe — Layer G ast-grep structural scanner (S6-06).
+
+Rules are organization-owned (``docs/localv2.md`` §ast-grep): resolved from
+``~/.codegenie/ast-grep-rules/sgconfig.yml`` by default, overridable via the
+``ast_grep_config`` ctx-config key. When no rule config is present the probe
+skips honestly (``ScannerSkipped(reason="config_absent")``) — it does not
+spawn ast-grep. Otherwise: any non-zero exit = ScannerFailed (no exit-1
+carve-out); NDJSON stdout (``--json=stream``) is one finding per line."""
 
 from __future__ import annotations
 
@@ -32,7 +37,6 @@ _PROBE_ID: Final[ProbeId] = ProbeId("ast_grep")
 _TIMEOUT_S: Final[int] = 30
 _SLICE_FILENAME: Final[str] = "ast_grep.json"
 _RAW_TOOL_FILENAME: Final[str] = "ast_grep-raw.json"
-_DEFAULT_CONFIG: Final[str] = "sgconfig.yml"
 
 
 class AstGrepFinding(BaseModel):
@@ -54,6 +58,8 @@ class AstGrepSlice(BaseModel):
 @dataclass(frozen=True)
 class _ToolMissing: ...
 @dataclass(frozen=True)
+class _ConfigAbsent: ...
+@dataclass(frozen=True)
 class _ProcessTimedOut: ...
 @dataclass(frozen=True)
 class _ProcessExited:
@@ -63,11 +69,27 @@ class _ProcessExited:
 # fmt: on
 
 
-AstGrepAttempt = _ToolMissing | _ProcessTimedOut | _ProcessExited
+AstGrepAttempt = _ToolMissing | _ConfigAbsent | _ProcessTimedOut | _ProcessExited
 
 
 def _stderr_tail(b: bytes) -> str:
     return b[-STDERR_TAIL_CAP_BYTES:].decode("utf-8", errors="replace")
+
+
+def _resolve_config_path(config: dict[str, Any]) -> Path:
+    """Resolve the ast-grep rules config — org-owned by default.
+
+    Rules are *organization-owned* (``docs/localv2.md`` §ast-grep): the
+    default is ``~/.codegenie/ast-grep-rules/sgconfig.yml``. The
+    ``ast_grep_config`` ctx-config key overrides it (tests, non-default org
+    installs). Codegenie ships no rule catalog of its own — when the org has
+    authored none, the resolved path simply will not exist and the probe
+    skips (``config_absent``).
+    """
+    override = config.get("ast_grep_config")
+    if override is not None:
+        return Path(override).expanduser()
+    return Path.home() / ".codegenie" / "ast-grep-rules" / "sgconfig.yml"
 
 
 def _parse_ast_grep_stdout(stdout: bytes) -> list[AstGrepFinding]:
@@ -102,6 +124,8 @@ def _classify_ast_grep_outcome(
     match attempt:
         case _ToolMissing():
             return ScannerSkipped(reason="tool_missing"), []
+        case _ConfigAbsent():
+            return ScannerSkipped(reason="config_absent"), []
         case _ProcessTimedOut():
             return ScannerFailed(exit_code=124, stderr_tail="ast_grep.timeout"), []
         case _ProcessExited(exit_code=ec, stdout=stdout, stderr_tail=tail):
@@ -135,7 +159,7 @@ def _write_files(
 @register_probe(heaviness="medium", runs_last=False)
 class AstGrepProbe(Probe):
     name: str = "ast_grep"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     layer = "G"
     tier = "base"
     applies_to_tasks: list[str] = ["*"]
@@ -160,11 +184,22 @@ class AstGrepProbe(Probe):
 
     @staticmethod
     async def _attempt(repo_root: Path, config: dict[str, Any]) -> AstGrepAttempt:
-        cfg = str(config.get("ast_grep_config", _DEFAULT_CONFIG))
+        config_path = _resolve_config_path(config)
+        if not config_path.is_file():
+            # No org rules catalog → nothing to scan with. Honest skip; do
+            # not spawn ast-grep (a missing config is not a tool failure).
+            return _ConfigAbsent()
         try:
             result: ProcessResult = await run_external_cli(
                 _PROBE_ID,
-                ["ast-grep", "scan", "--config", cfg, "--json=stream", str(repo_root)],
+                [
+                    "ast-grep",
+                    "scan",
+                    "--config",
+                    str(config_path),
+                    "--json=stream",
+                    str(repo_root),
+                ],
                 cwd=repo_root,
                 timeout_s=float(_TIMEOUT_S),
             )

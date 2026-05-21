@@ -8,6 +8,7 @@ NDJSON parser: one JSON object per line on stdout.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,17 +21,38 @@ from codegenie.probes._shared.scanner_outcome import (
     ScannerRan,
     ScannerSkipped,
 )
+from codegenie.probes.base import ProbeContext
 from codegenie.probes.layer_g import ast_grep as ag_mod
 from codegenie.probes.layer_g.ast_grep import (
     AstGrepFinding,
     AstGrepProbe,
     AstGrepSlice,
     _classify_ast_grep_outcome,
+    _ConfigAbsent,
     _ProcessExited,
     _ProcessTimedOut,
+    _resolve_config_path,
     _ToolMissing,
 )
 from codegenie.probes.registry import default_registry
+
+
+@pytest.fixture(autouse=True)
+def _org_ast_grep_rules(ctx: ProbeContext, tmp_path: Path) -> Path:
+    """Point the probe at a real (temp) org rules config.
+
+    The probe now skips (``config_absent``) when no rules config exists, so
+    tests of the *run* path need one present. Mirrors the org-owned
+    ``~/.codegenie/ast-grep-rules/sgconfig.yml`` location via the
+    ``ast_grep_config`` ctx-config override. Returned so a test can assert on
+    the path or override it (the config-absent test points it at a missing
+    file).
+    """
+    cfg = tmp_path / "org-sgconfig.yml"
+    cfg.write_text("ruleDirs:\n  - rules\n", encoding="utf-8")
+    ctx.config["ast_grep_config"] = str(cfg)
+    return cfg
+
 
 # ---------------------------------------------------------------------------
 # AC-6: argv pinning
@@ -291,3 +313,71 @@ def test_ast_grep_finding_is_frozen_extra_forbid() -> None:
         AstGrepFinding(  # type: ignore[call-arg]
             file="p", line=1, message="m", rule_id="r", extra_field="bad"
         )
+
+
+# ---------------------------------------------------------------------------
+# config_absent — honest skip when no org rules config exists
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ast_grep_config_absent_yields_scanner_skipped(
+    monkeypatch, repo, ctx, tmp_path
+) -> None:
+    """No org rules config → ``ScannerSkipped(config_absent)``; ast-grep is
+    NOT spawned (a missing rule config is not a tool failure)."""
+    ctx.config["ast_grep_config"] = str(tmp_path / "does-not-exist.yml")
+
+    async def _fail_if_called(*_a, **_kw):
+        raise AssertionError("run_external_cli must not be called with no config")
+
+    monkeypatch.setattr(ag_mod, "run_external_cli", _fail_if_called)
+    output = await AstGrepProbe().run(repo, ctx)
+    slice_ = AstGrepSlice.model_validate(output.schema_slice["ast_grep"])
+
+    assert isinstance(slice_.outcome, ScannerSkipped)
+    assert slice_.outcome.reason == "config_absent"
+    assert output.confidence == "low"
+
+
+@pytest.mark.asyncio
+async def test_ast_grep_argv_passes_absolute_config_path(
+    monkeypatch, repo, ctx, _org_ast_grep_rules
+) -> None:
+    """When a rules config exists, argv carries it by absolute path."""
+    captured: dict[str, Any] = {}
+
+    async def _spy(_probe, argv, **_kw):
+        captured["argv"] = list(argv)
+        return ProcessResult(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(ag_mod, "run_external_cli", _spy)
+    await AstGrepProbe().run(repo, ctx)
+
+    argv = captured["argv"]
+    assert "--config" in argv
+    cfg_arg = argv[argv.index("--config") + 1]
+    assert cfg_arg == str(_org_ast_grep_rules)
+    assert Path(cfg_arg).is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_config_path + _ConfigAbsent classifier
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_config_path_uses_override_when_set() -> None:
+    resolved = _resolve_config_path({"ast_grep_config": "/tmp/x/sgconfig.yml"})
+    assert resolved == Path("/tmp/x/sgconfig.yml")
+
+
+def test_resolve_config_path_defaults_to_org_owned_home_location() -> None:
+    resolved = _resolve_config_path({})
+    assert resolved == Path.home() / ".codegenie" / "ast-grep-rules" / "sgconfig.yml"
+
+
+def test_classify_ast_grep_outcome_config_absent() -> None:
+    outcome, findings = _classify_ast_grep_outcome(_ConfigAbsent())
+    assert isinstance(outcome, ScannerSkipped)
+    assert outcome.reason == "config_absent"
+    assert findings == []

@@ -11,7 +11,7 @@ Variant set (closed; extension is **ADR-amendment-gated** per
 
 - ``ScannerRan(findings: list[Finding])`` — scanner produced output.
 - ``ScannerSkipped(reason: Literal[...])`` — tool missing / unhealthy /
-  upstream slice unavailable.
+  upstream slice unavailable / no rule config to scan with.
 - ``ScannerFailed(exit_code: int, stderr_tail: str)`` — non-zero exit /
   invalid-JSON stdout.
 
@@ -90,12 +90,16 @@ class ScannerRan(BaseModel):
 
 class ScannerSkipped(BaseModel):
     """The scanner did not execute; the typed ``reason`` is one of a closed
-    set. Adding a 4th reason requires an ADR amendment to ``02-ADR-0006``
-    (or a follow-up ADR) — NOT a ``metadata: dict`` escape hatch."""
+    set. Adding a reason requires an ADR amendment to ``02-ADR-0006``
+    (or a follow-up ADR) — NOT a ``metadata: dict`` escape hatch.
+
+    ``config_absent`` was added by the 2026-05-21 amendment to ``02-ADR-0006``:
+    an installed scanner that has no rule-config to run against (e.g.
+    ``ast-grep`` with no org rules catalog) is a *skip*, not a failure."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["skipped"] = "skipped"
-    reason: Literal["tool_missing", "tool_unhealthy", "upstream_unavailable"]
+    reason: Literal["tool_missing", "tool_unhealthy", "upstream_unavailable", "config_absent"]
 
 
 class ScannerFailed(BaseModel):

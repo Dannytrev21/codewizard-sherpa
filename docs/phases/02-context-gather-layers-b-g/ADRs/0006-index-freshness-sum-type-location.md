@@ -1,6 +1,6 @@
 # ADR-0006: `IndexFreshness` sum type lives at `codegenie.indices.freshness` with one Phase-2 consumer
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-05-21 — see §Amendments)
 **Date:** 2026-05-14
 **Tags:** typing · sum-type · domain-modeling · open-closed · schema-with-consumer · honest-confidence
 **Related:** 02-ADR-0007, [production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md), [production ADR-0032](../../../production/adrs/0032-language-search-adapters.md), [production design.md §2.3 honest confidence](../../../production/design.md)
@@ -75,3 +75,38 @@ Pattern: **Sum type + Make-illegal-states-unrepresentable** (`design-patterns-to
 - [Production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md) §3–4 — make-illegal-states-unrepresentable discipline
 - [Production ADR-0032](../../../production/adrs/0032-language-search-adapters.md) — Phase 3 adapter contract that `AdapterConfidence` placeholder anticipates
 - [Production design.md §2.3](../../../production/design.md) — honest confidence commitment
+
+## Amendments
+
+### 2026-05-21 — `ScannerSkipped.reason` gains `config_absent`
+
+**Trigger.** `ScannerOutcome` (`src/codegenie/probes/_shared/scanner_outcome.py`)
+rehearses this ADR's closed-sum-type discipline; its `ScannerSkipped` docstring
+and §Consequences above make extending the closed reason set
+**ADR-amendment-gated to this ADR**. This is that amendment.
+
+**Decision.** `ScannerSkipped.reason` gains a fourth value, `config_absent`.
+The closed set is now `Literal["tool_missing", "tool_unhealthy",
+"upstream_unavailable", "config_absent"]`.
+
+**Why.** An external scanner that is installed but has **no rule-config to run
+against** is a *skip*, not a *failure*. The motivating case: the `ast_grep`
+probe wraps `ast-grep scan`, which requires a rules config (an `sgconfig.yml`).
+ast-grep rules are organization-owned (`docs/localv2.md` §ast-grep —
+`~/.codegenie/ast-grep-rules/`); codegenie ships none. With no org rules
+catalog the probe was spawning `ast-grep scan`, getting exit 6 ("Cannot read
+configuration"), and reporting `ScannerFailed` — a false alarm that violated
+the honest-confidence commitment ([production design.md §2.3]). "No rules to
+scan with" is now `ScannerSkipped(reason="config_absent")`, semantically
+parallel to `tool_missing`.
+
+`upstream_unavailable` was considered and rejected for this case: a rule
+config is operator/org-supplied, not a probe-produced "upstream slice", so
+reusing it would mislead the next reader.
+
+**Scope / blast radius.** Additive — a new value in a closed set. No
+`ScannerOutcome` consumer pattern-matches on `.reason` (consumers `match` on
+`.kind` ∈ {ran, skipped, failed}), so no `assert_never` ladder is affected.
+The five Layer-G probe sub-schemas that enumerate the scanner reason
+(`ast_grep`, `semgrep`, `gitleaks`, `ripgrep_curated`,
+`test_coverage_mapping`) were updated to include `config_absent`.
