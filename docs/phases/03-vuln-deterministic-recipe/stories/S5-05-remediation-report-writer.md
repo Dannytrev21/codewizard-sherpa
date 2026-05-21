@@ -1,10 +1,25 @@
 # Story S5-05 — `RemediationReport` Pydantic model + `remediation-report.yaml` writer
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** HARDENED
+**Status:** Done — 2026-05-21
 **Effort:** S
 **Depends on:** S5-01, (S6-02 if `TrustOutcome` is *not* relocated to `outcomes.py` — see Validation notes / `Notes-for-implementer`)
 **ADRs honored:** ADR-0001, ADR-0010
+
+## Completion evidence (2026-05-21)
+
+Implemented in RED/GREEN commits:
+
+- `6c7b8f2` — RED contract tests and golden README placeholder.
+- `68b7457` — GREEN `RemediationReport` writer/loader, `TrustOutcome`, exports, and focused unit coverage.
+- `0e6d891` — validation-fence/test contract updates required for the full suite.
+
+Validation passed:
+
+- `PATH=.venv/bin:$PATH pytest -q tests/unit/transforms/test_remediation_report.py --no-cov` — 31 passed.
+- `PATH=.venv/bin:$PATH mypy --strict src/codegenie/transforms/report.py src/codegenie/transforms/outcomes.py` — clean.
+- `COVERAGE_FILE=.coverage.s5_05 .venv/bin/coverage report --fail-under=95 -m src/codegenie/transforms/report.py` — 97% branch coverage.
+- `PATH=.venv/bin:$PATH make check` — lint/format/typecheck/test/fence green; 5,846 tests passed plus 365 fence tests.
 
 ## Validation notes (2026-05-19, phase-story-validator)
 
@@ -34,7 +49,7 @@ The architecture has three load-bearing commitments this story honors:
 2. **Partial reports on failure** (§C1 Failure behavior: "On exception in any stage, the orchestrator writes a partial `remediation-report.yaml` with `outcome.kind = 'failed'` and re-raises. **Never** silently catches."). The writer must accept a partially-populated report (e.g., no `transform`, no `trust_outcome` if Stage 6 never ran) and emit a syntactically valid YAML — every nullable field is explicitly modeled as `Optional`.
 3. **Round-trip invariant**: a hand-built `RemediationReport` instance, serialized to YAML, then re-parsed, equals the original. This is the testable surface for the snapshot test (S6-06) that gates Phase 5's ability to ship.
 
-The schema indexes both event streams (`event_log_internal_path: SandboxedPath`, `event_log_spanning_path: SandboxedPath`) and carries the audit-chain BLAKE3 head (`spanning_chain_head: BlobDigest`). The `outcome: RemediationOutcome` field is the discriminated union from S1-03 (`Validated | RequiresHumanReview | NotApplicable | Failed`); the `trust_outcome: TrustOutcome | None` is null when Stage 6 never ran (e.g., `NotApplicable` exit before validation).
+The schema indexes both event streams (`event_log_internal_path: str`, `event_log_spanning_path: str`, relative to `.codegenie/`) and carries the audit-chain BLAKE3 head (`spanning_chain_head: BlobDigest`). The `outcome: RemediationOutcome` field is the discriminated union from S1-03 (`Validated | RequiresHumanReview | NotApplicable | Failed`); the `trust_outcome: TrustOutcome | None` is null when Stage 6 never ran (e.g., `NotApplicable` exit before validation).
 
 ## References — where to look
 
@@ -62,15 +77,15 @@ The schema indexes both event streams (`event_log_internal_path: SandboxedPath`,
 
 ## Goal
 
-Ship `src/codegenie/transforms/report.py` exposing `RemediationReport` (Pydantic `extra="forbid"`, `frozen=True`), `RemediationReport.write(path: SandboxedPath) -> Result[None, IoError]`, `RemediationReport.from_yaml(path: SandboxedPath) -> Result[RemediationReport, ParseError]`, and the field surface Phase 5 will read. Round-trip test confirms a hand-built instance serializes to YAML and re-parses to an equal instance.
+Ship `src/codegenie/transforms/report.py` exposing `RemediationReport` (Pydantic `extra="forbid"`, `frozen=True`), `RemediationReport.write(path: SandboxedPath) -> Result[None, ReportIoError]`, `RemediationReport.from_yaml(path: SandboxedPath) -> Result[RemediationReport, ReportLoadError]`, and the field surface Phase 5 will read. Round-trip test confirms a hand-built instance serializes to YAML and re-parses to an equal instance.
 
 ## Acceptance criteria
 
 ### Surface
 
-- [ ] **AC-Surface-1.** `from codegenie.transforms.report import RemediationReport, ReportMetadata, PluginSnapshot, TransformSnapshot, ReportLoadError, ReportIoError` succeeds. Re-exported from `codegenie.transforms` (`src/codegenie/transforms/__init__.py`); `RemediationReport` is on the `__all__` list (ADR-0001 export-list fence).
-- [ ] **AC-Surface-2.** `TrustSignal` and `TrustOutcome` are declared in `codegenie/transforms/outcomes.py` (kernel canonical home, mirroring the 2026-05-18 amendment's single-declaration-site discipline). S6-02's `trust_scorer.py` re-exports both. If the implementer chooses Option (B) instead (depend on S6-02), this AC is moved to S6-02 and the `Depends on:` line is updated accordingly.
-- [ ] **AC-Surface-3.** `RemediationReport` is a Pydantic model with `model_config = ConfigDict(frozen=True, extra="forbid")` and the following field surface, in **declaration order** (the order itself is part of the S6-06 snapshot — re-ordering is a contract break):
+- [x] **AC-Surface-1.** `from codegenie.transforms.report import RemediationReport, ReportMetadata, PluginSnapshot, TransformSnapshot, ReportLoadError, ReportIoError` succeeds. Re-exported from `codegenie.transforms` (`src/codegenie/transforms/__init__.py`); `RemediationReport` is on the `__all__` list (ADR-0001 export-list fence).
+- [x] **AC-Surface-2.** `TrustSignal` and `TrustOutcome` are declared in `codegenie/transforms/outcomes.py` (kernel canonical home, mirroring the 2026-05-18 amendment's single-declaration-site discipline). S6-02's `trust_scorer.py` re-exports both. If the implementer chooses Option (B) instead (depend on S6-02), this AC is moved to S6-02 and the `Depends on:` line is updated accordingly.
+- [x] **AC-Surface-3.** `RemediationReport` is a Pydantic model with `model_config = ConfigDict(frozen=True, extra="forbid")` and the following field surface, in **declaration order** (the order itself is part of the S6-06 snapshot — re-ordering is a contract break):
   - `schema_version: Literal[1]`
   - `metadata: ReportMetadata`
   - `plugin: PluginSnapshot`
@@ -82,31 +97,31 @@ Ship `src/codegenie/transforms/report.py` exposing `RemediationReport` (Pydantic
   - `event_log_spanning_path: str` (relative to `.codegenie/`)
   - `spanning_chain_head: BlobDigest`
   - `lockfile_policy_violations: tuple[PolicyViolation, ...] = ()` (S5-04 surface)
-- [ ] **AC-Surface-4.** Every nested model (`ReportMetadata`, `PluginSnapshot`, `TransformSnapshot`) carries `model_config = ConfigDict(frozen=True, extra="forbid")` (ADR-0010 §Consequences requirement, not optional).
-- [ ] **AC-Surface-5.** Nested-model field shapes:
+- [x] **AC-Surface-4.** Every nested model (`ReportMetadata`, `PluginSnapshot`, `TransformSnapshot`) carries `model_config = ConfigDict(frozen=True, extra="forbid")` (ADR-0010 §Consequences requirement, not optional).
+- [x] **AC-Surface-5.** Nested-model field shapes:
   - `ReportMetadata`: `workflow_id: WorkflowId`, `cve: CveId`, `repo_path: str`, `started_at: datetime`, `completed_at: datetime`, `codegenie_version: str`.
   - `PluginSnapshot`: `plugin_id: PluginId`, `plugin_version: SemverVersion`, `recipe_id: RecipeId | None = None`, `recipe_version: SemverVersion | None = None`. The `None`-tuple is the *no-match* case (universal fallback or `NotApplicable` exit).
   - `TransformSnapshot`: `transform_id: TransformId`, `transform_kind: TransformKind`, `files_changed: tuple[str, ...]`, `diff_bytes_sha256: BlobDigest`. `files_changed` is declared `tuple[str, ...]` (frozen, hashable, deterministic iteration); round-trip preserves the tuple type — `list[str]` is a contract break.
-- [ ] **AC-Surface-6.** `mypy --strict src/codegenie/transforms/report.py` clean. `ruff check` + `ruff format --check` green.
+- [x] **AC-Surface-6.** `mypy --strict src/codegenie/transforms/report.py` clean. `ruff check` + `ruff format --check` green.
 
 ### Discipline (ADR-0010 + ADR-0001)
 
-- [ ] **AC-Disc-1.** Every identifier field uses the newtype from `codegenie.types.identifiers` (`WorkflowId`, `CveId`, `PluginId`, `RecipeId`, `TransformId`, `BranchName`, `BlobDigest`, `SemverVersion`, `TransformKind`). NOT raw `str`. **Runtime enforcement is mypy-only** — `NewType` is a typecheck-time discipline (identifiers.py:65-88 use `NewType(...)`); a runtime check would require smart-constructor functions, which are S1-01's concern, not S5-05's.
-- [ ] **AC-Disc-2.** `dict[str, Any]` does **not** appear in `transforms/report.py`. The `RemediationError.details: dict[str, str | int | bool | float] | None` shape rides into the report via `Failed.error.details`; this is the documented primitive-typed-dict boundary, not an `Any` escape hatch.
-- [ ] **AC-Disc-3.** `schema_version: Literal[1]` is the explicit version pin; future schemas land as `Literal[2]` etc. The from_yaml loader pre-checks `schema_version` **before** Pydantic schema validation (mirrors S5-04 AC-Load-2 ordering) so an unknown-version file returns `ReportUnknownSchemaVersion`, not `ReportSchemaViolation`.
-- [ ] **AC-Disc-4.** **Timezone-aware datetimes only.** A `field_validator` on `started_at` and `completed_at` rejects naive datetimes with a clear ValueError. Naive datetimes serialize ambiguously and break the S8-02 golden file silently.
-- [ ] **AC-Disc-5.** **Outcome-kind ↔ optional-field invariant.** A `model_validator(mode="after")` on `RemediationReport` enforces:
+- [x] **AC-Disc-1.** Every identifier field uses the newtype from `codegenie.types.identifiers` (`WorkflowId`, `CveId`, `PluginId`, `RecipeId`, `TransformId`, `BranchName`, `BlobDigest`, `SemverVersion`, `TransformKind`). NOT raw `str`. **Runtime enforcement is mypy-only** — `NewType` is a typecheck-time discipline (identifiers.py:65-88 use `NewType(...)`); a runtime check would require smart-constructor functions, which are S1-01's concern, not S5-05's.
+- [x] **AC-Disc-2.** `dict[str, Any]` does **not** appear in `transforms/report.py`. The `RemediationError.details: dict[str, str | int | bool | float] | None` shape rides into the report via `Failed.error.details`; this is the documented primitive-typed-dict boundary, not an `Any` escape hatch.
+- [x] **AC-Disc-3.** `schema_version: Literal[1]` is the explicit version pin; future schemas land as `Literal[2]` etc. The from_yaml loader pre-checks `schema_version` **before** Pydantic schema validation (mirrors S5-04 AC-Load-2 ordering) so an unknown-version file returns `ReportUnknownSchemaVersion`, not `ReportSchemaViolation`.
+- [x] **AC-Disc-4.** **Timezone-aware datetimes only.** A `field_validator` on `started_at` and `completed_at` rejects naive datetimes with a clear ValueError. Naive datetimes serialize ambiguously and break the S8-02 golden file silently.
+- [x] **AC-Disc-5.** **Outcome-kind ↔ optional-field invariant.** A `model_validator(mode="after")` on `RemediationReport` enforces:
   - `outcome.kind == "validated"` ⇒ `transform is not None` AND `branch is not None`.
   - `outcome.kind == "failed"` ⇒ `branch is None`.
   - `outcome.kind == "not_applicable"` ⇒ `branch is None`.
   - `outcome.kind == "requires_human_review"` ⇒ `branch is None`.
   - Violation raises `ValueError`; tests cover each invariant arm.
-- [ ] **AC-Disc-6.** **`Validated` invariant**: every `Validated` instance carries `passed: bool` + `failing: list[SignalKind]` with the `_passed_iff_no_failing` invariant from outcomes.py:256-260. Round-trip fixtures must supply `passed=True, failing=[]` (or `passed=False, failing=[SignalKind("...")]`).
+- [x] **AC-Disc-6.** **`Validated` invariant**: every `Validated` instance carries `passed: bool` + `failing: list[SignalKind]` with the `_passed_iff_no_failing` invariant from outcomes.py:256-260. Round-trip fixtures must supply `passed=True, failing=[]` (or `passed=False, failing=[SignalKind("...")]`).
 
 ### Load errors — module-local discriminated union (mirrors S5-04 `PolicyLoadError`)
 
-- [ ] **AC-Err-Load-1.** `ReportLoadError = Annotated[ReportFileMissing | ReportYamlSyntax | ReportSchemaViolation | ReportUnknownSchemaVersion | ReportSizeCapExceeded | ReportSymlinkRefused, Field(discriminator="kind")]`. Each variant is a `frozen=True, extra="forbid"` Pydantic model with `kind: Literal[...]` discriminator. **The canonical `codegenie.types.errors.ParseError` is NOT extended** (that's the S5-04 precedent — kernel `ParseError` shape is fixed at `message: str, value: str`).
-- [ ] **AC-Err-Load-2.** Variant shapes:
+- [x] **AC-Err-Load-1.** `ReportLoadError = Annotated[ReportFileMissing | ReportYamlSyntax | ReportSchemaViolation | ReportUnknownSchemaVersion | ReportSizeCapExceeded | ReportSymlinkRefused, Field(discriminator="kind")]`. Each variant is a `frozen=True, extra="forbid"` Pydantic model with `kind: Literal[...]` discriminator. **The canonical `codegenie.types.errors.ParseError` is NOT extended** (that's the S5-04 precedent — kernel `ParseError` shape is fixed at `message: str, value: str`).
+- [x] **AC-Err-Load-2.** Variant shapes:
   - `ReportFileMissing(kind="file_missing", path: str)`.
   - `ReportYamlSyntax(kind="yaml_syntax", path: str, message: str)`.
   - `ReportSchemaViolation(kind="schema_violation", path: str, field_errors: tuple[str, ...])` — Pydantic v2's stable `ErrorDetails['loc']` rendered as dotted strings.
@@ -116,46 +131,46 @@ Ship `src/codegenie/transforms/report.py` exposing `RemediationReport` (Pydantic
 
 ### Write errors — module-local discriminated union
 
-- [ ] **AC-Err-Io-1.** `ReportIoError = Annotated[ReportWriteSymlinkRefused | ReportDiskFull | ReportPermissionDenied | ReportFilesystemRace | ReportOtherIoError, Field(discriminator="kind")]`. Each variant `frozen=True, extra="forbid"`. The manifest's `IoError` (`plugins/manifest.py:143`) is NOT reused.
-- [ ] **AC-Err-Io-2.** Variant shapes carry at minimum `kind: Literal[...]`, `path: str`, `errno: int`, `message: str`. `ReportFilesystemRace` carries the same fields and corresponds to `errno.ELOOP` (symlink-replacement race). `ReportDiskFull` ↔ `errno.ENOSPC`. `ReportPermissionDenied` ↔ `errno.EACCES`. `ReportOtherIoError` is the catch-all default with `errno` preserved.
+- [x] **AC-Err-Io-1.** `ReportIoError = Annotated[ReportWriteSymlinkRefused | ReportDiskFull | ReportPermissionDenied | ReportFilesystemRace | ReportOtherIoError, Field(discriminator="kind")]`. Each variant `frozen=True, extra="forbid"`. The manifest's `IoError` (`plugins/manifest.py:143`) is NOT reused.
+- [x] **AC-Err-Io-2.** Variant shapes carry at minimum `kind: Literal[...]`, `path: str`, `errno: int`, `message: str`. `ReportFilesystemRace` carries the same fields and corresponds to `errno.ELOOP` (symlink-replacement race). `ReportDiskFull` ↔ `errno.ENOSPC`. `ReportPermissionDenied` ↔ `errno.EACCES`. `ReportOtherIoError` is the catch-all default with `errno` preserved.
 
 ### `write` — atomic boundary
 
-- [ ] **AC-Write-1.** `RemediationReport.write(self, path: SandboxedPath) -> Result[None, ReportIoError]` never raises. Every `OSError` is translated to the matching `ReportIoError` variant.
-- [ ] **AC-Write-2.** Internally `write()` is `Ok(None)` on success / `Err(ReportIoError(...))` on failure. Built via `from codegenie.result import Ok, Err`. **No `Result.Ok(None)` classmethod exists** in the codebase.
-- [ ] **AC-Write-3.** **Functional-core / imperative-shell split**:
+- [x] **AC-Write-1.** `RemediationReport.write(self, path: SandboxedPath) -> Result[None, ReportIoError]` never raises. Every `OSError` is translated to the matching `ReportIoError` variant.
+- [x] **AC-Write-2.** Internally `write()` is `Ok(None)` on success / `Err(ReportIoError(...))` on failure. Built via `from codegenie.result import Ok, Err`. **No `Result.Ok(None)` classmethod exists** in the codebase.
+- [x] **AC-Write-3.** **Functional-core / imperative-shell split**:
   - `_serialize(self) -> bytes` — pure; no I/O; deterministic. Used directly by the byte-identical and `!!python/` tag absence ACs.
   - `_write_bytes(path: SandboxedPath, payload: bytes) -> Result[None, ReportIoError]` — impure; atomic write only.
-- [ ] **AC-Write-4.** Atomic-write pattern: `tmp = path.parent / (path.name + f".{os.getpid()}.{secrets.token_hex(4)}.tmp")` (collision-safe across concurrent writers, mirroring `output/writer.py:128`); open with `os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW`, mode `0o600`; write; `os.fsync(fd)`; close; `os.replace(str(tmp), str(path))` (atomic on POSIX same-fs). Crash before `os.replace` leaves the original file intact; crash after leaves the new file complete.
-- [ ] **AC-Write-5.** Serialization: `yaml.safe_dump(self.model_dump(mode="json"), default_flow_style=False, sort_keys=False, allow_unicode=True, width=120)` — deterministic key order matches Pydantic declaration order. **Not `pyyaml.safe_dump`** (the package name is `yaml`).
-- [ ] **AC-Write-6.** **Byte-identical determinism**: writing the same `RemediationReport` instance twice produces byte-identical YAML output. `report._serialize() == report._serialize()` always; `p1.read_bytes() == p2.read_bytes()` after two writes always.
-- [ ] **AC-Write-7.** **No `!!python/...` tags** in serialized output. `b"!!python" not in report._serialize()` for every Pydantic-buildable instance. (`yaml.safe_dump` does not emit them, but a future serializer leak would slip past `extra="forbid"`; an explicit assertion pins the contract.)
+- [x] **AC-Write-4.** Atomic-write pattern: `tmp = path.parent / (path.name + f".{os.getpid()}.{secrets.token_hex(4)}.tmp")` (collision-safe across concurrent writers, mirroring `output/writer.py:128`); open with `os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW`, mode `0o600`; write; `os.fsync(fd)`; close; `os.replace(str(tmp), str(path))` (atomic on POSIX same-fs). Crash before `os.replace` leaves the original file intact; crash after leaves the new file complete.
+- [x] **AC-Write-5.** Serialization: `yaml.safe_dump(self.model_dump(mode="json"), default_flow_style=False, sort_keys=False, allow_unicode=True, width=120)` — deterministic key order matches Pydantic declaration order. **Not `pyyaml.safe_dump`** (the package name is `yaml`).
+- [x] **AC-Write-6.** **Byte-identical determinism**: writing the same `RemediationReport` instance twice produces byte-identical YAML output. `report._serialize() == report._serialize()` always; `p1.read_bytes() == p2.read_bytes()` after two writes always.
+- [x] **AC-Write-7.** **No `!!python/...` tags** in serialized output. `b"!!python" not in report._serialize()` for every Pydantic-buildable instance. (`yaml.safe_dump` does not emit them, but a future serializer leak would slip past `extra="forbid"`; an explicit assertion pins the contract.)
 
 ### `from_yaml` — smart constructor
 
-- [ ] **AC-Load-1.** `RemediationReport.from_yaml(path: SandboxedPath) -> Result[RemediationReport, ReportLoadError]` smart constructor; never raises.
-- [ ] **AC-Load-2.** **Validation order (pinned, mirrors S5-04 AC-Load-2):** symlink-refusal pre-check → file existence → size cap (≤ 1 MiB) → YAML syntax → `schema_version` pre-check (must be exactly `1`) → Pydantic schema validation. Each step maps to one `ReportLoadError` variant; subsequent steps do not run on failure.
-- [ ] **AC-Load-3.** YAML file with unknown top-level key (`magic_field: true`) returns `Err(ReportSchemaViolation(path=..., field_errors=("magic_field",)))`.
-- [ ] **AC-Load-4.** YAML file with `schema_version: 2` returns `Err(ReportUnknownSchemaVersion(path=..., found_version=2, supported_versions=(1,)))` — pre-Pydantic, so a malformed v2 file does NOT mask the version mismatch behind `schema_violation`.
-- [ ] **AC-Load-5.** Symlink at `path` returns `Err(ReportSymlinkRefused(path=...))` *without* opening the target.
-- [ ] **AC-Load-6.** File > 1 MiB returns `Err(ReportSizeCapExceeded(path=..., actual_bytes=..., cap=1048576))` *without* reading the whole file (use `os.fstat(fd).st_size` on the opened fd).
+- [x] **AC-Load-1.** `RemediationReport.from_yaml(path: SandboxedPath) -> Result[RemediationReport, ReportLoadError]` smart constructor; never raises.
+- [x] **AC-Load-2.** **Validation order (pinned, mirrors S5-04 AC-Load-2):** symlink-refusal pre-check → file existence → size cap (≤ 1 MiB) → YAML syntax → `schema_version` pre-check (must be exactly `1`) → Pydantic schema validation. Each step maps to one `ReportLoadError` variant; subsequent steps do not run on failure.
+- [x] **AC-Load-3.** YAML file with unknown top-level key (`magic_field: true`) returns `Err(ReportSchemaViolation(path=..., field_errors=("magic_field",)))`.
+- [x] **AC-Load-4.** YAML file with `schema_version: 2` returns `Err(ReportUnknownSchemaVersion(path=..., found_version=2, supported_versions=(1,)))` — pre-Pydantic, so a malformed v2 file does NOT mask the version mismatch behind `schema_violation`.
+- [x] **AC-Load-5.** Symlink at `path` returns `Err(ReportSymlinkRefused(path=...))` *without* opening the target.
+- [x] **AC-Load-6.** File > 1 MiB returns `Err(ReportSizeCapExceeded(path=..., actual_bytes=..., cap=1048576))` *without* reading the whole file (use `os.fstat(fd).st_size` on the opened fd).
 
 ### Round-trip invariants
 
-- [ ] **AC-Round-1.** Hand-build a `RemediationReport` instance for each of the four `RemediationOutcome` variants (`Validated`, `RequiresHumanReview`, `RemediationNotApplicable`, `RemediationFailed` — note the concrete class names; the union has no `.Variant` attributes); `write(...)` → `from_yaml(...).unwrap() == original`. Pydantic `BaseModel.__eq__` compares fields.
-- [ ] **AC-Round-2.** **Partial-report happy path**: `RemediationReport(transform=None, trust_outcome=None, branch=None, outcome=RemediationNotApplicable(reason="PEER_DEP_CONFLICT"), ...)` round-trips byte-identical to itself.
-- [ ] **AC-Round-3.** **Partial-report failure path** (§C1 invariant): `RemediationReport(outcome=RemediationFailed(error=RemediationError(error_id=ErrorId("io.lockfile_v1_unsupported"), message="..."), partial_report_path=None), transform=None, trust_outcome=None, branch=None, ...)` round-trips byte-identical. The orchestrator is responsible for truthful event-log paths; this story tests the schema *permits* a truthful partial report.
-- [ ] **AC-Round-4.** **`outcome.kind` case-sensitivity**: a YAML with `outcome: {kind: "VALIDATED", ...}` returns `Err(ReportSchemaViolation(..., field_errors=("outcome.kind",)))` — Pydantic discriminator is case-sensitive; pinning protects Phase 5 / Phase 6 consumers from silent case drift.
-- [ ] **AC-Round-5.** **`tuple` round-trip**: `files_changed` and `lockfile_policy_violations` survive write→read as the `tuple[...]` declared type, not `list[...]`. Equality via `==` confirms type fidelity.
+- [x] **AC-Round-1.** Hand-build a `RemediationReport` instance for each of the four `RemediationOutcome` variants (`Validated`, `RequiresHumanReview`, `RemediationNotApplicable`, `RemediationFailed` — note the concrete class names; the union has no `.Variant` attributes); `write(...)` → `from_yaml(...).unwrap() == original`. Pydantic `BaseModel.__eq__` compares fields.
+- [x] **AC-Round-2.** **Partial-report happy path**: `RemediationReport(transform=None, trust_outcome=None, branch=None, outcome=RemediationNotApplicable(reason="PEER_DEP_CONFLICT"), ...)` round-trips byte-identical to itself.
+- [x] **AC-Round-3.** **Partial-report failure path** (§C1 invariant): `RemediationReport(outcome=RemediationFailed(error=RemediationError(error_id=ErrorId("io.lockfile_v1_unsupported"), message="..."), partial_report_path=None), transform=None, trust_outcome=None, branch=None, ...)` round-trips byte-identical. The orchestrator is responsible for truthful event-log paths; this story tests the schema *permits* a truthful partial report.
+- [x] **AC-Round-4.** **`outcome.kind` case-sensitivity**: a YAML with `outcome: {kind: "VALIDATED", ...}` returns `Err(ReportSchemaViolation(..., field_errors=("outcome.kind",)))` — Pydantic discriminator is case-sensitive; pinning protects Phase 5 / Phase 6 consumers from silent case drift.
+- [x] **AC-Round-5.** **`tuple` round-trip**: `files_changed` and `lockfile_policy_violations` survive write→read as the `tuple[...]` declared type, not `list[...]`. Equality via `==` confirms type fidelity.
 
 ### Golden-file convention placeholder
 
-- [ ] **AC-Golden-1.** `tests/golden/remediation-reports/README.md` exists, explains the golden-file convention, and notes S8-02 populates the first concrete golden. ADR-0001 §Consequences names the directory by path; absence breaks the S6-06 snapshot test's fixture lookup.
+- [x] **AC-Golden-1.** `tests/golden/remediation-reports/README.md` exists, explains the golden-file convention, and notes S8-02 populates the first concrete golden. ADR-0001 §Consequences names the directory by path; absence breaks the S6-06 snapshot test's fixture lookup.
 
 ### Coverage + structural
 
-- [ ] **AC-Cov-1.** Branch coverage on `report.py` ≥ 95%.
-- [ ] **AC-Struct-1.** `RemediationReport`, `ReportMetadata`, `PluginSnapshot`, `TransformSnapshot`, `ReportLoadError`, `ReportIoError` are all listed in `src/codegenie/transforms/__init__.__all__`.
+- [x] **AC-Cov-1.** Branch coverage on `report.py` ≥ 95%.
+- [x] **AC-Struct-1.** `RemediationReport`, `ReportMetadata`, `PluginSnapshot`, `TransformSnapshot`, `ReportLoadError`, `ReportIoError` are all listed in `src/codegenie/transforms/__init__.__all__`.
 
 ## Implementation outline
 
