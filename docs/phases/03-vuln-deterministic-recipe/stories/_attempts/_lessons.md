@@ -335,3 +335,18 @@ phase-story-executor runs in this phase. New entries at the bottom.
     variants, so the legacy class participates fully without an edit. When a
     story AC says "every variant carries field X" but another AC re-imports a
     class that lacks X, the envelope-vs-model split is the reconciliation.
+
+30. **A new `transforms/` module that touches `codegenie.plugins.events`
+    closes an import cycle through the `transforms/__init__.py` aggregator**
+    (observed 2026-05-21, S6-02). `events` transitively imports `transforms`
+    (`events → cache_gc → cache → bundle → adapters.confidence →
+    transforms.outcomes`), and `transforms/__init__.py` eager-imports every
+    submodule — so eager-importing a new submodule that imports `events`
+    re-enters a half-initialised `events.py` (`ImportError: cannot import
+    name ... partially initialized module`). Fix: the new `transforms/`
+    module keeps annotation-only event types under `TYPE_CHECKING` (safe with
+    `from __future__ import annotations`) and takes a **function-local**
+    import for the one runtime use (`isinstance(_, AdapterDegraded)`), so it
+    has zero runtime dependency on `codegenie.plugins.events` and
+    `transforms/__init__.py` can stay a plain eager aggregator. S6-03 / S6-04
+    add more `transforms/` modules that import `events` — expect the same.

@@ -17,6 +17,10 @@ three layers of public symbols:
 * The S5-05 remediation-report surface:
   :class:`RemediationReport`, nested snapshots, and report load/write error
   unions — from :mod:`report`.
+* The S6-02 trust-scoring surface: :class:`TrustScorer`,
+  :class:`UnregisteredSignalKind`, :class:`EmptySignals` — from
+  :mod:`trust_scorer`; plus an eager :mod:`signal_kinds` side-effect import
+  that populates the open ``SignalKind`` registry at package-import time.
 
 Every variant is ``frozen=True`` + ``extra="forbid"`` (ADR-0010).
 Discriminated-union umbrellas use ``Annotated[A | B | C,
@@ -25,6 +29,11 @@ Field(discriminator="kind")]`` (single repo convention). Rename of any
 S6-06 contract-snapshot test.
 """
 
+# Side-effect import — populates ``signal_kind_registry`` with the five
+# Phase-3 signal kinds at package-import time, so any ``from
+# codegenie.transforms import ...`` consumer observes a populated registry
+# (S6-02 AC-12).
+import codegenie.transforms.signal_kinds  # noqa: F401
 from codegenie.transforms._forward import CapabilityBundle, SandboxedPath
 from codegenie.transforms.apply_context import ApplyContext, AttemptSummary
 from codegenie.transforms.outcomes import (
@@ -82,6 +91,11 @@ from codegenie.transforms.report import (
     TransformSnapshot,
 )
 from codegenie.transforms.transform import Transform, TransformProvenance
+from codegenie.transforms.trust_scorer import (
+    EmptySignals,
+    TrustScorer,
+    UnregisteredSignalKind,
+)
 
 __all__ = [
     "AdapterConfidence",
@@ -95,6 +109,7 @@ __all__ = [
     "CapabilityBundle",
     "DegradationReason",
     "Degraded",
+    "EmptySignals",
     "Escalate",
     "EscalationReason",
     "HumanReviewReason",
@@ -130,7 +145,9 @@ __all__ = [
     "TransformSnapshot",
     "Trusted",
     "TrustOutcome",
+    "TrustScorer",
     "TrustSignal",
+    "UnregisteredSignalKind",
     "UnauthorizedRegistry",
     "Unavailable",
     "UnavailabilityReason",

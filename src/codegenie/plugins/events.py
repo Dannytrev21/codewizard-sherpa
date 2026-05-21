@@ -730,6 +730,11 @@ class EventLog:
         """
         self._clock: Callable[[], datetime] = clock if clock is not None else _default_clock
 
+        # Public, read-only-by-convention — S6-02's ``TrustScorer`` folds
+        # ``AdapterDegraded`` events filtered to this id into
+        # ``TrustOutcome.confidence``; S6-04's orchestrator reads it too.
+        self.workflow_id: WorkflowId = workflow_id
+
         events_dir = root / "events"
         internal_dir = events_dir / "workflow-internal"
         spanning_dir = events_dir / "spanning"
