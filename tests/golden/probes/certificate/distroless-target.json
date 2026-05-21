@@ -2,6 +2,6 @@
   "certificate": {
     "cert_paths_read": [],
     "certificate_source": "absent",
-    "confidence": "high"
+    "confidence": "unavailable"
   }
 }

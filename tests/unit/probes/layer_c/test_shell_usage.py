@@ -48,9 +48,6 @@ def test_shell_usage_probe_register_light_with_class_attr_requires() -> None:
     match = [e for e in entries if e.cls.__name__ == "ShellUsageProbe"]
     assert len(match) == 1
     assert match[0].heaviness == "light"
-    # runs_last=True — hoisted to the rest wave so the dockerfile /
-    # runtime_trace sidecars (written in the prelude) are on disk first.
-    assert match[0].runs_last is True
     assert ShellUsageProbe.requires == ["dockerfile", "runtime_trace"]
 
 

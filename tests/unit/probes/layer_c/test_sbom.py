@@ -98,9 +98,7 @@ def test_sbom_registry_entry_carries_heaviness_only() -> None:
     assert len(entries) == 1
     entry = entries[0]
     assert entry.heaviness == "medium"
-    # runs_last=True — sbom reads the runtime_trace sidecar; hoisting it to
-    # the rest wave lets it consume a completed upstream slice same-run.
-    assert entry.runs_last is True
+    assert entry.runs_last is False
     # The registry-entry dataclass field surface — ``requires`` must NOT
     # appear (02-ADR-0003 Option D).
     fields = {f.name for f in entry.__dataclass_fields__.values()}  # type: ignore[attr-defined]

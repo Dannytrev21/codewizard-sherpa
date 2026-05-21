@@ -1,13 +1,6 @@
 {
   "entrypoint": {
-    "confidence": "high",
-    "entrypoints": [
-      {
-        "argv": [],
-        "command": null,
-        "form": "absent",
-        "path": "Dockerfile"
-      }
-    ]
+    "confidence": "unavailable",
+    "entrypoints": []
   }
 }

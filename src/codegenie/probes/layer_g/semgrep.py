@@ -75,23 +75,6 @@ def _stderr_tail(b: bytes) -> str:
     return b[-STDERR_TAIL_CAP_BYTES:].decode("utf-8", errors="replace")
 
 
-def _rules_loaded(data: dict[str, Any]) -> int | None:
-    """Count of rules semgrep actually loaded for this scan.
-
-    Read from ``time.rules`` (present in default ``--json`` output). A count
-    of ``0`` means the requested ``--config`` resolved to no rules — e.g. an
-    unreachable registry pack — so the scan was vacuous. ``None`` means the
-    field is absent (older semgrep); the caller must not treat that as zero.
-    """
-    time_block = data.get("time")
-    if not isinstance(time_block, dict):
-        return None
-    rules = time_block.get("rules")
-    if not isinstance(rules, list):
-        return None
-    return len(rules)
-
-
 def _parse_semgrep_stdout(
     stdout: bytes,
 ) -> tuple[list[SemgrepFinding], int | None, int | None]:
@@ -111,7 +94,7 @@ def _parse_semgrep_stdout(
         )
     paths = data.get("paths", {})
     files_scanned = len(paths.get("scanned", [])) if isinstance(paths, dict) else None
-    rules_run = _rules_loaded(data)
+    rules_run = len({f.check_id for f in findings}) or None
     return findings, files_scanned, rules_run
 
 
@@ -136,14 +119,6 @@ def _classify_semgrep_outcome(
                     None,
                     None,
                 )
-            if rules_run == 0:
-                # semgrep executed but loaded zero rules — the requested
-                # ``--config`` resolved to nothing (e.g. an unreachable
-                # registry pack). The scan is vacuous; report an honest skip
-                # so the empty result is not mistaken for "scanned, clean".
-                # ``config_absent`` is the existing reason for "installed
-                # scanner with no rule-config" (02-ADR-0006, 2026-05-21).
-                return ScannerSkipped(reason="config_absent"), [], rules_run, files_scanned
             return ScannerRan(findings=[]), findings, rules_run, files_scanned
 
 

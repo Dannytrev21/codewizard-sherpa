@@ -81,7 +81,6 @@ Sources:
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import datetime as _dt
 import json
 import re
@@ -104,7 +103,6 @@ from codegenie.indices.freshness import (
     Stale,
 )
 from codegenie.indices.registry import register_index_freshness_check
-from codegenie.output.paths import raw_dir
 from codegenie.parsers import safe_yaml
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.layer_c.scenario_result import (
@@ -670,22 +668,6 @@ def _slice_from_aggregate(
     }
 
 
-def _write_slice_sidecar(repo_root: Path, slice_dict: dict[str, Any]) -> Path:
-    """Persist the runtime_trace slice to ``raw/runtime_trace.json``.
-
-    The ``sbom`` and ``certificate`` probes read ``built_image_digest`` /
-    ``cert_paths_read`` from this sidecar via
-    :func:`~codegenie.probes.layer_b.index_health.read_raw_slices`; without it
-    the whole ``runtime_trace -> sbom -> cve`` chain is dead regardless of
-    platform. Mirrors the ``cve``/``sbom`` ``_write_files`` precedent.
-    """
-    rd = raw_dir(repo_root)
-    rd.mkdir(parents=True, exist_ok=True)
-    slice_path = rd / "runtime_trace.json"
-    slice_path.write_text(json.dumps(slice_dict, sort_keys=True))
-    return slice_path
-
-
 async def _execute_scenario(
     spec: ScenarioSpec,
     image_ref: str,
@@ -860,9 +842,7 @@ class RuntimeTraceProbe(Probe):
 
         scenarios, yaml_err = _load_scenarios(repo)
         if scenarios is None or yaml_err is not None:
-            return self._finalize(
-                repo.root, self._build_envelope_yaml_malformed(yaml_err or "unknown", started)
-            )
+            return self._build_envelope_yaml_malformed(yaml_err or "unknown", started)
 
         image_digest, unresolved_reason, error_repr = _resolve_image_digest(ctx, repo.root)
         if image_digest is None:
@@ -871,18 +851,14 @@ class RuntimeTraceProbe(Probe):
                 image_digest_unresolved_reason=unresolved_reason,
                 image_digest_resolver_error_repr=error_repr,
             )
-            return self._finalize(
-                repo.root, self._build_envelope_image_digest_unresolved(scenarios, started)
-            )
+            return self._build_envelope_image_digest_unresolved(scenarios, started)
 
         log.info("probe.runtime_trace.image_digest_resolved", digest=image_digest)
         image_ref = _image_ref_for_digest(image_digest)
 
         if not _platform_is_linux():
             log.info("probe.runtime_trace.platform_not_linux", platform=sys.platform)
-            return self._finalize(
-                repo.root, self._build_envelope_macos(scenarios, image_digest, started)
-            )
+            return self._build_envelope_macos(scenarios, image_digest, started)
 
         artifact_dir = ctx.output_dir / _ARTIFACT_DIRNAME
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -905,7 +881,7 @@ class RuntimeTraceProbe(Probe):
 
         if self._all_build_failures(results):
             log.warning("probe.runtime_trace.docker_build_failed_all")
-            return self._finalize(repo.root, self._build_envelope_build_failed(results, started))
+            return self._build_envelope_build_failed(results, started)
 
         aggregate = _aggregate_scenarios(results, parsed)
         manifest_path = artifact_dir / "runtime-trace.json"
@@ -924,30 +900,15 @@ class RuntimeTraceProbe(Probe):
             scenarios_run=aggregate.scenarios_run,
             scenarios_failed=aggregate.scenarios_failed,
         )
-        return self._finalize(
-            repo.root,
-            ProbeOutput(
-                schema_slice=slice_dict,
-                raw_artifacts=[manifest_path]
-                + [artifact_dir / f"{name}.strace" for name in aggregate.scenarios_run],
-                confidence=confidence,
-                duration_ms=duration_ms,
-                warnings=[],
-                errors=[],
-            ),
+        return ProbeOutput(
+            schema_slice=slice_dict,
+            raw_artifacts=[manifest_path]
+            + [artifact_dir / f"{name}.strace" for name in aggregate.scenarios_run],
+            confidence=confidence,
+            duration_ms=duration_ms,
+            warnings=[],
+            errors=[],
         )
-
-    @staticmethod
-    def _finalize(repo_root: Path, out: ProbeOutput) -> ProbeOutput:
-        """Persist the slice to ``raw/runtime_trace.json`` and register it.
-
-        Single chokepoint for all five ``run()`` exit paths so ``sbom`` and
-        ``certificate`` always find the sidecar on disk. The sidecar path is
-        prepended to ``raw_artifacts`` so a cache-hit restore re-materializes
-        it alongside the strace artifacts.
-        """
-        sidecar = _write_slice_sidecar(repo_root, out.schema_slice)
-        return dataclasses.replace(out, raw_artifacts=[sidecar, *out.raw_artifacts])
 
     # ------------------------------------------------------------------
     # Envelope builders for the seven failure / skip paths.

@@ -43,9 +43,6 @@ def test_entrypoint_probe_register_light() -> None:
     match = [e for e in entries if e.cls.__name__ == "EntrypointProbe"]
     assert len(match) == 1
     assert match[0].heaviness == "light"
-    # runs_last=True — hoisted to the rest wave so the dockerfile sidecar
-    # (written in the prelude) is on disk before this probe reads it.
-    assert match[0].runs_last is True
 
 
 def test_entrypoint_probe_requires_class_attr_not_decorator() -> None:

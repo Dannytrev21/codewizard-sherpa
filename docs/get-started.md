@@ -128,15 +128,3 @@ The schema grows by **addition** as new probes ship across phases. Existing prob
 
 ??? question "`codegenie gather` exits with code 6 (secret-shaped field rejected)"
     The two-pass sanitizer ([Phase 0 ADR-0008](phases/00-bullet-tracer-foundations/ADRs/0008-output-sanitizer-two-pass-chokepoint.md)) refused to persist what looked like a credential. Inspect the probe output; if the value really is a secret, the probe shouldn't be capturing it. If it's a false positive, the redaction patterns need to grow — open an issue.
-
-??? question "`runtime_trace` / `sbom` / `cve` probes report `unavailable`"
-    These three Layer C probes inspect a **built container image**, not just source code, so they have host prerequisites the source-only probes don't:
-
-    - `runtime_trace` builds the repo's `Dockerfile` and traces each scenario under `strace` — **Linux-only**; it needs `docker` and `strace`.
-    - `sbom` runs `syft` over the image `runtime_trace` built.
-    - `cve` runs `grype` over the SBOM `sbom` produced.
-
-    On macOS `runtime_trace` is `unavailable` **by design** (no `strace`), and that cascades to `sbom` and `cve`. This is honest degradation, not a failure. To exercise the full chain, run the gather on Linux (or in CI) with `docker`, `strace`, `syft`, and `grype` installed.
-
-??? question "`semgrep` ran but reports `skipped` / `config_absent`"
-    `semgrep` defaults to the `p/nodejs` registry pack, which is fetched over the network. When that ruleset can't be loaded (offline, registry unreachable), semgrep still exits cleanly having run **zero rules** — the probe reports `outcome: skipped (config_absent)` rather than a misleading clean scan. Point it at a local org ruleset by setting `semgrep_config` in `.codegenie/config.yaml`. Note that a repo-local `.semgrep.yml` is **not** auto-detected — analyzed-repo scanner config is intentionally not trusted.
