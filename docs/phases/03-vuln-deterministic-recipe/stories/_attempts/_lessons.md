@@ -375,3 +375,20 @@ phase-story-executor runs in this phase. New entries at the bottom.
     comment noting it is type-checking-only; runtime purity is unaffected. A
     "the `if TYPE_CHECKING:` block is allowed" claim in a story does not make
     a flat-allowlist fence honour it — verify the fence's actual logic.
+
+33. **A `HARDENED` story drifts from its dependencies if those deps ship GREEN
+    after the hardening pass — re-validate before executing** (observed
+    2026-05-21, S6-04). S6-04 was HARDENED 2026-05-19 against the then-`HARDENED`
+    (not yet on-disk) states of S5-01/S5-02/S6-01/S6-02/S6-03; those shipped
+    GREEN on 2026-05-20/21 with concrete surfaces the story's prose never got
+    re-synced to. Result: S6-04's prescribed 5-node dataflow could not be wired
+    — shipped `SubgraphState` (`extra="forbid"`) has no slot for the
+    `VulnerabilityRecord`/`ApplicationPlan` the nodes thread, `RecipeOutcome`
+    carries no `plan`, `RecipeEngine.apply` is `(repo, plan, capability)` not
+    `(plan, bundle, ctx)`, and AC-9's `ApplyRecipeNode(event_log)` lacks the
+    engine/repo/capability/`TransformRegistry` it needs. The executor's Stage-1
+    gate caught it and marked the story BLOCKED. **Rule for the remaining
+    HARDENED Step-6..9 stories (S6-05, S6-06, S7-*, S8-*, S9-*):** if a story
+    was hardened before its dependency stories reached GREEN, run
+    `/phase-story-validator` against the shipped surfaces *first* — a story's
+    `HARDENED` stamp is only as fresh as the deps it was hardened against.
