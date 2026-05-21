@@ -6,6 +6,8 @@
 **Depends on:** S6-02 (`SandboxClient.spawn(role=SandboxRole.GATE)` additive parameter shipped — the plugin's probes directory exists by then and the loader can collect)
 **ADRs honored:** Phase 7 ADR-0005 (probes live under plugin, NOT `src/codegenie/probes/`); Phase 7 ADR-0009 (no byte-edit to Phase 0–6.5 files outside the allowlist — this story is **net-new-files-only**); Phase 0 ADR-0007 (frozen Probe ABC — two-arg `run(self, repo, ctx)`); Phase 1 ADR-0004 (per-probe sub-schema `additionalProperties: false`); Phase 1 ADR-0007 (warning-ID regex); Phase 2 ADR-0004 (`image_digest_resolver` capability on `ProbeContext`); production ADR-0031 (plugin architecture).
 
+> **⚠ Amendment A sequencing note (2026-05-20).** This story predates Phase 7 Amendment A ([`../final-design.md` §Amendment A](../final-design.md)). `BaseImageProbe`'s slice is **extended by [S17-02](S17-02-base-image-multiarch-registry.md)** with `supported_architectures` + `non_public_registry` (ADR-0024) — S17-02 enumerates the added acceptance criteria. Do not treat this story's slice shape as final, and do not execute it before the Amendment A gather stories (Steps 13–15) land. See [`README.md` §"Stories — Amendment A"](README.md).
+
 ## Context
 
 `BaseImageProbe` is the **light, static, Layer C** probe in Phase 7 — the cheap evidence that says "what does the `FROM` line resolve to?" The migration-task-class plugin can only swap a base image if it knows which one is in use; the `AlpineVulnProvenanceAdapter` (S4-02) and `DistrolessVulnProvenanceAdapter` (S4-03) both consume this probe's slice as a precondition; the `DockerfileBaseImageSwapTransform` (S10-01) and `DockerfilePolicyGate` (S10-03) read the parsed AST output downstream.

@@ -377,6 +377,138 @@ Pattern-driven sequencing constraints:
 
 **Risks specific to this step:** The `--privileged` Linux runner constraint may force matrix-split work in CI. If the runner pool is constrained, fall back to `main`-merge-only enforcement and document in the e2e test's docstring.
 
+---
+
+# Amendment A — Steps 13–18 (2026-05-20)
+
+Steps 13–18 are additive per `final-design.md` Amendment A and
+`phase-arch-design.md` component designs §15–§23. They deepen the gather
+pipeline so a distroless migration is transformed correctly or **refused with
+typed evidence**. **Sequencing:** Steps 13–15 (gather probes) land *before* the
+existing Step 10 recipe stories execute; Steps 16–18 layer after. The
+still-`Ready` stories S7-01, S8-02/S8-03, S10-01/S10-02/S10-03 have their
+acceptance criteria amended to consume the new slices.
+
+## Step 13 — Source-secret + target-image gather (G1, G2)
+
+**Goal:** Two new probes — `DockerfileSecretPatternProbe` inventories how the
+source repo acquires build secrets; `TargetImageContentProbe` inventories what
+the recommended Chainguard image already provides. `crane` joins
+`ALLOWED_BINARIES`. The byte-edit allowlist fence (ADR-0009) is amended for
+every Amendment-A source file.
+
+**Features delivered:**
+- `plugins/distroless-migration--node--npm/probes/dockerfile_secret_pattern_probe.py` — `DockerfileSecretPatternProbe(Probe)`, Layer C, light, static, `@register_probe`. `dockerfile-parse` AST walk; `_SECRET_PATTERN_RULES: Final[tuple[SecretRule, ...]]` open/closed catalog; `external_script` classified opaque (no `tree-sitter-bash`).
+- `plugins/distroless-migration--node--npm/probes/target_image_content_probe.py` — `TargetImageContentProbe(Probe)`, Layer E, `cache_strategy="content"`, `declared_inputs=["image-digest:<target-resolved>"]`. `crane manifest`/`crane config` + Chainguard SBOM via the `SbomProbe` machinery.
+- Probe sub-schemas under `plugins/distroless-migration--node--npm/schema/{secret_pattern,target_image_content}.schema.json`; two additive `$ref` insertions into `repo_context.schema.json`.
+- `src/codegenie/exec/__init__.py::ALLOWED_BINARIES` += `crane` (ADR-0028).
+- `tests/fence/test_phase7_no_byte_edits_to_locked_files.py` allowlist amended per ADR-0029.
+- Golden fixtures under `tests/golden/probes/{secret_pattern,target_image_content}/`.
+
+**Done criteria:**
+- [ ] Unit tests cover each `SecretPattern.kind` against golden Dockerfiles; `external_script` produces the opaque record.
+- [ ] `TargetImageContentProbe` golden tests cover `shell_present` true/false, `already_satisfied_run_lines`, `supported_architectures`.
+- [ ] Both slices validate against the updated envelope schema.
+- [ ] `mypy --strict` + `make check` green.
+
+**Depends on:** Steps 1–9. **Effort:** L. **ADRs:** 0018, 0019, 0028, 0029.
+
+## Step 14 — Build-toolchain classification + native modules (G3)
+
+**Goal:** A frozen classification catalog splits `apk`/`apt` packages into
+`build_toolchain | runtime_library | diagnostic`; `NodeManifestProbe`'s slice
+gains a `native_modules` field. The multi-stage recipe uses both to put each dep
+in the right stage and to select the `*-dev` builder image when native modules
+are present.
+
+**Features delivered:**
+- `plugins/distroless-migration--node--npm/data/apk_classification.yaml` + `apt_classification.yaml` — frozen, CODEOWNERS-gated, loaded through the catalog-loader seam.
+- `NodeManifestProbe` slice extended with `native_modules: tuple[NativeModule, ...]` (additive schema field; detects `binding.gyp`, `*.node`, `node-gyp`).
+- Catalog file-hash fence (mirrors S9-02's catalog fence shape).
+
+**Done criteria:**
+- [ ] Catalog loader rejects an unknown classification value; every catalog entry has a known disposition.
+- [ ] `native_modules` slice populated correctly on a native-module fixture and empty on a pure-JS fixture.
+- [ ] `mypy --strict` + `make check` green.
+
+**Depends on:** Step 13. **Effort:** M. **ADRs:** 0020, 0029.
+
+## Step 15 — Runtime-compatibility gather (G4, G6, G7–G10, G12)
+
+**Goal:** Three probes surface the runtime-environment hazards a `nonroot`
+distroless image introduces: app-code shell-out, healthcheck/deployment-probe
+shell dependence, and uid/PID-1/filesystem/locale assumptions.
+
+**Features delivered:**
+- `plugins/distroless-migration--node--npm/probes/runtime_shell_invocation_probe.py` — tree-sitter JS/TS (`grammars.lock.language_for`); typed hits with `criticality ∈ {blocking, advisory}` by path (`src/**` blocking, `tests/**` advisory — G12).
+- `plugins/distroless-migration--node--npm/probes/container_probe_compat_probe.py` — analyses the deployment manifests `DeploymentProbe` locates (`docker-compose.yml`, K8s, helm) for `exec`/`curl`/`wget` probes.
+- `plugins/distroless-migration--node--npm/probes/runtime_compat_probe.py` — uid/user delta, PID-1/signals, filesystem (`/etc/passwd`, `/tmp`, literal-path `fs.readFile`), locale/TZ.
+- Three probe sub-schemas + three additive `$ref` insertions.
+- Golden fixtures for each probe.
+
+**Done criteria:**
+- [ ] `RuntimeShellInvocationProbe` classifies a `src/**` `child_process.exec` blocking and a `tests/**` one advisory.
+- [ ] `ContainerProbeCompatProbe` flags a K8s `exec` liveness probe and a `HEALTHCHECK curl`.
+- [ ] `RuntimeCompatProbe` flags a `COPY` without `--chown` and a privileged `EXPOSE`.
+- [ ] All three slices validate against the envelope schema; `make check` green.
+
+**Depends on:** Steps 6 (SandboxRole), 13. **Effort:** L. **ADRs:** 0021, 0022, 0023, 0029.
+
+## Step 16 — Refusal taxonomy + recipe transformation contract (G5, M2)
+
+**Goal:** A closed refusal taxonomy makes "cannot transform deterministically" a
+typed outcome with evidence; the recipes gain typed gather inputs and the
+ability to refuse. Amends the still-`Ready` stories S10-01/S10-02/S10-03.
+
+**Features delivered:**
+- `src/codegenie/transforms/outcomes.py` — additive `RemediationOutcome.PendingHumanReview` variants (`RefusedOpaqueSecretScript`, `RefusedRuntimeShellOutInProductionCode`, `RefusedNativeModulesUnclassified`, `RefusedNonDeterministicEntrypoint`, `RefusedArchitectureLoss`, `RefusedExternalRegistryBaseImage`), each with a structured source-location payload. ADR-gated byte-edit (ADR-0029).
+- `DockerfileBaseImageSwapTransform` + `DockerfileMultiStageRefactorTransform` — gain typed inputs (`SecretPatternSlice`, `TargetImageContentSlice`, `native_modules`); strip `already_satisfied_run_lines`; rewrite shell-form `ENTRYPOINT`/`CMD` to exec-form where deterministic; refuse otherwise.
+- `DockerfilePolicyGate` consumes the refusal taxonomy.
+
+**Done criteria:**
+- [ ] Each refusal variant has a test producing it from a crafted fixture; `match`/`assert_never` exhaustiveness holds.
+- [ ] The swap recipe drops a redundant `RUN apk add ca-certificates` and rewrites `CMD node x` → `CMD ["node","x"]`.
+- [ ] An opaque-secret-script fixture yields `RefusedOpaqueSecretScript`, not a diff.
+- [ ] `mypy --strict` + `make check` green.
+
+**Depends on:** Steps 13–15. **Effort:** L. **ADRs:** 0025, 0029.
+
+## Step 17 — Migration confidence + multi-arch / external-registry checks (M1, G11, G13)
+
+**Goal:** A single `MigrationConfidence` rollup the orchestrator refuses
+against; `BaseImageProbe` extended for architecture-coverage delta and
+non-public-registry detection. Amends still-`Ready` story S7-01.
+
+**Features delivered:**
+- `MigrationConfidence = High | Degraded(reasons) | Refused(reason)` sum type + `aggregate_migration_confidence(...)` pure function.
+- `BaseImageProbe` slice extended with `supported_architectures` (source) and `non_public_registry: bool`; arch-loss → `RefusedArchitectureLoss`; non-public mirror → `AdapterConfidence.Degraded` + WARN.
+
+**Done criteria:**
+- [ ] `aggregate_migration_confidence` returns `Degraded` when any probe is `low`; property-tested.
+- [ ] An armv7-only source against an amd64/arm64 target yields `RefusedArchitectureLoss`.
+- [ ] `mypy --strict` + `make check` green.
+
+**Depends on:** Steps 13–16. **Effort:** M. **ADRs:** 0024, 0026, 0029.
+
+## Step 18 — Migration observability (G14–G17, M3)
+
+**Goal:** Make the migration's effect legible to the human merger and reuse the
+heavy trace probe across CVEs.
+
+**Features delivered:**
+- `transformations_applied: tuple[TransformationKind, ...]` on the migration record; rendered into the PR description.
+- Workflow events `MigrationSizeRegression` (pre/post compressed size, G14); `pre_migration_image_ref` capture for the rollback runbook (G15); attestation diff (G16).
+- `ShellInvocationTraceProbe` content-cache entry reused across CVEs for the same `(Dockerfile, package.json, image-digest)` (G17).
+
+**Done criteria:**
+- [ ] PR description includes `transformations_applied`, image-size delta, and the rollback line.
+- [ ] A second CVE against the same repo reuses the cached trace (cache-hit asserted).
+- [ ] `mypy --strict` + `make check` green.
+
+**Depends on:** Steps 13–17. **Effort:** M. **ADRs:** 0027, 0029.
+
+---
+
 ## Exit-criteria mapping
 
 | Roadmap exit criterion | Step(s) that satisfy it |

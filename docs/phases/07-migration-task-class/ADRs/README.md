@@ -29,6 +29,25 @@ Architecture Decision Records for Phase 7, in Nygard format. Each ADR captures o
 | [0016](0016-tccm-derived-queries-band.md) | TCCM gains a `derived_queries:` band that holds derived-callable invocations separately from `must_read` (which is evidence to load) | tccm · adr-0029 · progressive-disclosure · schema-additive · critic-roadmap6 |
 | [0017](0017-both-provenance-exits-code-8-with-coordination-summary.md) | When `assemble_provenance` returns `Both`, the CLI exits with code 8 and writes `coordination-summary.yaml`; Phase 7 is "produce evidence, do not sequence" | exit-codes · operator-ergonomics · phase-boundary · adr-0042 |
 
+### Amendment A — distroless-migration gather / transform / refusal gaps (2026-05-20)
+
+ADRs 0018–0029 are additive per [`final-design.md` §Amendment A](../final-design.md) and [`phase-arch-design.md` §Component design — Amendment A](../phase-arch-design.md). They deepen the gather pipeline so a migration is transformed correctly or refused with typed evidence — never shipped broken.
+
+| # | Title | Tags |
+|---|---|---|
+| [0018](0018-dockerfile-secret-pattern-probe.md) | `DockerfileSecretPatternProbe` inventories source-side secret acquisition; `COPY`'d external scripts are classified opaque and refused, not parsed | amendment-a · probe · secret-patterns · refuse · gap-g1 |
+| [0019](0019-target-image-content-probe.md) | `TargetImageContentProbe` inventories the Chainguard target image via `crane` + published SBOM so the recipe drops redundant layers | amendment-a · probe · target-image · crane · gap-g2 |
+| [0020](0020-build-toolchain-classification-catalog.md) | Build-time-only toolchain vs runtime libraries is a frozen data catalog, not a heuristic | amendment-a · data-catalog · native-modules · open-closed · gap-g3 |
+| [0021](0021-runtime-shell-invocation-probe.md) | `RuntimeShellInvocationProbe` statically detects app-code shell-out; `src/**` hits block, `tests/**` hits are advisory | amendment-a · probe · tree-sitter · refuse · gap-g4-g12 |
+| [0022](0022-container-probe-compat-and-blast-radius.md) | The migration blast radius includes deployment manifests; `ContainerProbeCompatProbe` analyses K8s/Compose/helm probes | amendment-a · probe · blast-radius · deployment-manifests · gap-g6 |
+| [0023](0023-runtime-compat-probe.md) | `RuntimeCompatProbe` folds uid/PID-1/filesystem/locale assumptions into one advisory probe | amendment-a · probe · runtime-compat · warn · gap-g7-g10 |
+| [0024](0024-multi-arch-and-external-registry-checks.md) | `BaseImageProbe` is extended (not duplicated) for architecture-coverage delta and non-public-registry detection | amendment-a · base-image · multi-arch · extension-by-addition · gap-g11-g13 |
+| [0025](0025-migration-refusal-taxonomy.md) | Migration refusal is a closed typed taxonomy of `RemediationOutcome.PendingHumanReview` variants, each carrying source-location evidence | amendment-a · sum-type · refusal · make-illegal-states-unrepresentable · meta-m2 |
+| [0026](0026-migration-confidence-aggregation.md) | `MigrationConfidence` is a single sum-type rollup the orchestrator refuses against | amendment-a · sum-type · confidence · functional-core · meta-m1 |
+| [0027](0027-migration-observability-bundle.md) | Migration observability — a typed `transformations_applied` list plus enrichment events make the change legible to the human merger | amendment-a · observability · humans-always-merge · warn · gap-g14-g17 |
+| [0028](0028-allowed-binaries-amendment-crane.md) | `ALLOWED_BINARIES` gains `crane` for daemonless OCI manifest/config/SBOM fetch | amendment-a · subprocess-discipline · allowed-binaries · amendment |
+| [0029](0029-amend-byte-edit-allowlist-for-amendment-a.md) | ADR-0029 amends the ADR-0009 byte-edit allowlist to enumerate every Amendment-A source-file addition | amendment-a · fence · byte-edit-allowlist · extension-by-addition |
+
 ## Conventions
 
 - Filenames are NNNN-kebab-case-title.md with zero-padded four-digit numbers, numbered locally per phase starting at 0001.

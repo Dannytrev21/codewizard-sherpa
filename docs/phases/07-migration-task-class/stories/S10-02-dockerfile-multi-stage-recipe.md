@@ -6,6 +6,8 @@
 **Depends on:** S10-01 (`DockerfileBaseImageSwapTransform` ships first; this story's recipe runs *after* the base-image swap)
 **ADRs honored:** [Phase 7 ADR-0014](../ADRs/0014-multi-stage-refactor-recipe-synchronous.md) (**synchronous, NO `asyncio.gather` over per-stage AST work**), [Phase 7 ADR-0013](../ADRs/0013-dockerfile-recipe-engine-dockerfile-parse.md) (pure-Python `dockerfile-parse`)
 
+> **⚠ Amendment A sequencing note (2026-05-20).** This story predates Phase 7 Amendment A ([`../final-design.md` §Amendment A](../final-design.md)). Its acceptance criteria are **extended by [S16-02](S16-02-recipe-contract-amendment.md)** — the multi-stage refactor consumes the build-toolchain catalog ([S14-01](S14-01-toolchain-classification-catalog.md)) and `native_modules` slice ([S14-02](S14-02-native-modules-slice.md)) to place deps in the right stage and select the `*-dev` builder image, and refuses via the [S16-01](S16-01-migration-refusal-taxonomy.md) taxonomy. Do **not** execute before Steps 13–16 land. See [`README.md` §"Stories — Amendment A"](README.md).
+
 ## Context
 
 `DockerfileMultiStageRefactorTransform` is the expensive path: the source Dockerfile has shell-using `RUN` lines (e.g., `RUN apk add --no-cache curl && curl -fL ... | tar xz ...`) that **cannot** survive a distroless runtime stage (no `/bin/sh`). The recipe rewrites the Dockerfile so those shell operations move into a **builder stage**, and the runtime stage receives only the produced artifacts via `COPY --from=builder`. The runtime stage gets exec-form `CMD`; shell-form commands are out.

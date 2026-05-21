@@ -951,6 +951,132 @@ For each component: **Purpose / Public interface / Internal structure / Dependen
 
 ---
 
+## Component design — Amendment A (2026-05-20)
+
+Components §15–§23 are additive per `final-design.md` Amendment A. They deepen
+the gather pipeline so a distroless migration is transformed correctly or
+**refused with typed evidence** — never shipped broken. Each obeys the frozen
+Probe ABC (production ADR-0007) or the established registry/strategy seams.
+
+### 15. `DockerfileSecretPatternProbe` (Phase 7 plugin — G1)
+
+- **Purpose.** Inventory how the source repo acquires secrets during the build
+  so the recipe can preserve or refuse — never silently drop — them.
+- **Placement.** `plugins/distroless-migration--node--npm/probes/dockerfile_secret_pattern_probe.py`. Layer C, `tier="task_specific"`, `heaviness="light"`, static, `cache_strategy="content"`, `declared_inputs=["**/Dockerfile", "**/Dockerfile.*", "**/Containerfile"]`.
+- **Public interface.** Emits `SecretPatternSlice`: an ordered tuple of typed
+  `SecretPattern` records, each tagged `kind ∈ {buildkit_secret_mount,
+  env_arg_injection, file_copy_credential, auth_header_fetch, external_script}`
+  with the instruction index and referenced env/path. `confidence`.
+- **Internal structure.** `dockerfile-parse` AST walk; a module-level
+  `_SECRET_PATTERN_RULES: Final[tuple[SecretRule, ...]]` open/closed catalog
+  reuses the Phase 2 sanitizer's secret-shaped-name regexes. `external_script`
+  (a `COPY`'d script that is then `RUN`) is classified **opaque** — the probe
+  does not parse the script (no `tree-sitter-bash`); it records the invocation.
+- **Disposition.** GATHER; the recipe REFUSES on any `external_script` record
+  (`RefusedOpaqueSecretScript`, M2) and rewrites `env_arg_injection` into a
+  portable `--mount=type=secret` form where deterministic. ADR-0018.
+
+### 16. `TargetImageContentProbe` (Phase 7 plugin — G2)
+
+- **Purpose.** Inventory what the recommended Chainguard image already provides
+  so the recipe drops redundant `RUN` lines and never re-imports the present.
+- **Placement.** `plugins/distroless-migration--node--npm/probes/target_image_content_probe.py`. Layer E, `cache_strategy="content"`, `declared_inputs=["image-digest:<target-resolved>"]`.
+- **Public interface.** Emits `TargetImageContentSlice`: `preinstalled_packages`,
+  `preinstalled_users` (incl. `nonroot` uid 65532), `ca_certificates` flag,
+  `shell_present: bool` (load-bearing), `default_workdir`, `default_entrypoint`,
+  `supported_architectures`, and `already_satisfied_run_lines` (exact-text
+  source `RUN` lines the target image makes redundant).
+- **Internal structure.** `crane manifest` + `crane config` for the digest; the
+  Chainguard-published SBOM read through the existing `SbomProbe` machinery
+  pointed at the *target* image. Pure parse; no build.
+- **Disposition.** GATHER. ADR-0019. Requires `crane` in `ALLOWED_BINARIES`
+  (ADR-0028).
+
+### 17. Build-toolchain classification catalog + native-module slice (Phase 7 plugin — G3)
+
+- **Purpose.** Distinguish build-time-only deps (compilers, headers) from
+  runtime libraries so the multi-stage refactor puts each in the right stage.
+- **Placement.** Data file `plugins/distroless-migration--node--npm/data/apk_classification.yaml` (and `apt_classification.yaml`), keyed by package name → `build_toolchain | runtime_library | diagnostic`. The `NodeManifestProbe` slice is extended with a `native_modules: tuple[NativeModule, ...]` field (detects `binding.gyp`, `*.node`, `node-gyp` in the resolved tree).
+- **Internal structure.** Frozen YAML catalogs under CODEOWNERS; loaded through
+  the established catalog-loader seam. Classification is data, not heuristic.
+- **Disposition.** GATHER. ADR-0020. The multi-stage recipe selects the
+  `cgr.dev/chainguard/node:*-dev` builder image when `native_modules` is
+  non-empty, then COPYs `node_modules` into the distroless runner.
+
+### 18. `RuntimeShellInvocationProbe` (Phase 7 plugin — G4, G12)
+
+- **Purpose.** Detect application code that shells out at runtime
+  (`child_process.exec/spawn`, `execSync`, `Bun.spawn`) — distroless has no
+  `/bin/sh` at runtime, so these become `ENOENT` in production.
+- **Placement.** `plugins/distroless-migration--node--npm/probes/runtime_shell_invocation_probe.py`. Layer C, static, light. Uses `grammars.lock.language_for("javascript"|"typescript")` — the existing grammars; no new grammar.
+- **Public interface.** Emits `RuntimeShellInvocationSlice`: typed hits, each
+  with file path, the `argv[0]` (literal or `dynamic`), and a
+  `criticality ∈ {blocking, advisory}` derived from path — `src/**` blocking,
+  `tests/**`/`*.test.*` advisory (G12 — prevents test-infra false-negatives).
+- **Disposition.** GATHER + REFUSE — any `blocking` hit with `argv[0]` outside
+  `{node, npm, yarn}` triggers `RefusedRuntimeShellOutInProductionCode` (M2).
+  ADR-0021.
+
+### 19. `ContainerProbeCompatProbe` (Phase 7 plugin — G6)
+
+- **Purpose.** The migration's blast radius is not only the `Dockerfile`.
+  Detect `HEALTHCHECK curl/wget` and K8s/Compose/helm `exec` liveness/readiness
+  probes that depend on a shell or absent binaries.
+- **Placement.** `plugins/distroless-migration--node--npm/probes/container_probe_compat_probe.py`. Layer B/C, static. Consumes the file set the Phase 2 `DeploymentProbe` already locates (`docker-compose.yml`, K8s manifests, helm charts).
+- **Public interface.** Emits `ContainerProbeCompatSlice`: per-probe records
+  with the manifest path, probe kind, and shell/binary dependency.
+- **Disposition.** GATHER. ADR-0022. The recipe may now widen the PR to include
+  a deployment-manifest change (HTTP-probe rewrite); where non-deterministic it
+  WARNs in the PR description.
+
+### 20. `RuntimeCompatProbe` (Phase 7 plugin — G7–G10)
+
+- **Purpose.** Surface runtime-environment assumptions that break under
+  `nonroot` distroless: uid/user delta, PID-1/signal handling, filesystem
+  assumptions (`/etc/passwd` real entries, `/tmp` writability, literal-path
+  `fs.readFile`), locale/timezone (`process.env.TZ`, ICU-dependent deps).
+- **Placement.** `plugins/distroless-migration--node--npm/probes/runtime_compat_probe.py`. Layer C, static. Combines a `dockerfile-parse` pass (`COPY` without `--chown`, writes outside `$HOME`/`/tmp`, privileged `EXPOSE`) with a tree-sitter JS/TS pass for the literal-path / TZ assumptions.
+- **Public interface.** Emits `RuntimeCompatSlice`: typed findings grouped
+  `user_uid | pid1_signals | filesystem | locale_tz`.
+- **Disposition.** GATHER + WARN (mostly advisory; surfaced in the PR). ADR-0023.
+
+### 21. `MigrationConfidence` aggregator (Phase 7 plugin — M1)
+
+- **Purpose.** A single sum-type rollup over every probe `confidence` and every
+  `AdapterConfidence` so the orchestrator has one value to refuse against —
+  rather than gate-and-pray on a scatter of independent confidences.
+- **Public interface.** `aggregate_migration_confidence(slices, adapters) -> MigrationConfidence` where `MigrationConfidence = High | Degraded(reasons) | Refused(reason)`. Pure function; functional-core.
+- **Disposition.** GATHER. ADR-0026. When any load-bearing probe is `low` or any
+  adapter `Degraded`, the rollup is `Degraded` and the orchestrator escalates to
+  HITL rather than applying the recipe.
+
+### 22. Migration refusal taxonomy (M2)
+
+- **Purpose.** A closed, typed set of refusal reasons so "the recipe cannot
+  transform this deterministically" is a first-class outcome with evidence —
+  cheaper than shipping and rolling back.
+- **Public interface.** Additive variants on `RemediationOutcome.PendingHumanReview`
+  in `src/codegenie/transforms/outcomes.py`: `RefusedOpaqueSecretScript`,
+  `RefusedRuntimeShellOutInProductionCode`, `RefusedNativeModulesUnclassified`,
+  `RefusedNonDeterministicEntrypoint`, `RefusedArchitectureLoss`,
+  `RefusedExternalRegistryBaseImage`. Each carries a structured source-location
+  payload (file, line/instruction index).
+- **Disposition.** REFUSE. ADR-0025. The variant set is closed; adding one is an
+  ADR amendment. `match`/`assert_never` exhaustiveness at every consumer.
+
+### 23. Migration observability bundle (G14–G17, M3)
+
+- **Purpose.** Make the migration's effect legible to the human merger.
+- **Public interface.** A `transformations_applied: tuple[TransformationKind, ...]`
+  list on the migration record; workflow events `MigrationSizeRegression`
+  (G14, pre/post compressed size), `pre_migration_image_ref` capture for the
+  rollback runbook (G15), an attestation diff (G16); cross-CVE reuse of the
+  heavy `ShellInvocationTraceProbe` content-cache entry (G17).
+- **Disposition.** WARN — none of these block; all enrich the PR description.
+  ADR-0027.
+
+---
+
 ## Data model
 
 Annotated as **Contract** (stable surface other phases depend on) or **Internal** (Phase 7 implementation detail). Identifier types follow ADR-0033's newtype discipline.
@@ -1438,6 +1564,32 @@ When npm + yarn-berry both resolve `(cve, pkg)` on a polyglot repo, `assemble_pr
 Phase 8 lands ~3 months after Phase 7. `Both`-variant events will pile up in the spanning log. Phase 7's `codegenie list-coordination-candidates` is the visibility surface, but operators must opt to run it.
 
 **Improvement.** Phase 7's `coordination-summary.yaml` writer also appends a row to `.codegenie/coordination/_index.tsv` (TSV is the simplest portfolio-scale-friendly format). The TSV is the operator's at-a-glance index without needing to walk the event log. Phase 13.5 (operator portal) projects the spanning log natively when it lands; the TSV is the pre-portal bridge.
+
+### Amendment A gaps — G1–G17, M1–M3 (2026-05-20)
+
+Design review found the gather pipeline did not collect the context a *correct*
+distroless migration needs (source-side secret acquisition, target-image
+content, native-module/toolchain split, runtime shell-out, healthcheck/probe
+shell dependence, uid/PID-1/filesystem assumptions, multi-arch, confidence
+rollup, refusal taxonomy, observability). These 20 gaps are catalogued in
+`final-design.md` **Amendment A §A.2** and resolved as follows:
+
+- **Components.** New designs §15–§23 above (six gather probes, the
+  `MigrationConfidence` aggregator, the refusal taxonomy, the observability
+  bundle).
+- **ADRs.** New ADRs 0018–0029 — one structural decision each; ADR-0029 amends
+  ADR-0009's byte-edit allowlist for every Amendment-A source file.
+- **Implementation.** `High-level-impl.md` Steps 13–18.
+- **Governing principle.** Every gap resolves to GATHER (new probe slice the
+  recipe/gate consumes), REFUSE (typed `RemediationOutcome.PendingHumanReview`
+  variant, §22), or WARN (PR-description finding, §23). Shipping a broken image
+  is the one unacceptable outcome.
+
+**Sequencing.** The gather probes (Steps 13–15) must land before the recipe
+stories (Step 10) execute — the recipes consume the new slices. The still-`Ready`
+stories S7-01 (BaseImage multi-arch/uid fields), S8-02/S8-03 (TCCM `must_read`
+the new probes), and S10-01/S10-02/S10-03 (recipes + policy gate consume the new
+slices + refusal taxonomy) have their acceptance criteria amended accordingly.
 
 ---
 

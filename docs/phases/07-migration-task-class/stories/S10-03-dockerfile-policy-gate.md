@@ -6,6 +6,8 @@
 **Depends on:** S7-05 (probe-contract conformance + envelope-validation integration test — the `@register_signal_kind` registry is loaded by then), S10-01 (`DockerfileBaseImageSwapTransform` produces the rendered Dockerfile this gate consumes)
 **ADRs honored:** [Phase 7 ADR-0012](../ADRs/0012-dockerfile-policy-gate-strict-and-no-override.md) (**strict-AND, NO `--allow-policy-violations` flag** — the design decision is hard-fail-no-override), [Phase 5 ADR-0003](../../05-sandbox-trust-gates/ADRs/0003-trustscorer-extension-via-signal-kind-registry.md) (open `@register_signal_kind` registry), [Phase 7 ADR-0013](../ADRs/0013-dockerfile-recipe-engine-dockerfile-parse.md) (pure-Python `dockerfile-parse` for AST parsing)
 
+> **⚠ Amendment A sequencing note (2026-05-20).** This story predates Phase 7 Amendment A ([`../final-design.md` §Amendment A](../final-design.md)). The gate consumes the refusal taxonomy from **[S16-01](S16-01-migration-refusal-taxonomy.md)** and runs after the [S16-02](S16-02-recipe-contract-amendment.md) recipe contract amendment. Do **not** execute before Steps 13–16 land. See [`README.md` §"Stories — Amendment A"](README.md).
+
 ## Context
 
 Phase 5 establishes the strict-AND `TrustScorer` discipline: trust score is the conjunction over objective signals; a single failing gate fails the whole score; no thresholds, no overrides. Phase 7 contributes its first static pre-build gate: `DockerfilePolicyGate` — a pure function over rendered Dockerfile text + parsed AST that evaluates six load-bearing invariants:

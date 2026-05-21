@@ -764,3 +764,89 @@ Per the roadmap §Phase 7:
 ---
 
 **End of design of record.**
+
+---
+
+# Amendment A — distroless-migration gather / transform / refusal gaps (2026-05-20)
+
+**Status:** Accepted amendment. Additive to the design of record above — no
+section above this line is altered.
+**Trigger:** Design review found the gather pipeline does not collect the
+context a *correct* distroless migration needs. A naive `FROM` swap can ship an
+image that builds clean, passes the gate, merges — then fails at runtime
+(missing shell, missing toolchain, dropped secret-acquisition path, redundant
+layers). The original design's `ShellInvocationTraceProbe` observes shell *during
+the build*; `DockerfilePolicyGate` checks invariants *after* the recipe runs.
+Neither inventories what the source repo actually does, nor what the target
+Chainguard image already provides.
+
+## A.1 — Governing principle
+
+Phase 7 must, for every migration it attempts, either **gather enough context to
+transform the case correctly**, or **refuse with typed evidence** (a
+`RemediationOutcome.PendingHumanReview` variant naming the exact source
+location). Shipping a broken image is the one unacceptable outcome. Every gap
+below resolves to one of three dispositions:
+
+- **GATHER** — a new probe slice the recipe/gate consumes to transform correctly.
+- **REFUSE** — a typed refusal variant when the case cannot be transformed
+  deterministically (M2 taxonomy).
+- **WARN** — a non-blocking finding surfaced in the PR description (M3).
+
+## A.2 — Gap inventory
+
+| Gap | Summary | Disposition | Component | ADR | Step |
+|---|---|---|---|---|---|
+| G1 | Source-side secret acquisition: `--mount=type=secret`, `ARG`/`ENV` token injection, `COPY .npmrc`/`.yarnrc`, auth-header `curl`/`wget`, `COPY`'d external scripts | GATHER + REFUSE (opaque scripts) | `DockerfileSecretPatternProbe` | 0018 | 13 |
+| G2 | Target Chainguard image content inventory: preinstalled packages, `nonroot` user, CA certs, `shell_present: false` → drop redundant `RUN apk add` | GATHER | `TargetImageContentProbe` | 0019 | 13 |
+| G3 | Native modules (`binding.gyp`, `*.node`) + build-time-only toolchain (`gcc`, `make`, `python3`) vs runtime libraries | GATHER | `apk/apt` classification catalog + `NodeManifestProbe` native-module slice | 0020 | 14 |
+| G4 | Runtime shell-out from app code (`child_process.exec`/`spawn`, `execSync`) — distroless has no `/bin/sh` at runtime | GATHER + REFUSE (`src/**` hits) | `RuntimeShellInvocationProbe` (tree-sitter JS/TS) | 0021 | 15 |
+| G5 | Shell-form `ENTRYPOINT`/`CMD`, `sh -c` wrappers, `npm start` | GATHER + REFUSE (non-deterministic) | recipe transformation contract | 0025 | 16 |
+| G6 | Healthcheck `curl`/`wget` + K8s/Compose/helm `exec` probes — migration blast-radius widens beyond the `Dockerfile` | GATHER | `ContainerProbeCompatProbe` over deployment manifests | 0022 | 15 |
+| G7–G10 | uid/user delta (root→`nonroot` 65532), PID-1/signal handling, filesystem assumptions (`/etc/passwd`, `/tmp`), locale/timezone | GATHER + WARN | `RuntimeCompatProbe` | 0023 | 15 |
+| G11 | Multi-architecture coverage delta (source supports armv7; Chainguard may not) | GATHER + REFUSE (arch loss) | `BaseImageProbe` extension | 0024 | 17 |
+| G12 | Test-infra shell-out causes false-negative build-gate failures — classify `tests/**` advisory vs `src/**` blocking | GATHER | `RuntimeShellInvocationProbe` path classification | 0021 | 15 |
+| G13 | Pre-existing patches in a non-public mirror base image — the CVE may already be patched differently | GATHER + WARN | `BaseImageProbe` non-public-registry detection → `AdapterConfidence.Degraded` | 0024 | 17 |
+| G14 | Image-size delta (multi-stage refactor can balloon the image) | WARN | migration observability event | 0027 | 18 |
+| G15 | Rollback runbook in the PR (redeploy `pre_migration_image_ref`) | WARN | migration observability | 0027 | 18 |
+| G16 | Compliance attestation diff (Chainguard ships signed SBOM + SLSA provenance) | WARN | migration observability | 0027 | 18 |
+| G17 | Cross-CVE caching of the heavy `ShellInvocationTraceProbe` (keyed `Dockerfile`+`package.json`+`image-digest`) | GATHER (perf) | content-cache reuse | 0027 | 18 |
+| M1 | `MigrationConfidence` aggregation — single sum-type rollup the orchestrator can refuse against when any probe/adapter is `Degraded` | GATHER | `MigrationConfidence` aggregator | 0026 | 17 |
+| M2 | Refusal taxonomy — closed `RemediationOutcome.PendingHumanReview` variant set, each with a structured source-location payload | REFUSE | `outcomes.py` additive variants | 0025 | 16 |
+| M3 | Structured `transformations_applied` list for the PR description (what was swapped/dropped/rewritten) | WARN | migration observability | 0027 | 18 |
+
+## A.3 — Departures the amendment makes from the design of record
+
+1. **The migration's blast radius is not just the `Dockerfile`.** G6 widens it to
+   K8s/Compose/helm deployment manifests. `DeploymentProbe` (Phase 2) already
+   *locates* these; the new `ContainerProbeCompatProbe` *analyses* them. A
+   migration PR may now include a deployment-manifest change.
+2. **The recipe consumes gather output it did not before.** `DockerfileBaseImageSwapTransform`
+   and `DockerfileMultiStageRefactorTransform` (design-of-record §9–10) gain
+   typed inputs — `SecretPatternInventory`, `TargetImageContents`,
+   `NativeModuleSlice` — and gain the ability to **refuse**. The recipe is no
+   longer "always produces a diff"; it produces a diff *or* a typed refusal.
+   This amends the still-`Ready` recipe stories S10-01/S10-02/S10-03.
+3. **`tree-sitter-bash` is deliberately NOT added.** G1 detects that a `COPY`'d
+   shell script is *invoked* and classifies it `opaque → refuse`; it does not
+   parse the script. G4 uses the existing `javascript`/`typescript` grammars
+   (`src/codegenie/grammars/lock.py`). Net-new runtime deps from this amendment:
+   `crane` (CLI, `ALLOWED_BINARIES`, ADR-0028) — zero new Python packages.
+4. **`ALLOWED_BINARIES` gains `crane`** (target-image manifest + SBOM fetch for
+   G2), in addition to the design-of-record's `dive` + `docker buildx`.
+5. **ADR-0009's byte-edit allowlist is amended** (ADR-0029) to enumerate every
+   new source file this amendment's stories create — the fence stays the
+   mechanical definition of "additive."
+
+## A.4 — Scope, sequencing, non-goals
+
+- **In scope:** all gather probes (G1–G13), the refusal taxonomy (M2), the
+  confidence rollup (M1), and the observability bundle (G14–G17, M3).
+- **Sequencing:** the gather probes (Steps 13–15) must land *before* the
+  recipe stories (existing Step 10) execute — the recipes consume the new
+  slices. Steps 16–18 layer after. See `High-level-impl.md` Steps 13–18.
+- **Non-goals (unchanged):** no LLM anywhere; no multi-plugin coordination
+  (Phase 8); no signed-artifact publishing (deferred ADR). The amendment adds
+  *gather depth and refusal honesty*, not new autonomy.
+
+**End of Amendment A.**

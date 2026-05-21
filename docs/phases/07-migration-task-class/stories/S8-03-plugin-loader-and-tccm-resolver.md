@@ -6,6 +6,8 @@
 **Depends on:** S8-02 (the `DerivedQuery` schema must exist before the loader can resolve `compute:` strings against it)
 **ADRs honored:** Phase 7 ADR-0016 (TCCM `derived_queries:` band — primary; resolver half of the ADR's load-bearing commitment), Phase 7 ADR-0009 row #7 (the one new explicit-import line in `src/codegenie/plugins/loader.py` is the enumerated byte-edit), Phase 7 ADR-0001 (single-task-class plugin), Phase 7 ADR-0005 (probes and adapters under the plugin tree register via decorator side-effects from `api.py`), Phase 7 ADR-0004 (typed `compute:` resolution surface — fail loud on unknown), production ADR-0031 (plugin loader contract — `register_plugin(...)` side-effect at import time)
 
+> **⚠ Amendment A sequencing note (2026-05-20).** Phase 7 Amendment A ([`../final-design.md` §Amendment A](../final-design.md)) adds six gather probes (Steps 13–15) whose `api.py` side-effect registration the loader must also collect. Coordinate with [S13-03](S13-03-amendment-a-schemas-and-fence.md) and the Step 15 probe stories. See [`README.md` §"Stories — Amendment A"](README.md).
+
 ## Context
 
 S8-02 added the `DerivedQuery` Pydantic shape; it validates the *string* shape of `compute:` but does not resolve it to a callable. This story closes the loop:
