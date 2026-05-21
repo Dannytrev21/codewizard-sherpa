@@ -13,6 +13,11 @@ _ALLOWED_IMPORT_ROOTS = {
     "pydantic",
     "codegenie.types.identifiers",
     "codegenie.types.errors",
+    # S6-03 — ``Advance.state: SubgraphState`` needs the name in scope for
+    # ``mypy --strict``. The import is ``TYPE_CHECKING``-guarded (zero runtime
+    # effect — ``outcomes.py`` stays kernel-pure at runtime); the AST scan
+    # below cannot see the guard, so the root is allowlisted explicitly.
+    "codegenie.plugins.subgraph",
 }
 
 

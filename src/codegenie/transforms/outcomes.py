@@ -15,7 +15,7 @@ discriminated unions every later Step-1..Step-9 module dispatches on:
 - :data:`TrustOutcome` — strict-AND Stage-6 validation result carried by
   ``remediation-report.yaml`` and later consumed by Phase 5's gate runner.
 - :data:`NodeTransition` — return type of every ``SubgraphNode.run``
-  (S6-03). ``Advance.state`` is primitive-value-only per ADR-0010.
+  (S6-03). ``Advance.state`` carries the typed ``SubgraphState`` payload.
 - :data:`AdapterConfidence` — read by ``BundleBuilder`` (S3-04) to trigger
   the deterministic serial fallback.
 - :data:`Applicability` — return type of every recipe-engine ``applies``
@@ -32,7 +32,7 @@ contract-snapshot), production ADR-0033 (sum types over booleans).
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -46,6 +46,14 @@ from codegenie.types.identifiers import (
     TransformId,
     TransformKind,
 )
+
+if TYPE_CHECKING:
+    # ``Advance.state`` is typed against ``SubgraphState`` (S6-03), which
+    # lives in ``codegenie.plugins.subgraph``. The import is type-checker-only
+    # — a runtime import would close an ``outcomes ↔ subgraph`` cycle and
+    # break the kernel-purity fence. ``codegenie.plugins.subgraph`` calls
+    # ``Advance.model_rebuild()`` to resolve the forward reference.
+    from codegenie.plugins.subgraph import SubgraphState
 
 __all__ = [
     "AdapterConfidence",
@@ -99,9 +107,15 @@ NotApplicableReason = Literal[
 SkipReason = Literal["plugin_disabled", "registry_skipped"]
 
 EscalationReason = Literal[
+    # Pre-subgraph escalations (S1-03 baseline — resolver / capability mint).
     "plugin_extends_cycle",
     "manifest_rejected",
     "capability_missing",
+    # In-subgraph escalations (S6-03 — emitted by S6-04's orchestrator nodes).
+    "filesystem_race",
+    "subprocess_jail_unavailable",
+    "audit_chain_corrupted",
+    "vuln_index_corrupted",
 ]
 
 HumanReviewReason = Literal[
@@ -406,13 +420,20 @@ class TrustOutcome(BaseModel):
 
 class Advance(BaseModel):
     """``Advance`` — node finished and the next node should run. ``state`` is
-    a small flat dict of primitive values; richer state must use a new
-    typed payload model (ADR-0010 forbids ``dict[str, Any]`` under
-    ``transforms/``)."""
+    the typed :class:`~codegenie.plugins.subgraph.SubgraphState` payload the
+    subgraph threads between nodes.
+
+    S6-03 widened ``state`` from a primitive ``dict`` to the typed model
+    (ADR-0010 Amendment 2026-05-19) — S1-03's Implementer notes anticipated
+    this ("if a node genuinely needs richer state, the right move is a new
+    typed payload model"). The annotation is a forward reference resolved by
+    ``Advance.model_rebuild()`` at the bottom of
+    :mod:`codegenie.plugins.subgraph`; constructing an ``Advance`` therefore
+    requires that module to have been imported first."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     kind: Literal["advance"] = "advance"
-    state: dict[str, str | int | bool | float]
+    state: SubgraphState
 
 
 class ShortCircuit(BaseModel):

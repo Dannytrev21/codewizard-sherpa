@@ -350,3 +350,28 @@ phase-story-executor runs in this phase. New entries at the bottom.
     has zero runtime dependency on `codegenie.plugins.events` and
     `transforms/__init__.py` can stay a plain eager aggregator. S6-03 / S6-04
     add more `transforms/` modules that import `events` — expect the same.
+
+31. **A Pydantic field's type must be runtime-importable — `TYPE_CHECKING`
+    works for plain annotations, not for model fields** (observed 2026-05-21,
+    S6-03). The S6-03 story outline prescribed importing `SubgraphState`'s
+    cross-module field types under `if TYPE_CHECKING:`. That is unworkable:
+    Pydantic resolves every field's type at *model-build* time, so a
+    type-checking-only import makes the model "not fully defined" and every
+    `Model(...)` construction raises `PydanticUndefinedAnnotation`. The
+    `TYPE_CHECKING` deferral is only valid for (a) a forward reference that a
+    later `model_rebuild()` resolves with the name in scope, or (b) a plain
+    (non-Pydantic) annotation. For an actual field type, import it at runtime.
+    Corollary: a field typed against an `abc.ABC` or a `Protocol` (e.g.
+    `transform: Transform`) needs `model_config = ConfigDict(...,
+    arbitrary_types_allowed=True)` — Pydantic validates it with an
+    `isinstance` check. Precedent: `ConcreteResolution` (`plugins/resolver.py`).
+
+32. **An AST import-allowlist fence cannot see `if TYPE_CHECKING:`** (observed
+    2026-05-21, S6-03). `test_outcomes_purity.py::test_imports_are_kernel_only`
+    walks *every* `ast.Import`/`ast.ImportFrom` node — TYPE_CHECKING-guarded
+    ones included. Adding a TYPE_CHECKING-only forward-ref import (needed so
+    `mypy --strict` can resolve a forward-referenced annotation) trips it even
+    though the import never runs. Fix: add the module to the allowlist with a
+    comment noting it is type-checking-only; runtime purity is unaffected. A
+    "the `if TYPE_CHECKING:` block is allowed" claim in a story does not make
+    a flat-allowlist fence honour it — verify the fence's actual logic.

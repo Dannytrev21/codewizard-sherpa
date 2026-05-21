@@ -1,7 +1,7 @@
 # Story S6-03 — `SubgraphNode` Protocol + `SubgraphState` (Gap 1 fix; reconciliation with shipped `NodeTransition`)
 
 **Step:** Step 6 — RemediationOrchestrator, TrustScorer, two-stream EventLog, SubgraphNode Protocol, end-to-end happy path
-**Status:** HARDENED (validated 2026-05-19 — see [`_validation/S6-03-subgraph-node-protocol.md`](_validation/S6-03-subgraph-node-protocol.md))
+**Status:** Done — GREEN 2026-05-21 (phase-story-executor; see [`_attempts/S6-03.md`](_attempts/S6-03.md) for the per-AC evidence table, the seven as-built drift resolutions, and the gate log — 28 tests added, `make check` green: 5971 passed, `mypy --strict` 205 files + `ruff` + `import-linter` 6/6 + per-submodule cold-start fence + pre-commit all clean). Validator HARDENED 2026-05-19 — see [`_validation/S6-03-subgraph-node-protocol.md`](_validation/S6-03-subgraph-node-protocol.md). **As-built note (authoritative — supersedes conflicting outline/TDD-plan statements below):** the five `SubgraphState` field types (`PluginResolution`, `Bundle`, `RecipeOutcome`, `Transform`, `TrustOutcome`) are imported at **runtime**, not under `TYPE_CHECKING` — Pydantic must resolve a field's type at model-build time, so a `TYPE_CHECKING`-only import would make every `SubgraphState(...)` construction raise (D-1); `SubgraphState.model_config` additionally carries `arbitrary_types_allowed=True` because `Transform` is an `abc.ABC` (D-2, mirrors `ConcreteResolution`); `TrustOutcome` is imported from its canonical home `transforms.outcomes`, not `trust_scorer` (D-3).
 **Effort:** S–M (was S; +M for the canonical-site amendments to `transforms/outcomes.py`)
 **Depends on:** S6-01, S1-03 (already GREEN — ships the canonical `NodeTransition` union this story re-exports + widens), S1-04 (`Transform`), S2-04 (`PluginResolution`), S3-04 (`Bundle`). `TrustOutcome` (S6-02) is `TYPE_CHECKING`-imported as a forward reference; this story does not require S6-02 to have landed on disk.
 **ADRs honored:** ADR-0010 (tagged-union sum types — Decision §3, single declaration site per ADR-0010 Amendment 2026-05-18), ADR-0010 Amendment 2026-05-19 (this story widens `Advance.state` to `SubgraphState` and widens `EscalationReason` from 3 → 7 members at the canonical site), [Phase 5 ADR-0006](../../05-sandbox-trust-gates/ADRs/0006-protocol-vs-abc-convention.md) (Protocol vs ABC: Protocol when no shared default behavior; body is `...`), [production ADR-0033](../../../production/adrs/0033-domain-modeling-discipline.md) (make illegal states unrepresentable), ADR-0001 (S6-06 contract surface — names + signatures are the contract; widening allowed, rename forbidden).
@@ -88,24 +88,24 @@ Cover the Protocol with structural-conformance tests, the union with subprocess-
 
 ### Module surface (new file)
 
-- [ ] **AC-1** `src/codegenie/plugins/subgraph.py` exists; `from codegenie.plugins.subgraph import SubgraphNode, SubgraphState, NodeTransition, Advance, ShortCircuit, Escalate` succeeds.
-- [ ] **AC-2** `set(codegenie.plugins.subgraph.__all__) == {"SubgraphNode", "SubgraphState", "NodeTransition", "Advance", "ShortCircuit", "Escalate"}` (exactly 6 names — 2 new + 4 re-exports). Exact-set assertion mirrors S1-01 / S1-03 discipline.
+- [x] **AC-1** `src/codegenie/plugins/subgraph.py` exists; `from codegenie.plugins.subgraph import SubgraphNode, SubgraphState, NodeTransition, Advance, ShortCircuit, Escalate` succeeds.
+- [x] **AC-2** `set(codegenie.plugins.subgraph.__all__) == {"SubgraphNode", "SubgraphState", "NodeTransition", "Advance", "ShortCircuit", "Escalate"}` (exactly 6 names — 2 new + 4 re-exports). Exact-set assertion mirrors S1-01 / S1-03 discipline.
 
 ### Re-export class identity (block-tier; C-F1)
 
-- [ ] **AC-3** `from codegenie.plugins.subgraph import Advance as A; from codegenie.transforms.outcomes import Advance as B; assert A is B`. Same identity check for `ShortCircuit`, `Escalate`, `NodeTransition`. Test name pinned: `test_re_exports_are_identity_with_outcomes`.
+- [x] **AC-3** `from codegenie.plugins.subgraph import Advance as A; from codegenie.transforms.outcomes import Advance as B; assert A is B`. Same identity check for `ShortCircuit`, `Escalate`, `NodeTransition`. Test name pinned: `test_re_exports_are_identity_with_outcomes`.
 
 ### `SubgraphNode` Protocol
 
-- [ ] **AC-4** `SubgraphNode` is decorated `@runtime_checkable` and inherits from `typing.Protocol`. Single method: `async def run(self, state: SubgraphState) -> NodeTransition: ...`. The Protocol's `run` body is `...` (literal ellipsis) — not `pass`, not `raise NotImplementedError` (Phase 5 ADR-0006 convention).
-- [ ] **AC-5** A duck-typed class with `async def run(self, state: SubgraphState) -> NodeTransition` passes `isinstance(instance, SubgraphNode)` at runtime, **without explicit inheritance** from `SubgraphNode`.
-- [ ] **AC-6** A class missing `run` (e.g., only an `evaluate` method) fails `isinstance(instance, SubgraphNode)` at runtime. (Test name: `test_missing_run_fails_isinstance`.)
-- [ ] **AC-7** **PEP 544 limitation documented.** A class with a *synchronous* `run` (`def run(...)` not `async def run(...)`) — `isinstance(instance, SubgraphNode)` returns `True` (Protocol cannot structurally distinguish async vs sync at runtime). This is documented in the module docstring and a doc-style test confirms the runtime behaviour: `assert isinstance(_SyncRunNode(), SubgraphNode) is True  # PEP 544 limitation; mypy --strict catches the divergence`. The actual sync/async enforcement is type-time (mypy `--strict`).
-- [ ] **AC-8** A class where `run` is a class attribute (e.g., `run = 42`, not a method) — runtime `isinstance` returns `True` (Protocol checks attribute existence only). Documented; no separate negative test (the mypy strict check is the enforcement).
+- [x] **AC-4** `SubgraphNode` is decorated `@runtime_checkable` and inherits from `typing.Protocol`. Single method: `async def run(self, state: SubgraphState) -> NodeTransition: ...`. The Protocol's `run` body is `...` (literal ellipsis) — not `pass`, not `raise NotImplementedError` (Phase 5 ADR-0006 convention).
+- [x] **AC-5** A duck-typed class with `async def run(self, state: SubgraphState) -> NodeTransition` passes `isinstance(instance, SubgraphNode)` at runtime, **without explicit inheritance** from `SubgraphNode`.
+- [x] **AC-6** A class missing `run` (e.g., only an `evaluate` method) fails `isinstance(instance, SubgraphNode)` at runtime. (Test name: `test_missing_run_fails_isinstance`.)
+- [x] **AC-7** **PEP 544 limitation documented.** A class with a *synchronous* `run` (`def run(...)` not `async def run(...)`) — `isinstance(instance, SubgraphNode)` returns `True` (Protocol cannot structurally distinguish async vs sync at runtime). This is documented in the module docstring and a doc-style test confirms the runtime behaviour: `assert isinstance(_SyncRunNode(), SubgraphNode) is True  # PEP 544 limitation; mypy --strict catches the divergence`. The actual sync/async enforcement is type-time (mypy `--strict`).
+- [x] **AC-8** A class where `run` is a class attribute (e.g., `run = 42`, not a method) — runtime `isinstance` returns `True` (Protocol checks attribute existence only). Documented; no separate negative test (the mypy strict check is the enforcement).
 
 ### `SubgraphState` Pydantic model
 
-- [ ] **AC-9** `SubgraphState` is a Pydantic model with `model_config = ConfigDict(frozen=True, extra="forbid")`. Fields:
+- [x] **AC-9** `SubgraphState` is a Pydantic model with `model_config = ConfigDict(frozen=True, extra="forbid")`. Fields:
   - **Required (no default; failure to provide raises `ValidationError`):**
     - `workflow_id: WorkflowId`
     - `cve: CveId`
@@ -116,25 +116,25 @@ Cover the Protocol with structural-conformance tests, the union with subprocess-
     - `transform: Transform | None = None` (populated by `ApplyRecipeNode`)
     - `trust_outcome: "TrustOutcome | None" = None` (populated by `Stage6ValidateNode`; **forward-reference string** until S6-02 lands)
     - `branch: BranchName | None = None` (populated by `WriteBranchNode`)
-- [ ] **AC-10 (frozen-mutation rejected — C-Cv2 #1).** `s = SubgraphState(workflow_id=..., cve=...); s.workflow_id = WorkflowId("other")` raises `ValidationError` (or equivalent Pydantic frozen-mutation rejection).
-- [ ] **AC-11 (`model_copy(update={...})` preserves field types — C-Cv2 #2).** Given `s = SubgraphState(workflow_id=W, cve=C)` and a `resolution_fixture: PluginResolution`:
+- [x] **AC-10 (frozen-mutation rejected — C-Cv2 #1).** `s = SubgraphState(workflow_id=..., cve=...); s.workflow_id = WorkflowId("other")` raises `ValidationError` (or equivalent Pydantic frozen-mutation rejection).
+- [x] **AC-11 (`model_copy(update={...})` preserves field types — C-Cv2 #2).** Given `s = SubgraphState(workflow_id=W, cve=C)` and a `resolution_fixture: PluginResolution`:
   - `s2 = s.model_copy(update={"resolution": resolution_fixture})` succeeds.
   - `isinstance(s2, SubgraphState) is True`.
   - `s2.resolution is resolution_fixture`.
   - `s2.workflow_id == s.workflow_id` and `s2.cve == s.cve` (other fields untouched).
-- [ ] **AC-12 (build-order tolerance — C-Cv5).** `import codegenie.plugins.subgraph` succeeds with no `ModuleNotFoundError` even if `codegenie.transforms.trust_scorer` (S6-02) has not yet been merged. Achieved via `from __future__ import annotations` + `if TYPE_CHECKING:` guard on the `TrustOutcome` import; `SubgraphState.trust_outcome` annotation is a forward-reference string (`"TrustOutcome | None"`).
+- [x] **AC-12 (build-order tolerance — C-Cv5).** `import codegenie.plugins.subgraph` succeeds with no `ModuleNotFoundError` even if `codegenie.transforms.trust_scorer` (S6-02) has not yet been merged. Achieved via `from __future__ import annotations` + `if TYPE_CHECKING:` guard on the `TrustOutcome` import; `SubgraphState.trust_outcome` annotation is a forward-reference string (`"TrustOutcome | None"`).
 
 ### Canonical-site amendments (block-tier; C-F2, C-F3)
 
-- [ ] **AC-13 (`Advance.state` widened — C-F2).** `src/codegenie/transforms/outcomes.py::Advance` is amended so the `state` field's annotation is `SubgraphState` (replacing `dict[str, str | int | bool | float]`). The `Advance` class continues to live in `outcomes.py` (single declaration site); `subgraph.py` re-exports it. To avoid a circular import (`outcomes.py` would import `SubgraphState` from `subgraph.py`, which re-exports `Advance` from `outcomes.py`):
+- [x] **AC-13 (`Advance.state` widened — C-F2).** `src/codegenie/transforms/outcomes.py::Advance` is amended so the `state` field's annotation is `SubgraphState` (replacing `dict[str, str | int | bool | float]`). The `Advance` class continues to live in `outcomes.py` (single declaration site); `subgraph.py` re-exports it. To avoid a circular import (`outcomes.py` would import `SubgraphState` from `subgraph.py`, which re-exports `Advance` from `outcomes.py`):
   - `SubgraphState` is declared in `subgraph.py` (this story's new file).
   - `outcomes.py` uses `from __future__ import annotations` + `if TYPE_CHECKING: from codegenie.plugins.subgraph import SubgraphState`. The `state: SubgraphState` annotation is a forward-reference string; Pydantic's `model_rebuild()` is called from `subgraph.py` after both modules are loaded (`Advance.model_rebuild()`).
   - The `subgraph.py` module ends with `Advance.model_rebuild()` to resolve the forward reference at import time.
-- [ ] **AC-14 (`Advance.state` accepts `SubgraphState`).** `Advance(state=SubgraphState(workflow_id=W, cve=C))` constructs OK. Tested by name: `test_advance_carries_subgraph_state`.
-- [ ] **AC-15 (`Advance.state` rejects primitive dict).** `Advance(state={"k": 1})` raises `ValidationError` (the previous primitive-dict variant is fully replaced, not unioned). The 3 existing tests in `tests/unit/transforms/test_outcomes.py` that constructed `Advance(state={"k": 1})` / used `test_advance_state_primitives_only_*` are updated to construct a minimal `SubgraphState`. Specifically:
+- [x] **AC-14 (`Advance.state` accepts `SubgraphState`).** `Advance(state=SubgraphState(workflow_id=W, cve=C))` constructs OK. Tested by name: `test_advance_carries_subgraph_state`.
+- [x] **AC-15 (`Advance.state` rejects primitive dict).** `Advance(state={"k": 1})` raises `ValidationError` (the previous primitive-dict variant is fully replaced, not unioned). The 3 existing tests in `tests/unit/transforms/test_outcomes.py` that constructed `Advance(state={"k": 1})` / used `test_advance_state_primitives_only_*` are updated to construct a minimal `SubgraphState`. Specifically:
   - Line 88: `Advance(state={"k": 1})` → `Advance(state=_minimal_subgraph_state())`.
   - Lines 263-275 (`test_advance_state_primitives_only_rejects` + `test_advance_state_primitives_only_accepts`): replaced with `test_advance_rejects_non_subgraph_state_payload` (asserts dict / list / None / int payloads raise) and `test_advance_round_trips_subgraph_state` (asserts a populated SubgraphState round-trips through `TypeAdapter(NodeTransition).dump_json` / `.validate_json`).
-- [ ] **AC-16 (`EscalationReason` widened — C-F3).** `src/codegenie/transforms/outcomes.py::EscalationReason` is amended to the 7-member union:
+- [x] **AC-16 (`EscalationReason` widened — C-F3).** `src/codegenie/transforms/outcomes.py::EscalationReason` is amended to the 7-member union:
   ```python
   EscalationReason = Literal[
       "plugin_extends_cycle",
@@ -147,12 +147,12 @@ Cover the Protocol with structural-conformance tests, the union with subprocess-
   ]
   ```
   Order in the source preserves the existing 3 first (S1-03 baseline) followed by the 4 new in-subgraph reasons (S6-04 emitters). `tests/unit/transforms/test_outcomes.py::test_reason_taxonomy_members` (current assertion at line 323-327) is updated to `assert members(EscalationReason) == {"plugin_extends_cycle", "manifest_rejected", "capability_missing", "filesystem_race", "subprocess_jail_unavailable", "audit_chain_corrupted", "vuln_index_corrupted"}`.
-- [ ] **AC-17 (unknown reason rejected — C-Cv3).** `Escalate(reason="bogus_reason")` raises `ValidationError`. Test name: `test_escalate_rejects_unknown_reason`.
-- [ ] **AC-18 (each new reason constructs).** Four parametrised constructions succeed: `Escalate(reason=r)` for `r in {"filesystem_race", "subprocess_jail_unavailable", "audit_chain_corrupted", "vuln_index_corrupted"}`. Test name: `test_escalate_accepts_in_subgraph_reasons`.
+- [x] **AC-17 (unknown reason rejected — C-Cv3).** `Escalate(reason="bogus_reason")` raises `ValidationError`. Test name: `test_escalate_rejects_unknown_reason`.
+- [x] **AC-18 (each new reason constructs).** Four parametrised constructions succeed: `Escalate(reason=r)` for `r in {"filesystem_race", "subprocess_jail_unavailable", "audit_chain_corrupted", "vuln_index_corrupted"}`. Test name: `test_escalate_accepts_in_subgraph_reasons`.
 
 ### Exhaustiveness — type-time enforcement (C-Cv4)
 
-- [ ] **AC-19 (subprocess-mypy negative — `assert_never`).** `tests/unit/plugins/test_subgraph_mypy_negative.py` ships a subprocess-mypy fixture mirroring `tests/unit/transforms/test_outcomes_mypy_negative.py`:
+- [x] **AC-19 (subprocess-mypy negative — `assert_never`).** `tests/unit/plugins/test_subgraph_mypy_negative.py` ships a subprocess-mypy fixture mirroring `tests/unit/transforms/test_outcomes_mypy_negative.py`:
   - The fixture writes a temp module that `match`-es over `NodeTransition` with one variant arm intentionally missing and a default `case _ as unexpected: assert_never(unexpected)`.
   - `subprocess.run([sys.executable, "-m", "mypy", "--strict", tmp_file])` exits non-zero.
   - `"assert_never"` appears in stdout.
@@ -160,7 +160,7 @@ Cover the Protocol with structural-conformance tests, the union with subprocess-
 
 ### Runtime exhaustiveness (regression — variant currently covered)
 
-- [ ] **AC-20** `tests/unit/plugins/test_subgraph_protocol.py::test_subgraph_outer_loop_match_exhaustive_at_runtime`:
+- [x] **AC-20** `tests/unit/plugins/test_subgraph_protocol.py::test_subgraph_outer_loop_match_exhaustive_at_runtime`:
   - Constructs one instance of each variant (`_AdvanceNode()`, `_ShortCircuitNode()`, `_EscalateNode()`).
   - Iterates and `match`-es over `Advance | ShortCircuit | Escalate` + default `case _ as unexpected: assert_never(unexpected)`.
   - Collects a `seen: set[str] = set()` per arm; asserts `seen == {"advance", "short_circuit", "escalate"}` after the loop.
@@ -168,9 +168,9 @@ Cover the Protocol with structural-conformance tests, the union with subprocess-
 
 ### Bar ACs
 
-- [ ] **AC-21** TDD red test exists, was committed in a failing state, is now green.
-- [ ] **AC-22** `ruff format`, `ruff check`, `mypy --strict src/codegenie/plugins/subgraph.py src/codegenie/transforms/outcomes.py` clean.
-- [ ] **AC-23** Full test suite `pytest` clean (no regressions on the 3 updated `test_outcomes.py` cases, no regressions on the 19 existing `EscalationReason` test).
+- [x] **AC-21** TDD red test exists, was committed in a failing state, is now green.
+- [x] **AC-22** `ruff format`, `ruff check`, `mypy --strict src/codegenie/plugins/subgraph.py src/codegenie/transforms/outcomes.py` clean.
+- [x] **AC-23** Full test suite `pytest` clean (no regressions on the 3 updated `test_outcomes.py` cases, no regressions on the 19 existing `EscalationReason` test).
 
 ## Implementation outline
 

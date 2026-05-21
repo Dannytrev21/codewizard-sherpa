@@ -24,6 +24,7 @@ import typing
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from codegenie.plugins.subgraph import SubgraphState
 from codegenie.transforms.outcomes import (
     AdapterConfidence,
     Advance,
@@ -58,12 +59,24 @@ from codegenie.transforms.outcomes import (
 )
 from codegenie.types.identifiers import (
     BranchName,
+    CveId,
     ErrorId,
     PluginId,
     RecipeId,
     SignalKind,
     TransformId,
+    WorkflowId,
 )
+
+
+def _minimal_subgraph_state() -> SubgraphState:
+    """Smallest valid ``SubgraphState`` — the typed payload ``Advance`` now
+    carries (S6-03 replaced the primitive-dict ``state``)."""
+    return SubgraphState(
+        workflow_id=WorkflowId("01HFEEDFACE0000000000000000"),
+        cve=CveId("CVE-2024-21501"),
+    )
+
 
 ALL_VARIANTS = [
     Applied(
@@ -85,7 +98,7 @@ ALL_VARIANTS = [
     RemediationFailed(
         error=RemediationError(error_id=ErrorId("rem.boom"), message="b"),
     ),
-    Advance(state={"k": 1}),
+    Advance(state=_minimal_subgraph_state()),
     ShortCircuit(outcome=RemediationNotApplicable(reason="PEER_DEP_CONFLICT")),
     Escalate(reason="capability_missing"),
     Trusted(),
@@ -209,7 +222,10 @@ def test_json_shape_keysets_pinned():
         .keys()
     ) == {"kind", "branch", "report_path", "passed", "failing"}
     assert set(Trusted().model_dump(mode="json").keys()) == {"kind"}
-    assert set(Advance(state={"k": 1}).model_dump(mode="json").keys()) == {"kind", "state"}
+    assert set(Advance(state=_minimal_subgraph_state()).model_dump(mode="json").keys()) == {
+        "kind",
+        "state",
+    }
     assert set(NotApplies(reason="PEER_DEP_CONFLICT").model_dump(mode="json").keys()) == {
         "kind",
         "reason",
@@ -255,23 +271,12 @@ def test_validated_passed_failing_invariant():
         Validated(branch=BranchName("b"), report_path="/p", passed=False, failing=[])
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [{"k": [1, 2]}, {"k": {"nested": 1}}, {"k": None}],
-)
-def test_advance_state_primitives_only_rejects(bad):
-    """AC-8i — ``state`` accepts only ``str | int | bool | float`` values."""
-    with pytest.raises(ValidationError):
-        Advance(state=bad)
-
-
-@pytest.mark.parametrize(
-    "ok",
-    [{"k": "v"}, {"k": 1}, {"k": True}, {"k": 1.5}, {}],
-)
-def test_advance_state_primitives_only_accepts(ok):
-    """AC-8i — primitive values and the empty dict pass validation."""
-    Advance(state=ok)
+# S6-03 — ``Advance.state`` is now the typed ``SubgraphState`` payload, not a
+# primitive dict. The dict-rejection + SubgraphState round-trip coverage that
+# replaced the old ``test_advance_state_primitives_only_*`` cases lives in
+# ``tests/unit/plugins/test_subgraph_protocol.py`` (where ``SubgraphState`` is
+# defined): ``test_advance_rejects_non_subgraph_state_payload`` and
+# ``test_advance_round_trips_subgraph_state``.
 
 
 def test_recipe_error_message_max_length_4096():
@@ -326,6 +331,11 @@ def test_reason_literal_sets_pinned():
         "plugin_extends_cycle",
         "manifest_rejected",
         "capability_missing",
+        # S6-03 additive — the four in-subgraph escalation reasons.
+        "filesystem_race",
+        "subprocess_jail_unavailable",
+        "audit_chain_corrupted",
+        "vuln_index_corrupted",
     }
     assert members(HumanReviewReason) == {
         "no_concrete_match",

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import assert_never
 
+from codegenie.plugins.subgraph import SubgraphState
 from codegenie.transforms.outcomes import (
     AdapterConfidence,
     Advance,
@@ -40,10 +41,12 @@ from codegenie.transforms.outcomes import (
 )
 from codegenie.types.identifiers import (
     BranchName,
+    CveId,
     ErrorId,
     PluginId,
     RecipeId,
     TransformId,
+    WorkflowId,
 )
 
 
@@ -105,7 +108,12 @@ def test_exhaustiveness_remediation_outcome() -> None:
 def test_exhaustiveness_node_transition() -> None:
     """AC-9 — every ``NodeTransition`` variant has a ``match`` arm."""
     instances: list[NodeTransition] = [
-        Advance(state={}),
+        Advance(
+            state=SubgraphState(
+                workflow_id=WorkflowId("01HFEEDFACE0000000000000000"),
+                cve=CveId("CVE-2024-21501"),
+            )
+        ),
         ShortCircuit(outcome=RemediationNotApplicable(reason="PEER_DEP_CONFLICT")),
         Escalate(reason="capability_missing"),
     ]
