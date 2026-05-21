@@ -216,6 +216,21 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # hardening migration). adr: docs/production/adrs/
         # 0044-performance-hardening-of-the-gather-kernel.md
         Path("src/codegenie/probes/layer_b/node_reflection.py"),
+        # 02-ADR-0006 Amendment 2026-05-21 — `ScannerSkipped.reason` widens
+        # to include `config_absent` so optional organization-owned scanner
+        # config absence is represented honestly as a skip, not a scanner
+        # failure. `ast_grep` now resolves its default config from
+        # `~/.codegenie/ast-grep-rules/sgconfig.yml`; the shared outcome
+        # literal and all five Layer-G scanner schemas stay in lock-step.
+        # adr: docs/phases/02-context-gather-layers-b-g/ADRs/
+        # 0006-index-freshness-sum-type-location.md §Amendment 2026-05-21.
+        Path("src/codegenie/probes/_shared/scanner_outcome.py"),
+        Path("src/codegenie/probes/layer_g/ast_grep.py"),
+        Path("src/codegenie/schema/probes/layer_g/ast_grep.schema.json"),
+        Path("src/codegenie/schema/probes/layer_g/gitleaks.schema.json"),
+        Path("src/codegenie/schema/probes/layer_g/ripgrep_curated.schema.json"),
+        Path("src/codegenie/schema/probes/layer_g/semgrep.schema.json"),
+        Path("src/codegenie/schema/probes/layer_g/test_coverage_mapping.schema.json"),
     }
 )
 

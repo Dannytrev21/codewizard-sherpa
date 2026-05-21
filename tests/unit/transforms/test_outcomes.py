@@ -375,21 +375,20 @@ EXPECTED_ALL = {
     # Error models (2)
     "RecipeError",
     "RemediationError",
+    # Trust outcome models (2)
+    "TrustOutcome",
+    "TrustSignal",
     # ApplicationPlan (1)
     "ApplicationPlan",
 }
 
 
 def test_all_exports_exact_set():
-    """AC-10a — ``__all__`` is the exact 30-name set. (Story header says 31
-    by double-counting reused ``NotApplicable``/``Failed`` names; we
-    disambiguate to ``RecipeFailed`` / ``RemediationFailed`` /
-    ``RecipeNotApplicable`` / ``RemediationNotApplicable`` and produce 30
-    unique exports.)"""
+    """AC-10a + S5-05 — ``__all__`` is the exact public outcome set."""
     import codegenie.transforms.outcomes as m
 
     assert set(m.__all__) == EXPECTED_ALL
-    assert len(m.__all__) == len(EXPECTED_ALL) == 30
+    assert len(m.__all__) == len(EXPECTED_ALL) == 32
 
 
 def test_all_names_resolve_in_package_init():
