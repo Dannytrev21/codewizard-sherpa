@@ -313,4 +313,3 @@ These are **not** blocking on their own — each is a clean additive widening �
 ## What this validation did NOT do
 
 Per RESCUE discipline: **no edits to the story file.** The story's `Status` line is updated only to re-point the resolution path (from "re-run `/phase-story-validator`" to "route to `/phase-architect` for the G1/G2 ADR"). The dep-drift list B1–B9 above is recorded so the *post-ADR* `/phase-story-validator` pass can fold it in without re-deriving it. The executor was **not** run — open architectural ambiguity is a hard stop (executor Stage-1 gate; Rule 1 — no silent assumptions).
-
