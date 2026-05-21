@@ -131,6 +131,54 @@ async def test_dispatch_order_under_single_semaphore_with_runs_last_hoist(
     assert order.index("e_base_prelude") < order.index("c_heavy"), order
 
 
+async def test_runs_last_tail_waits_for_non_tail_rest_even_with_parallel_budget(
+    tmp_path: Path,
+    fresh_cache: Any,
+    fresh_sanitizer: Any,
+    fresh_config: Any,
+    log_output: LogCapture,
+) -> None:
+    """A runs-last probe must observe sidecars from non-tail rest probes.
+
+    This pins the temporal contract with ``max_concurrent_probes > 1``:
+    queue position alone is not enough, because ``asyncio.gather`` can start
+    the tail probe before the sidecar-producing probe finishes.
+    """
+
+    fresh_config.max_concurrent_probes = 3
+    timestamps: dict[str, dict[str, int]] = {}
+
+    @dataclass
+    class _TimedRecorder(_RecorderProbe):
+        async def run(self, repo: RepoSnapshot, ctx: Any) -> ProbeOutput:  # type: ignore[override]
+            timestamps[self.name] = {"start": time.perf_counter_ns()}
+            await asyncio.sleep(self.sleep_s)
+            timestamps[self.name]["end"] = time.perf_counter_ns()
+            return ProbeOutput(
+                schema_slice={self.name: True},
+                raw_artifacts=[],
+                confidence="high",
+                duration_ms=1,
+                warnings=[],
+                errors=[],
+            )
+
+    rest = _TimedRecorder(name="rest_sidecar_writer", tier="task_specific", sleep_s=0.02)
+    runs_last = _TimedRecorder(name="runs_last_reader", tier="base", sleep_s=0.001)
+
+    await gather(
+        make_snapshot(tmp_path),
+        make_task(),
+        [rest, runs_last],
+        fresh_config,
+        fresh_cache,
+        fresh_sanitizer,
+        runs_last_names=frozenset({"runs_last_reader"}),
+    )
+
+    assert timestamps["runs_last_reader"]["start"] >= timestamps["rest_sidecar_writer"]["end"]
+
+
 # ---------------------------------------------------------------------------
 # AC-10 — coordinator.dispatch.order emitted once per wave; runs_last only
 # appears at the tail of the rest wave.

@@ -25,7 +25,9 @@ That leftover file violates a load-bearing architectural commitment: **`gather` 
 
 ## Decision
 
-Adopt **Option B.** `ScipIndexProbe.run` captures `tsconfig_preexisted = (repo.root / "tsconfig.json").is_file()` before invoking `scip-typescript`, and a `finally` clause removes `repo.root / "tsconfig.json"` iff `not tsconfig_preexisted` and the file now exists. The `finally` covers every exit path of the `run_external_cli` call (success, `ProbeTimeoutError`, `ToolMissingError`, non-zero exit); the `tool_missing` path is a no-op because the tool never ran. The `unlink` is wrapped in `try/except OSError` — a cleanup failure must never crash the probe — mirroring the existing partial-`.scip`-blob cleanup in `_emit_failure_slice`.
+Adopt **Option B**, plus a coordinator-ordering amendment. `ScipIndexProbe.run` captures `tsconfig_preexisted = (repo.root / "tsconfig.json").is_file()` before invoking `scip-typescript`, and a `finally` clause removes `repo.root / "tsconfig.json"` iff `not tsconfig_preexisted` and the file now exists. The `finally` covers every exit path of the `run_external_cli` call (success, `ProbeTimeoutError`, `ToolMissingError`, non-zero exit); the `tool_missing` path is a no-op because the tool never ran. The `unlink` is wrapped in `try/except OSError` — a cleanup failure must never crash the probe — mirroring the existing partial-`.scip`-blob cleanup in `_emit_failure_slice`.
+
+The cleanup is necessary but not sufficient while base probes run concurrently: `semantic_index_meta` can still read the transient `tsconfig.json` during the brief window before cleanup. `ScipIndexProbe` therefore registers with `runs_last=True`, hoisting it out of the prelude so tsconfig-reading base probes finish first. The coordinator also strengthens `runs_last` from queue-position metadata into a temporal tail: non-tail rest probes complete before the `runs_last` probes execute in registry order. This keeps `index_health` after `scip_index`, preserving B2's sidecar read.
 
 `src/codegenie/probes/layer_b/scip_index.py` is added to `_KERNEL_ALLOWLIST` in `tests/fence/test_kernel_frozen.py` with an inline `# adr:` reference to this ADR. The probe contract (`base.py`), the coordinator, and every other Phase-2 probe are untouched — this is a localized correctness fix to one probe's imperative shell, not an extension of the contract.
 
@@ -35,7 +37,7 @@ Adopt **Option B.** `ScipIndexProbe.run` captures `tsconfig_preexisted = (repo.r
 |---|---|
 | `gather` is read-only on the analyzed repo again — only `.codegenie/` is written | One Phase-2 kernel file leaves the frozen set (allowlisted, ADR-referenced) |
 | Portfolio golden harness no longer dirties `tests/fixtures/` on a full `pytest` run | A new `finally` clause widens `run()`'s imperative shell by six lines |
-| `node_build_system` / `semantic_index_meta` goldens reflect the fixtures' true state (no false TypeScript block) | The cleanup races the (brief) window in which `scip-typescript` itself holds the file open; benign — the file is only read by other probes, which run after `scip_index` completes |
+| `node_build_system` / `semantic_index_meta` goldens reflect the fixtures' true state (no false TypeScript block) | `scip_index` now runs in the temporal tail, so SCIP indexing starts later than other base metadata probes |
 | `--infer-tsconfig` is retained, so SCIP indexing of `tsconfig`-less repos still works | `scip_index.py` must now be regenerated into `_phase2_baseline.txt` if a future re-baseline is taken |
 
 ## Pattern fit
@@ -45,9 +47,11 @@ Implements **resource cleanup at the acquiring boundary** — the probe that tri
 ## Consequences
 
 - `src/codegenie/probes/layer_b/scip_index.py` gains a pre-existence capture and a `finally` cleanup clause in `ScipIndexProbe.run`.
+- `ScipIndexProbe` registers as `@register_probe(heaviness="heavy", runs_last=True)` so `--infer-tsconfig` cannot perturb concurrent base probes.
+- `src/codegenie/coordinator/coordinator.py` dispatches the `runs_last` tail only after non-tail rest probes complete, then executes tail probes in registry order. This keeps `index_health` after `scip_index` even when `max_concurrent_probes > 1`.
 - `tests/fence/test_kernel_frozen.py::_KERNEL_ALLOWLIST` gains one entry: `Path("src/codegenie/probes/layer_b/scip_index.py")` with a `# P3-ADR-0014` comment.
 - The portfolio `index_health` goldens (`distroless-target`, `minimal-ts`, `monorepo-pnpm`, `stale-scip`) are regenerated: with `scip-typescript` present on `PATH`, `scip_index` succeeds and `index_health` reports `scip: {confidence: high, freshness: fresh}` instead of the `indexer_error` state recorded when the tool was absent. CI installs `scip-typescript` in the `test` and `portfolio` lanes so the goldens are deterministic across CI and developer machines.
-- `node_build_system` / `semantic_index_meta` goldens are **unchanged** — the cleanup keeps the transient file invisible to them, so `distroless-target` / `native-modules` correctly retain `typescript: null`.
+- `node_build_system` / `semantic_index_meta` goldens are **unchanged** — cleanup plus scheduling keep the transient file invisible to them, so `distroless-target` / `native-modules` correctly retain `typescript: null`.
 - Unit tests in `tests/unit/probes/layer_b/test_scip_index.py` are unaffected: their `repo_root` fixture commits a `tsconfig.json`, so `tsconfig_preexisted` is `True` and the cleanup is a no-op.
 - New invariant: a probe that invokes an external tool which writes into the analyzed repo MUST clean up that artifact. `--infer-tsconfig` is the first such case; future tool integrations follow this precedent.
 

@@ -492,12 +492,12 @@ def test_run_only_emits_declared_warning_ids() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_registry_membership_heaviness_heavy() -> None:
+def test_registry_membership_heaviness_heavy_runs_last() -> None:
     entries = default_registry.sorted_for_dispatch()
     matches = [e for e in entries if e.cls is ScipIndexProbe]
     assert matches, "ScipIndexProbe not in registry"
     assert matches[0].heaviness == "heavy"
-    assert matches[0].runs_last is False
+    assert matches[0].runs_last is True
 
     ts = default_registry.for_task("*", frozenset({"typescript"}))
     js = default_registry.for_task("*", frozenset({"javascript"}))

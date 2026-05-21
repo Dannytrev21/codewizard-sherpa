@@ -475,11 +475,12 @@ async def gather(
     ``runs_last_names`` (02-ADR-0003 + S1-08 AC-13) is the set of probe
     names whose registry entry has ``runs_last=True``. The partition step
     hoists those probes out of the prelude (regardless of declared
-    ``tier``) and appends them to the *end* of the rest wave. ``runs_last``
-    is registry-side metadata — the coordinator never reads it from the
-    probe instance itself (the ``Probe`` ABC stays frozen). Per-wave order
-    is emitted on the ``coordinator.dispatch.order`` structlog event for
-    audit anchoring (AC-10).
+    ``tier``), dispatches them after the non-tail rest wave has completed,
+    and preserves their registry order. ``runs_last`` is registry-side
+    metadata — the coordinator never reads it from the probe instance
+    itself (the ``Probe`` ABC stays frozen). Per-wave order is emitted on
+    the ``coordinator.dispatch.order`` structlog event for audit anchoring
+    (AC-10).
     """
     run_id = secrets.token_hex(8)
     structlog.contextvars.bind_contextvars(run_id=run_id)
@@ -574,9 +575,26 @@ async def gather(
         )
 
         rest_results = await asyncio.gather(
-            *(_dispatch_one(p, enriched_snapshot, task, sem, cache, sanitizer, memo) for p in rest)
+            *(
+                _dispatch_one(p, enriched_snapshot, task, sem, cache, sanitizer, memo)
+                for p in rest_non_runs_last
+            )
         )
         for name, out, exe in rest_results:
+            executions[name] = exe
+            if out is not None:
+                outputs[name] = out
+
+        for p in runs_last_probes:
+            name, out, exe = await _dispatch_one(
+                p,
+                enriched_snapshot,
+                task,
+                sem,
+                cache,
+                sanitizer,
+                memo,
+            )
             executions[name] = exe
             if out is not None:
                 outputs[name] = out

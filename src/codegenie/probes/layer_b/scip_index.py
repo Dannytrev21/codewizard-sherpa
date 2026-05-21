@@ -174,13 +174,15 @@ def _parse_summary_json(stdout: bytes) -> _ScipSummary | None:
 # ---------------------------------------------------------------------------
 
 
-@register_probe(heaviness="heavy")
+@register_probe(heaviness="heavy", runs_last=True)
 class ScipIndexProbe(Probe):
     """Layer B — SCIP semantic-index probe.
 
-    Heavy-tier (dispatched first under the coordinator's semaphore per
-    02-ADR-0003). Emits the ``semantic_index`` slice + writes both the
-    binary ``.scip`` blob AND the ``scip.json`` sidecar B2 consumes.
+    Heavy-tier but hoisted out of the prelude: ``scip-typescript
+    --infer-tsconfig`` can create a transient ``tsconfig.json`` while it
+    runs, so the tsconfig-reading probes must finish before this probe
+    starts. Emits the ``semantic_index`` slice + writes both the binary
+    ``.scip`` blob AND the ``scip.json`` sidecar B2 consumes.
     """
 
     name: str = "scip_index"
