@@ -1,10 +1,25 @@
 # Story S5-01b — `TransformRegistry` — the channel by which a `RecipeEngine` surfaces its produced `Transform`
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** Done — GREEN 2026-05-20 (phase-story-executor; see [`_attempts/S5-01b.md`](_attempts/S5-01b.md) for the per-AC evidence table + gate log — 14/14 ACs with runtime evidence, 100% branch coverage)
+**Status:** Done — GREEN 2026-05-20 (phase-story-executor; see [`_attempts/S5-01b.md`](_attempts/S5-01b.md) for the per-AC evidence table + gate log — 14/14 ACs with runtime evidence, 100% branch coverage); validator HARDENED 2026-05-20
 **Effort:** S
 **Depends on:** S1-01 (`TransformId` newtype), S1-04 (`Transform` ABC + `TransformProvenance`), S5-01 (`RecipeEngine` Protocol — context only, not imported)
 **ADRs honored:** ADR-0014 (this story ships the decision), ADR-0010 (newtype identifiers, typed error markers), ADR-0002 (registry-instance discipline)
+
+## Validation notes
+
+Validated: 2026-05-20 23:27 EDT
+Verdict: HARDENED
+Findings addressed: 5 total — 0 blocks, 4 hardens, 1 nit
+
+Changes applied:
+- AC-Surface-1 strengthened so the meta-test checks the exact sorted `__all__` list, not only set equality — Test-Quality finding T1.
+- AC-Surface-3 strengthened so the no-singleton test also rejects a `default_transform_registry` name, even if it is not a `TransformRegistry` instance — Coverage finding C1.
+- The duplicate-registration TDD case now uses two concrete transform classes and asserts both `module.qualname` origins appear in the raised `TransformAlreadyRegistered` message — Test-Quality finding T2.
+- Notes for the implementer now call out why this sixth registry-like surface still does not justify a shared generic registry kernel: its per-workflow lifetime and tiny surface differ from process-wide plugin/recipe registries — Design-Patterns finding D1.
+- This post-execution validation is recorded without widening the story scope or changing implementation files; the as-built module already satisfies the strengthened expectations.
+
+Full audit log: `docs/phases/03-vuln-deterministic-recipe/stories/_validation/S5-01b-transform-registry.md`
 
 ## Provenance
 
@@ -46,9 +61,9 @@ Ship `src/codegenie/transforms/transform_registry.py` exposing `TransformRegistr
 
 ### Surface + module shape
 
-- [ ] **AC-Surface-1.** `from codegenie.transforms.transform_registry import TransformRegistry, TransformAlreadyRegistered, TransformNotFound` succeeds. The module's `__all__` is **exactly** `["TransformAlreadyRegistered", "TransformNotFound", "TransformRegistry"]` (sorted; private helpers never re-exported). A meta-test asserts `set(transform_registry.__all__) == {"TransformAlreadyRegistered", "TransformNotFound", "TransformRegistry"}`.
+- [ ] **AC-Surface-1.** `from codegenie.transforms.transform_registry import TransformRegistry, TransformAlreadyRegistered, TransformNotFound` succeeds. The module's `__all__` is **exactly** `["TransformAlreadyRegistered", "TransformNotFound", "TransformRegistry"]` (sorted; private helpers never re-exported). A meta-test asserts `transform_registry.__all__ == ["TransformAlreadyRegistered", "TransformNotFound", "TransformRegistry"]` so ordering, duplicates, and extra exports are all caught. (validator: hardened — original set-only check could not catch ordering drift or duplicate entries.)
 - [ ] **AC-Surface-2.** `TransformRegistry` is **not** re-exported from `codegenie.transforms.__init__` — it is an internal orchestration mechanism, not one of ADR-0001's six Phase-5 contract symbols (ADR-0014 §Decision). A test asserts `"TransformRegistry" not in codegenie.transforms.__all__`. The existing `tests/fence/test_transforms_module_purity.py::test_transforms_all_is_exact_set` superset fence still passes (this story adds nothing to `transforms.__all__`).
-- [ ] **AC-Surface-3.** No process-wide singleton: the module declares **no** module-level `TransformRegistry` instance and **no** `default_transform_registry`. A test asserts `not any(isinstance(v, TransformRegistry) for v in vars(transform_registry).values())`. Two `TransformRegistry()` instances are fully independent — registering into one leaves the other empty (asserted: `r1.register(t); assert len(r1) == 1 and len(r2) == 0`).
+- [ ] **AC-Surface-3.** No process-wide singleton: the module declares **no** module-level `TransformRegistry` instance and **no** `default_transform_registry`. A test asserts `"default_transform_registry" not in vars(transform_registry)` and `not any(isinstance(v, TransformRegistry) for v in vars(transform_registry).values())`. Two `TransformRegistry()` instances are fully independent — registering into one leaves the other empty (asserted: `r1.register(t); assert len(r1) == 1 and len(r2) == 0`). (validator: hardened — the original singleton test missed a wrongly named non-registry placeholder.)
 - [ ] **AC-Surface-4.** `mypy --strict src/codegenie/transforms/transform_registry.py` exits 0 — no `Any`, no `# type: ignore`, no untyped def. `ruff check` + `ruff format --check` green.
 
 ### `register` — write path
@@ -183,18 +198,22 @@ class _FakeTransform(Transform):
         self.provenance = _provenance()
 
 
+class _OtherFakeTransform(_FakeTransform):
+    """Second concrete class used to prove duplicate messages name both origins."""
+
+
 _TID_A = "a" * 64
 _TID_B = "b" * 64
 
 
 # --- Surface ----------------------------------------------------------------
 
-def test_all_is_exact_set() -> None:
-    assert set(tr_mod.__all__) == {
+def test_all_is_exact_sorted_list() -> None:
+    assert tr_mod.__all__ == [
         "TransformAlreadyRegistered",
         "TransformNotFound",
         "TransformRegistry",
-    }
+    ]
 
 
 def test_not_reexported_from_transforms_package() -> None:
@@ -204,6 +223,7 @@ def test_not_reexported_from_transforms_package() -> None:
 
 def test_no_module_level_singleton() -> None:
     # AC-Surface-3 — per-workflow injection; no default_* singleton.
+    assert "default_transform_registry" not in vars(tr_mod)
     assert not any(
         isinstance(v, TransformRegistry) for v in vars(tr_mod).values()
     )
@@ -245,11 +265,15 @@ def test_register_two_distinct_ids() -> None:
 def test_register_duplicate_id_raises_and_first_wins() -> None:
     reg = TransformRegistry()
     first = _FakeTransform(_TID_A)
-    second = _FakeTransform(_TID_A)  # same id, different object
+    second = _OtherFakeTransform(_TID_A)  # same id, different concrete origin
     reg.register(first)
     with pytest.raises(TransformAlreadyRegistered) as exc_info:
         reg.register(second)
     assert exc_info.value.transform_id == TransformId(_TID_A)
+    first_origin = f"{type(first).__module__}.{type(first).__qualname__}"
+    second_origin = f"{type(second).__module__}.{type(second).__qualname__}"
+    assert first_origin in str(exc_info.value)
+    assert second_origin in str(exc_info.value)
     # First registration is unaffected.
     assert reg.get(TransformId(_TID_A)) is first
     assert len(reg) == 1
@@ -348,3 +372,4 @@ Run; confirm `ImportError` on the `transform_registry` import; commit Red.
 - **`Transform` is an ABC with class-level annotations** (S1-04) — a concrete subclass declares `transform_id` / `diff_bytes` / `files_changed` / `provenance` as instance or class attributes. The test's `_FakeTransform` is the minimal such subclass; the ABC's `__new__` lets subclasses through and only blocks direct `Transform(...)`.
 - **`__contains__(self, transform_id: object)`** takes `object` (not `TransformId`) so `x in registry` never raises on a wrong-typed key — Python's `in` protocol contract. It returns `False` for anything not a registered key.
 - **This registry is per-workflow.** It holds at most a handful of transforms for the lifetime of one `RemediationOrchestrator.run()` and is then discarded. No GC, no eviction, no size cap is needed (contrast `BundleCacheGc`, S3-05, which manages an on-disk cache across runs).
+- **No shared registry kernel yet.** This is another registry-shaped component, but it is not the same lifecycle as `PluginRegistry` / `RecipeRegistry`: it has no process-wide default, no decorator, no `all()` enumeration, no reset hook, and no plugin import-time behavior. Keep the small concrete class until a second per-workflow runtime-object registry needs the same surface; that is the rule-of-three trigger for extracting a tiny shared kernel or Protocol. (validator: added — design-pattern hardening; prefer extension-by-addition without premature abstraction.)
