@@ -12,11 +12,13 @@ coordinator does not topo-sort by it (02-ADR-0003).
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from pathlib import Path
 from typing import Any, Final
 
+from codegenie.output.paths import raw_dir
 from codegenie.probes.base import Probe, ProbeContext, ProbeOutput, RepoSnapshot
 from codegenie.probes.layer_c._dockerfile_parse import parse_dockerfile_text
 from codegenie.probes.registry import register_probe
@@ -51,6 +53,26 @@ def _slice_for(parsed_dump: list[dict[str, Any]]) -> dict[str, Any]:
     return {"dockerfile": {"dockerfiles": parsed_dump, "confidence": "high"}}
 
 
+_SLICE_FILENAME: Final[str] = "dockerfile.json"
+
+
+def _write_files(repo_root: Path, schema_slice: dict[str, Any]) -> list[Path]:
+    """Persist the dockerfile slice to ``raw/dockerfile.json``.
+
+    The ``entrypoint`` and ``shell_usage`` marker probes consume this
+    sidecar via :func:`~codegenie.probes.layer_b.index_health.read_raw_slices`;
+    without it they can never see a parsed Dockerfile. Mirrors the
+    ``cve``/``sbom`` ``_write_files`` precedent — the file is written on
+    every ``run()`` (parsed and marker-absent alike) so consumers can tell
+    "dockerfile probe ran, found nothing" from "upstream never ran".
+    """
+    rd = raw_dir(repo_root)
+    rd.mkdir(parents=True, exist_ok=True)
+    slice_path = rd / _SLICE_FILENAME
+    slice_path.write_text(json.dumps(schema_slice, sort_keys=True))
+    return [slice_path]
+
+
 @register_probe(heaviness="light")
 class DockerfileProbe(Probe):
     """Layer C — Dockerfile marker probe (line-by-line parser, no shell eval).
@@ -72,9 +94,12 @@ class DockerfileProbe(Probe):
         t0 = time.perf_counter()
         files = find_dockerfiles(repo.root)
         if not files:
+            schema_slice: dict[str, Any] = {
+                "dockerfile": {"dockerfiles": [], "confidence": "unavailable"}
+            }
             return ProbeOutput(
-                schema_slice={"dockerfile": {"dockerfiles": [], "confidence": "unavailable"}},
-                raw_artifacts=[],
+                schema_slice=schema_slice,
+                raw_artifacts=_write_files(repo.root, schema_slice),
                 confidence="low",
                 duration_ms=int((time.perf_counter() - t0) * 1000),
                 warnings=["dockerfile.marker_absent"],
@@ -85,9 +110,10 @@ class DockerfileProbe(Probe):
             text = path.read_text(encoding="utf-8", errors="replace")
             parsed = parse_dockerfile_text(text, path=str(path.relative_to(repo.root)))
             parsed_dump.append(parsed.model_dump(mode="json"))
+        schema_slice = _slice_for(parsed_dump)
         return ProbeOutput(
-            schema_slice=_slice_for(parsed_dump),
-            raw_artifacts=[],
+            schema_slice=schema_slice,
+            raw_artifacts=_write_files(repo.root, schema_slice),
             confidence="high",
             duration_ms=int((time.perf_counter() - t0) * 1000),
             warnings=[],

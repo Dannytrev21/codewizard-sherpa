@@ -390,6 +390,62 @@ def test_classify_semgrep_outcome_exit_one_with_findings_is_ran() -> None:
     assert isinstance(outcome, ScannerRan)
 
 
+def test_classify_semgrep_outcome_zero_rules_loaded_is_skipped() -> None:
+    """semgrep exit 0 but ``time.rules`` empty → the requested --config
+    resolved to no rules (unreachable registry pack). The vacuous scan must
+    surface as ScannerSkipped, not a misleading clean ScannerRan."""
+    stdout = json.dumps(
+        {"results": [], "paths": {"scanned": ["a.js"]}, "time": {"rules": []}}
+    ).encode()
+    outcome, findings, rules, files = _classify_semgrep_outcome(
+        _ProcessExited(exit_code=0, stdout=stdout, stderr_tail="")
+    )
+    assert isinstance(outcome, ScannerSkipped)
+    assert outcome.reason == "config_absent"
+    assert findings == []
+    assert rules == 0
+    assert files == 1
+
+
+def test_classify_semgrep_outcome_rules_loaded_present_stays_ran() -> None:
+    """``time.rules`` non-empty → a real scan; stays ScannerRan even with
+    zero findings, and ``rules_run`` reports the honest loaded count."""
+    stdout = json.dumps(
+        {
+            "results": [],
+            "paths": {"scanned": ["a.js"]},
+            "time": {"rules": [{"id": "r1"}, {"id": "r2"}]},
+        }
+    ).encode()
+    outcome, _, rules, _ = _classify_semgrep_outcome(
+        _ProcessExited(exit_code=0, stdout=stdout, stderr_tail="")
+    )
+    assert isinstance(outcome, ScannerRan)
+    assert rules == 2
+
+
+@pytest.mark.asyncio
+async def test_semgrep_zero_rules_loaded_yields_low_confidence_skip(monkeypatch, repo, ctx) -> None:
+    """Probe-level: a vacuous scan (0 rules loaded) drops confidence to low
+    and writes no raw artifact — the operator sees the ruleset never loaded."""
+    stdout = json.dumps(
+        {"results": [], "paths": {"scanned": ["a.js"]}, "time": {"rules": []}}
+    ).encode()
+
+    async def _spy(*_a, **_kw):
+        return ProcessResult(returncode=0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(sg_mod, "run_external_cli", _spy)
+    output = await SemgrepProbe().run(repo, ctx)
+    slice_ = SemgrepSlice.model_validate(output.schema_slice["semgrep"])
+
+    assert isinstance(slice_.outcome, ScannerSkipped)
+    assert slice_.outcome.reason == "config_absent"
+    assert slice_.rules_run == 0
+    assert output.confidence == "low"
+    assert "semgrep-raw.json" not in {p.name for p in output.raw_artifacts}
+
+
 def test_classify_semgrep_outcome_exit_two_is_failed() -> None:
     outcome, _, _, _ = _classify_semgrep_outcome(
         _ProcessExited(exit_code=2, stdout=b"", stderr_tail="err")

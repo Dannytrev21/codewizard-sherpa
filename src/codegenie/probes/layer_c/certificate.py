@@ -44,7 +44,7 @@ def _read_runtime_trace_slice(repo_root: Path) -> dict[str, object] | None:
     return payload
 
 
-@register_probe(heaviness="light")
+@register_probe(heaviness="light", runs_last=True)
 class CertificateProbe(Probe):
     """Layer C — certificate marker probe.
 

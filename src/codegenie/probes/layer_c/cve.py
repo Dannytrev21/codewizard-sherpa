@@ -167,7 +167,7 @@ def _write_files(repo_root: Path, slice_dict: dict[str, Any], tool_bytes: bytes)
     return out
 
 
-@register_probe(heaviness="medium", runs_last=False)
+@register_probe(heaviness="medium", runs_last=True)
 class CveProbe(Probe):
     """Layer C — CVE scanner over the syft SBOM (``grype``).
 
