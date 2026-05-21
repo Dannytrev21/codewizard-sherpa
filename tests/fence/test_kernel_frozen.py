@@ -231,6 +231,22 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("src/codegenie/schema/probes/layer_g/ripgrep_curated.schema.json"),
         Path("src/codegenie/schema/probes/layer_g/semgrep.schema.json"),
         Path("src/codegenie/schema/probes/layer_g/test_coverage_mapping.schema.json"),
+        # ADR-0030 — Layer C raw-sidecar publishing fix. Re-applies reverted
+        # commit 5055292: dockerfile/runtime_trace producers persist
+        # raw/<name>.json sidecars on every run() exit; entrypoint,
+        # shell_usage, certificate, sbom, and cve register runs_last=True so
+        # consumers dispatch after producers; semgrep reports an honest
+        # config_absent skip on vacuous scans. adr: docs/phases/07-migration-
+        # task-class/ADRs/0030-amend-kernel-allowlist-for-layer-c-sidecar-
+        # publishing.md
+        Path("src/codegenie/probes/layer_c/dockerfile.py"),
+        Path("src/codegenie/probes/layer_c/runtime_trace.py"),
+        Path("src/codegenie/probes/layer_c/entrypoint.py"),
+        Path("src/codegenie/probes/layer_c/shell_usage.py"),
+        Path("src/codegenie/probes/layer_c/certificate.py"),
+        Path("src/codegenie/probes/layer_c/sbom.py"),
+        Path("src/codegenie/probes/layer_c/cve.py"),
+        Path("src/codegenie/probes/layer_g/semgrep.py"),
     }
 )
 

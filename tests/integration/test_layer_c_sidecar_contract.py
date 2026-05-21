@@ -65,9 +65,7 @@ def _make_dockerfile_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "dockerfile_repo"
     repo.mkdir()
     (repo / "Dockerfile").write_text(_DOCKERFILE)
-    (repo / "package.json").write_text(
-        '{"name": "sidecar-contract-fixture", "version": "1.0.0"}\n'
-    )
+    (repo / "package.json").write_text('{"name": "sidecar-contract-fixture", "version": "1.0.0"}\n')
     (repo / "index.js").write_text("console.log('hello');\n")
     return repo
 
@@ -151,9 +149,7 @@ def test_dockerfile_consumers_populate_on_real_gather(tmp_path: Path) -> None:
         "entrypoint is 'unavailable' despite a Dockerfile being present — "
         "it could not read the dockerfile sidecar"
     )
-    assert entrypoint["entrypoints"], (
-        "entrypoint probe saw a Dockerfile but reported no entrypoint"
-    )
+    assert entrypoint["entrypoints"], "entrypoint probe saw a Dockerfile but reported no entrypoint"
     assert entrypoint["entrypoints"][0]["form"] == "exec", entrypoint["entrypoints"]
 
     static = probes["shell_usage"]["shell_usage"]["static"]
@@ -161,9 +157,7 @@ def test_dockerfile_consumers_populate_on_real_gather(tmp_path: Path) -> None:
         "shell_usage.static did not pick up the Dockerfile's ENTRYPOINT — "
         f"it could not read the dockerfile sidecar. static={static}"
     )
-    assert static["final_stage_run_commands"], (
-        "shell_usage.static dropped the Dockerfile RUN line"
-    )
+    assert static["final_stage_run_commands"], "shell_usage.static dropped the Dockerfile RUN line"
 
 
 def test_runtime_trace_consumer_populates_on_real_gather(tmp_path: Path) -> None:
