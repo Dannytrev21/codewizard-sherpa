@@ -128,6 +128,11 @@ pattern = "^__version__(?:\\s*:\\s*[^=]+)?\\s*=\\s*['\"](?P<version>[^'\"]+)['\"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/codegenie"]
+# Phase 3 S5-04: the codegenie-owned lockfile policy is a non-Python asset
+# loaded at runtime via `importlib.resources`. Hatchling already ships files
+# under `packages`, but this makes the wheel dependency explicit so a future
+# build-config change cannot silently drop it.
+artifacts = ["src/codegenie/transforms/policy/lockfile-policy.yaml"]
 
 [tool.hatch.build.targets.sdist]
 include = [

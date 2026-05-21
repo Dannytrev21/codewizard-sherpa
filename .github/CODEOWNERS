@@ -33,3 +33,10 @@ docs/production/adrs/ @Dannytrev21
 # attestation. Edits gate-keep the trust boundary the loader enforces.
 # TODO: substitute @Dannytrev21 with the actual @platform-team handle.
 plugins/PLUGINS.lock @Dannytrev21
+
+# Phase 3 S5-04 / Gap 2 fix: the codegenie-owned lockfile-registry policy.
+# Both copies are gated — the in-package YAML is runtime-loaded, the repo-root
+# mirror is the human-review surface; a unit test keeps them byte-equal.
+# Broadening the allowed-registry list is a security decision (ADR amendment).
+src/codegenie/transforms/policy/lockfile-policy.yaml @Dannytrev21
+tools/policy/lockfile-policy.yaml @Dannytrev21

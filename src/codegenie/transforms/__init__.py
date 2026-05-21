@@ -1,7 +1,7 @@
 """``codegenie.transforms`` — Phase-3 outcome unions + ApplyContext surface.
 
 This package is the Phase-3 contract-surface home (ADR-0001). It carries
-two layers of public symbols:
+three layers of public symbols:
 
 * The five Pydantic discriminated unions from :mod:`outcomes` (S1-03):
   :data:`RecipeOutcome`, :data:`RemediationOutcome`, :data:`NodeTransition`,
@@ -11,6 +11,9 @@ two layers of public symbols:
   :class:`AttemptSummary`, plus the :class:`CapabilityBundle` /
   :data:`SandboxedPath` forward-reference shims that S4-04 / S4-05
   substitute additively.
+* The S5-04 lockfile-policy surface (Gap 2 fix): :class:`LockfilePolicy`,
+  the :data:`PolicyViolation` / :data:`PolicyLoadError` discriminated unions,
+  and :class:`UnauthorizedRegistry` — from :mod:`policy.lockfile_policy`.
 
 Every variant is ``frozen=True`` + ``extra="forbid"`` (ADR-0010).
 Discriminated-union umbrellas use ``Annotated[A | B | C,
@@ -53,6 +56,12 @@ from codegenie.transforms.outcomes import (
     Unavailable,
     Validated,
 )
+from codegenie.transforms.policy.lockfile_policy import (
+    LockfilePolicy,
+    PolicyLoadError,
+    PolicyViolation,
+    UnauthorizedRegistry,
+)
 from codegenie.transforms.recipe_engine import (
     MatchedRecipe,
     RecipeEngine,
@@ -76,10 +85,13 @@ __all__ = [
     "Escalate",
     "EscalationReason",
     "HumanReviewReason",
+    "LockfilePolicy",
     "MatchedRecipe",
     "NodeTransition",
     "NotApplicableReason",
     "NotApplies",
+    "PolicyLoadError",
+    "PolicyViolation",
     "RecipeEngine",
     "RecipeError",
     "RecipeFailed",
@@ -98,6 +110,7 @@ __all__ = [
     "Transform",
     "TransformProvenance",
     "Trusted",
+    "UnauthorizedRegistry",
     "Unavailable",
     "UnavailabilityReason",
     "Validated",

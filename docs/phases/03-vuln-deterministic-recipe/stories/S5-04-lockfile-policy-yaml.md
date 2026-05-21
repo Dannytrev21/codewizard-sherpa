@@ -1,7 +1,7 @@
 # Story S5-04 — `LockfilePolicy` YAML + Pydantic loader + `evaluate` (Gap 2 fix)
 
 **Step:** Step 5 — Transform ABC consumers, RecipeEngine Protocol, RecipeRegistry, lockfile policy
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-20 (phase-story-executor; see [`_attempts/S5-04.md`](_attempts/S5-04.md) for the per-AC evidence table, the five as-built drift resolutions, and the gate log — `lockfile_policy.py` 100% branch coverage, full suite 5804 passed, mypy `--strict` + ruff + Any-fence + import-linter + pre-commit + `mkdocs --strict` all green; wheel build verified to ship `lockfile-policy.yaml`).
 **Effort:** M
 **Depends on:** S5-02
 **ADRs honored:** ADR-0010, ADR-0011, ADR-0001

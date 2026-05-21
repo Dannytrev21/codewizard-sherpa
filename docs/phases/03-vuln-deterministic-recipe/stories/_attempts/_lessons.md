@@ -279,3 +279,37 @@ phase-story-executor runs in this phase. New entries at the bottom.
     the subclass, and an AST fence "no `<Subclass>(` outside `create`" still
     holds because `create` calls `cls(`, not the class name. Prefer this over
     the `cls.__new__` form whenever a story outline prescribes the latter.
+
+25. **A boundary loader may be *stricter* than the shared `parse_*` it
+    delegates to — never *weaker*** (observed 2026-05-20, S5-04). The landed
+    `parse_registry_url` (S1-01) accepts a registry URL without a trailing
+    slash; S5-04's `LockfilePolicy.from_yaml` ACs require rejecting it. The
+    fix is an explicit post-check (`url.endswith("/")`) layered *after* the
+    shared parser — not editing the shared parser (out of scope) and not
+    relaxing the AC. Pattern: when a story cites `parse_X` from a sibling but
+    the AC demands more, add the extra check locally and log a sibling
+    follow-up — the shared kernel parser stays the floor, the loader raises
+    the ceiling.
+
+26. **`yaml.safe_load` directly vs the `safe_yaml` chokepoint — pick by
+    threat model, not by reflex** (observed 2026-05-20, S5-04).
+    `codegenie.parsers.safe_yaml` is the chokepoint for *hostile
+    analyzed-repo* YAML; it translates every `yaml.YAMLError` into a
+    *stateless marker* exception. A loader that must surface structured parse
+    detail (e.g. `problem_mark` line/column) cannot use the chokepoint — the
+    marker translation discards exactly that data. For *codegenie-owned*,
+    trusted, wheel-shipped config (policy files, catalogs authored in-repo),
+    raw `yaml.safe_load` is the correct call; document the reason in the
+    module docstring so a future reader does not "fix" it back to the
+    chokepoint.
+
+27. **`pytest --cov=<narrow.module>` can break unrelated catalog/YAML loading
+    locally** (observed 2026-05-20, S5-04). Passing an explicit narrow
+    `--cov=` target made `codegenie.catalogs` fail to parse
+    `native_modules.yaml` (`ConstructorError: … tag None`) — reproducible
+    with *any* test file, so it is environmental, not code. The project's
+    default `addopts` `--cov` (whole-package) path is unaffected, so
+    `make test` / CI are fine. To measure one module's coverage, run the
+    target test files under the default `--cov` with `--cov-fail-under=0` and
+    read that module's row from the `term-missing` report — do not pass a
+    narrow `--cov=` target.

@@ -1,0 +1,4 @@
+# codegenie-owned. Per Phase 3 Gap 2 fix + ADR-0010. Analyzed repos cannot override. Changes require ADR amendment.
+schema_version: 1
+allowed_registries:
+  - https://registry.npmjs.org/
