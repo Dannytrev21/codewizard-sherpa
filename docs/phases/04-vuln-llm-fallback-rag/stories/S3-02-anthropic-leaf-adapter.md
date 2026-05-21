@@ -1,214 +1,327 @@
 # Story S3-02 — `AnthropicLeafAdapter` with keyring-only key + retries + path-scoped fence assertion
 
 **Step:** Step 3 — Ship LeafLlm Port + AnthropicLeafAdapter + EgressGuard + cassette discipline
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** L
-**Depends on:** S3-01 (`LeafLlm` Protocol + `LeafResponse`), S2-05 (`BudgetToken`), S2-04 (`PromptBuilder` → `TrustedPrompt` + `FencedPromptBody`), S1-02 (`PlanProposal.model_json_schema()`), S1-05 (path-scoped fence admitting `anthropic` only under `src/codegenie/fallback/leaf/`)
-**ADRs honored:** ADR-0001 (Phase 4 — schema-at-SDK-boundary), ADR-0003 (Phase 4 — path-scoped fence admits `anthropic` here and only here), ADR-0005 (Phase 4 — no SPKI pin; system trust), ADR-0010 (Phase 4 — `BudgetToken` keyword-only required), ADR-0020 (production — Protocol earns its keep here)
+**Depends on:** S3-01 (`LeafLlm` Protocol + `LeafResponse`; `schema: TypeAdapter[PlanProposal]`), S2-05 (`BudgetToken`), S2-04 (`PromptBuilder` -> `TrustedPrompt` + `FencedPromptBody`), S1-02 (`PlanProposal` closed union; schema exported via `TypeAdapter(PlanProposal).json_schema()`), S1-05/S1-06 (path-scoped fence + import-linter admitting `anthropic` only under `src/codegenie/fallback/leaf/`)
+**ADRs honored:** ADR-0001 (Phase 4 — schema-at-SDK-boundary), ADR-0003 (Phase 4 — path-scoped fence admits `anthropic` here and only here), ADR-0005 (Phase 4 — no SPKI pin; system trust), ADR-0010 (Phase 4 — `BudgetToken` keyword-only required), ADR-0014 (Phase 4 — cassettes are sanitized before record), ADR-0020 (production — Protocol earns its keep here)
+
+## Validation notes
+
+Validated: 2026-05-21
+Verdict: HARDENED
+Findings addressed: 15 — 5 blocks, 8 hardens, 2 nits
+
+Changes applied:
+- **C1/API1 (block)** — replaced stale `PlanProposal.model_json_schema()` / `response_format` wording with the S3-01-hardened `TypeAdapter[PlanProposal]` seam and Anthropic's current structured-output request shape: `output_config={"format": {"type": "json_schema", "schema": schema.json_schema()}}`.
+- **C2 (block)** — reconciled prompt-cache block assembly with S2-04: the adapter receives a flattened `TrustedPrompt` plus fenced `FencedPromptBody`, so it must not split `skill`/`instruction_template` or promote RAG few-shots out of the fenced body.
+- **C3 (block)** — removed the future-story dependency on concrete `EgressGuard`; this story depends on an injected `EgressGuardPort` Protocol so S3-03 can later provide the implementation without a story-order cycle.
+- **C4 (block)** — cassettes are no longer recorded in S3-02 before S3-04/S3-05/S3-06 land the sanitizer, scanner, lock, and operator path. This story ships cassette-ready scenario tests only; live cassette bytes are deferred to the cassette discipline stories.
+- **C5/TQ1 (block)** — replaced stale `src/codegenie/logging.py` / `event_log_spy.entries` assumptions with `codegenie.plugins.events.EventLog.emit_internal(...)`, `WorkflowInternalEvent` registration, and replay-based tests.
+- **TQ2 (harden)** — replaced the `cast`-based Protocol proof with a subprocess-mypy positive assignment (`_leaf: LeafLlm = AnthropicLeafAdapter(...)`) so the test cannot hide non-conformance.
+- **TQ3 (harden)** — pinned the first request's user bytes to exactly `FencedPromptBody`; the malformed-output retry may append only the trusted suffix at SDK-request construction time and must not mint a new `FencedPromptBody`.
+- **TQ4 (harden)** — request/response digest formulas now match the actual one-system-block shape and use response text parsed through `schema.validate_json(...)`.
+- **TQ5 (harden)** — transport retry tests must prove the exact call-count semantics and that `EgressGuardPort.pinned_to(...)` wraps every physical SDK attempt.
+- **D1 (harden)** — added dependency-inversion notes: the adapter owns SDK translation; the egress guard and event log are injected ports; no SDK details escape the `LeafLlm` seam.
+- **D2 (harden)** — `pyproject.toml` import-linter ignore edge is now an explicit AC: S3-02 adds exactly the one permitted `codegenie.fallback.leaf.anthropic_adapter -> anthropic` edge.
+- **D3 (harden)** — event models are workflow-internal and named separately from exceptions (`LeafProtocolViolationEvent` vs `LeafProtocolViolation`).
+- **Cov1 (harden)** — cache-usage token mapping now names the Anthropic usage fields and defaults optional cache counters to zero when absent.
+- **N1 (nit)** — lower/upper SDK version pin must be justified in the attempt log and covered by a frozen-cassette compatibility smoke test.
+- **N2 (nit)** — no `Any` / untyped SDK dict shuffling: request payload aliases use typed `TypedDict` or frozen Pydantic models local to the adapter.
+
+Full audit log: docs/phases/04-vuln-llm-fallback-rag/stories/_validation/S3-02-anthropic-leaf-adapter.md
 
 ## Context
 
-`AnthropicLeafAdapter` is the **single concrete `LeafLlm`** Phase 4 ships and the **sole** module in the codebase allowed to `import anthropic` — enforced both structurally (path-scoped fence test from S1-05; AST-walk in `tests/fence/test_only_leaf_imports_anthropic.py` landed here) and by `import-linter` (S1-06). Every Anthropic-SDK detail (caching strategy, response-format JSON schema, retry policy, key acquisition) lives here so the rest of Phase 4 sees only the `LeafLlm` Protocol seam.
+`AnthropicLeafAdapter` is the **single concrete `LeafLlm`** Phase 4 ships and the **sole** module in the codebase allowed to `import anthropic` — enforced both structurally (path-scoped fence test from S1-05) and by `import-linter` (S1-06). Every Anthropic-SDK detail (structured-output request shape, prompt-cache control, retry policy, key acquisition, SDK response parsing) lives here so the rest of Phase 4 sees only the `LeafLlm` Protocol seam.
 
-Per `phase-arch-design.md §Component 4`:
+Per the hardened predecessor stories, three draft assumptions are stale and corrected here:
 
-- Key loaded from `keyring.get_password("codegenie", "anthropic_api_key")` → `SecretStr`. **No env-var fallback**, including no `CODEGENIE_ANTHROPIC_KEY_CI` (explicitly rejected by ADR-0005 §Consequences). Missing key → refuse-to-start with diagnostic pointing to `codegenie auth set`.
-- System message assembled from three `CachedSystemBlock` records (`skill`, `instruction_template`, `rag_few_shot` when present), each `cache="ephemeral"`. The first two should hit Anthropic's prompt cache across consecutive workflows.
-- The SDK call sets `response_format = schema.model_json_schema()` so Anthropic validates the `PlanProposal` shape before bytes ever reach Python.
-- **One** in-call retry on JSON-parse failure, appending the instruction "your previous response was malformed; emit valid PlanProposal." Second failure → `LeafProtocolViolation`.
-- **Three** in-adapter transport retries on `anthropic.APIStatusError` with backoff `1s, 4s, 16s`. **No other retries** — Phase 5's `GateRunner` owns the retry envelope at the workflow level (production ADR-0020 + ADR-0011 of Phase 3).
-- The adapter wraps `EgressGuard.pinned_to("api.anthropic.com:443")` around the SDK call (S3-03 lands `EgressGuard`; this story imports `pinned_to` and pins its mock to it).
+- S3-01 hardened the Protocol to `schema: TypeAdapter[PlanProposal]`; `PlanProposal` is an `Annotated` discriminated-union alias, not a class, so `PlanProposal.model_json_schema()` / `schema.model_json_schema()` is not implementable.
+- Anthropic's current structured-output API uses `output_config={"format": {"type": "json_schema", ...}}` on `messages.create(...)` (or the SDK `messages.parse(...)` helper for Pydantic models). Because this codebase's schema is a `TypeAdapter` over an annotated union, this story uses raw `messages.create(...)` + `schema.json_schema()` + `schema.validate_json(...)`.
+- S2-04 hardened `PromptBuilder.build(...)` to return a flattened `TrustedPrompt` (`skill + "\n\n" + instruction_template`) and a fenced `FencedPromptBody` containing all untrusted bytes including RAG few-shots. Therefore this adapter must not split the trusted prompt into separate `skill` / `instruction_template` system blocks and must not lift RAG few-shots out of the fenced body. It sends one cached trusted-system block plus one exact fenced user body.
 
-The two cassettes recorded during this story (LLM-from-scratch on `vuln-major-bump/express-cve-2026-1234`; RAG-hit on `vuln-rag-hit/express-rerun`) are the first cassettes in the repo. They must be sanitized (S3-04 hooks installed before recording) and entered into `cassettes.lock` (S3-05) — so this story is the **forcing function** that proves the discipline works end-to-end.
+Operational constraints:
+
+- Key loaded from `keyring.get_password("codegenie", "anthropic_api_key")` -> `SecretStr`. **No env-var fallback**, including no `CODEGENIE_ANTHROPIC_KEY_CI` (explicitly rejected by ADR-0005/0010). Missing key -> refuse-to-start with diagnostic pointing to `codegenie auth set`.
+- The adapter performs **one** in-call retry when the SDK response cannot be parsed by `schema.validate_json(...)`, appending the trusted suffix `"\n\n[SYSTEM] your previous response was malformed; emit valid PlanProposal."` only while constructing the retry SDK request. It must not mint a new `FencedPromptBody`.
+- Transport retries apply only to `anthropic.APIStatusError` with backoff `1s, 4s, 16s` (three retries = four physical SDK attempts). No other exception retries.
+- The adapter depends on an injected `EgressGuardPort` Protocol whose `pinned_to("api.anthropic.com:443")` async context manager wraps every physical SDK attempt. S3-03 ships the concrete guard later; this story remains executable with a mock port.
+- **No live cassettes are recorded in S3-02.** The first real Anthropic cassette bytes must be recorded only after S3-04 installs sanitizer hooks, S3-05 installs the scanner/lock, and S3-06 provides the operator refresh path. S3-02 owns cassette-ready scenario tests and expected variants only.
 
 ## References — where to look
 
 - **Architecture:**
-  - `../phase-arch-design.md §Component 4 — LeafLlm Protocol + AnthropicLeafAdapter` — internal structure, system-block assembly, retry policy.
-  - `../phase-arch-design.md §Sequence: LLM-from-scratch` (lines ~229–266) and §Sequence: retry-bypass-RAG (~385+) — the leaf call's exact event-emission order.
+  - `../phase-arch-design.md §Component 4 — LeafLlm Protocol + AnthropicLeafAdapter` — internal structure, key loading, retry policy. Treat `type[PlanProposal]` / `response_format` lines there as stale; S3-01 and this validation supersede the spelling while preserving the schema-at-boundary invariant.
+  - `../phase-arch-design.md §Sequence: LLM-from-scratch` and §Sequence: retry-bypass-RAG — the leaf call's event-emission order.
   - `../phase-arch-design.md §Edge cases #7, #12, #16, #20` — invalid JSON retry, egress non-Anthropic host, transport retry schedule, missing keyring key.
-  - `../phase-arch-design.md §Design patterns applied` — "Adapter at a hard trust boundary".
+  - `../phase-arch-design.md §Design patterns applied` — "Adapter at a hard trust boundary" and "Capability pattern (financial)".
 - **Phase ADRs:**
-  - `../ADRs/0001-plan-proposal-closed-sum-type.md` §Decision — `response_format = PlanProposal.model_json_schema()`.
-  - `../ADRs/0003-path-scoped-fence-amendment.md` — admits `anthropic` *only* under `src/codegenie/fallback/leaf/`; the fence test from S1-05 must pass after this story.
+  - `../ADRs/0001-plan-proposal-closed-sum-type.md` §Decision — schema-at-SDK-boundary. Treat the `PlanProposal.model_json_schema()` wording as stale; the invariant is preserved through `TypeAdapter(PlanProposal).json_schema()`.
+  - `../ADRs/0003-path-scoped-fence-amendment.md` — admits `anthropic` *only* under `src/codegenie/fallback/leaf/`.
   - `../ADRs/0005-no-spki-pin-egress-defense-in-depth.md` §Decision + §Consequences — system trust store; no env-var key fallback; nightly drift job is the canary.
-  - `../ADRs/0010-llm-invocation-guard-budget-token-capability.md` §Consequences — `BudgetToken` is **consumed but not reconciled** by the adapter; `LlmInvocationGuard.reconcile(...)` happens in `FallbackTier` (S6-01).
+  - `../ADRs/0010-llm-invocation-guard-budget-token-capability.md` §Consequences — `BudgetToken` is consumed but not reconciled by the adapter; `LlmInvocationGuard.reconcile(...)` happens in `FallbackTier` (S6-01).
+  - `../ADRs/0014-cassette-discipline-security-control.md` — no cassette bytes land before sanitizer + scanner + manifest + operator workflow.
 - **Production ADRs:**
   - `../../../production/adrs/0020-leaf-agents-sdk.md` — multi-vendor seam.
 - **Source design:** `../final-design.md §Component 4 — LeafLlm`.
+- **Predecessor validations:**
+  - `_validation/S3-01-leaf-llm-port.md` — `schema: TypeAdapter[PlanProposal]`, `LeafResponse` field constraints, no `cast` proof.
+  - `_validation/S2-04-prompt-builder-sole-mint.md` — flattened `TrustedPrompt`; all RAG few-shot bytes stay in `FencedPromptBody`; sole-mint AST fence.
+  - `_validation/S2-05-llm-invocation-guard-budget-token.md` — real `EventLog` API and internal event registration.
 - **Existing code (READ BEFORE WRITING — Rule 8):**
-  - `src/codegenie/exec/` — Phase-0/2 subprocess discipline; no relevance to this story but the *spirit* (single typed boundary, no shell-out) applies to the SDK boundary.
-  - `src/codegenie/logging.py` — `EventLog` shape for `LeafKeyLoaded`/`LeafInvoked`/`LeafReturned`/`LeafProtocolViolation` events. Mirror existing event id conventions (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`).
-  - The S3-01 `LeafLlm` Protocol + `LeafResponse` model.
-  - The S2-05 `BudgetToken` model.
+  - `src/codegenie/plugins/events.py` and `tests/unit/plugins/test_events.py` — `EventLog.emit_internal(...)`, `WorkflowInternalEvent`, `_INTERNAL_CLASSES`, replay conventions.
+  - `src/codegenie/hashing.py` — BLAKE3 helper; do not fork hashing.
+  - S1-05/S1-06 fence/import-linter tests — append only the single permitted Anthropic import edge.
+- **External API docs:**
+  - Anthropic structured outputs: `https://platform.claude.com/docs/en/build-with-claude/structured-outputs` — `output_config.format` request shape and current Python SDK helper behavior.
 
 ## Goal
 
-Land `AnthropicLeafAdapter` as the sole `anthropic` SDK importer in the codebase, wrap every call in `EgressGuard.pinned_to("api.anthropic.com:443")`, enforce schema-at-SDK-boundary via `response_format=PlanProposal.model_json_schema()`, honor the documented retry policy (1 in-call JSON retry, 3 transport retries with exponential backoff), and refuse-to-start when `keyring` returns no key — with the first two sanitized cassettes recorded against the live API.
+Land `AnthropicLeafAdapter` as the sole `anthropic` SDK importer in the codebase, wrap every physical SDK attempt in an injected `EgressGuardPort.pinned_to("api.anthropic.com:443")`, enforce schema-at-SDK-boundary with Anthropic structured outputs (`output_config.format` from `schema.json_schema()` plus defensive `schema.validate_json(...)`), honor the documented retry policy (1 in-call schema retry, 3 transport retries with exponential backoff), and refuse-to-start when `keyring` returns no key. The story makes the adapter cassette-ready, but it does **not** record live cassette bytes before the cassette-discipline stories land.
 
 ## Acceptance criteria
 
 ### Adapter shape + key loading
 
-- [ ] AC-1 — `src/codegenie/fallback/leaf/anthropic_adapter.py` exists; class `AnthropicLeafAdapter` implements the `LeafLlm` Protocol (mypy + runtime assertion `isinstance(adapter, LeafLlm)` not used — Protocol is not runtime-checkable; structural conformance proved by mypy + a positive type-test using `cast` or pyright assertion).
-- [ ] AC-2 — `AnthropicLeafAdapter.__init__(self, *, event_log: EventLog, egress_guard: EgressGuard, model: ModelId = ModelId("claude-sonnet-4-5-20250929")) -> None` — `event_log` and `egress_guard` injected (testability); `keyring.get_password("codegenie", "anthropic_api_key")` called at `__init__`; returns `SecretStr`; raises `AnthropicKeyMissing` (typed exception, frozen Pydantic-or-attrs) if key is `None`. Diagnostic message includes the literal string `"codegenie auth set"`.
-- [ ] AC-3 — Refuse-to-start emits `LeafKeyLoaded(present=False)` then raises; happy path emits `LeafKeyLoaded(present=True)` exactly once (no key bytes; no key prefix). Test asserts the audit log has zero entries whose serialized form contains `sk-ant` (defense-in-depth against accidental logging).
-- [ ] AC-4 — **No env-var fallback path exists.** AST source-scan asserts the adapter does not reference `os.environ`, `os.getenv`, `getpass.getpass`, or any `CODEGENIE_*` string. Adversarial test sets `CODEGENIE_ANTHROPIC_KEY_CI=sk-ant-test` in env, `keyring` returns `None` → `AnthropicKeyMissing` still raises.
+- [ ] AC-1 — `src/codegenie/fallback/leaf/anthropic_adapter.py` exists; class `AnthropicLeafAdapter` structurally conforms to the S3-01 `LeafLlm` Protocol. Proof is a subprocess-mypy positive control assigning `_leaf: LeafLlm = AnthropicLeafAdapter(event_log=..., egress_guard=...)`; no `cast(...)`, no `isinstance(adapter, LeafLlm)` (the Protocol is not runtime-checkable).
+- [ ] AC-2 — `AnthropicLeafAdapter.__init__(self, *, event_log: EventLog, egress_guard: EgressGuardPort, model: ModelId = ModelId("claude-sonnet-4-5-20250929")) -> None`. `EgressGuardPort` is a local `Protocol` requiring `pinned_to(host: str) -> AsyncContextManager[None]`; it is deliberately a port, not an import of S3-03's future concrete `EgressGuard`. `event_log` and `egress_guard` are injected. `keyring.get_password("codegenie", "anthropic_api_key")` is called at `__init__`; `None` raises `AnthropicKeyMissing` with the literal diagnostic `"codegenie auth set"`.
+- [ ] AC-3 — Key handling never stores cleartext on `self`: the returned key is wrapped in `SecretStr`, passed to `anthropic.AsyncAnthropic(api_key=secret.get_secret_value())`, then not retained except inside the SDK client. Test introspects `adapter.__dict__` and serialized events for absence of `sk-ant` and the exact fake key bytes.
+- [ ] AC-4 — Refuse-to-start emits a workflow-internal `LeafKeyLoaded(present=False)` event via `event_log.emit_internal(...)` then raises; happy path emits `LeafKeyLoaded(present=True)` exactly once. The event model is registered in `codegenie.plugins.events.WorkflowInternalEvent` and `_INTERNAL_CLASSES`; tests read events via `EventLog.replay()`.
+- [ ] AC-5 — **No env-var fallback path exists.** AST source-scan asserts the adapter does not reference `os.environ`, `os.getenv`, `getpass.getpass`, or any `CODEGENIE_*` string. Adversarial test sets `CODEGENIE_ANTHROPIC_KEY_CI=sk-ant-test` in env, `keyring` returns `None` -> `AnthropicKeyMissing` still raises.
 
 ### Invoke semantics
 
-- [ ] AC-5 — `async def invoke(self, system_prompt, user_message, *, schema, token)` constructs the SDK request with:
-  - `response_format = schema.model_json_schema()` (the Pydantic-v2 export of `PlanProposal`).
-  - `system` list assembled from three `CachedSystemBlock` records — `skill`, `instruction_template`, and (when `user_message` carries a RAG few-shot frame) `rag_few_shot`. Each block sets `cache_control={"type": "ephemeral"}`.
-  - `messages=[{"role": "user", "content": user_message}]` — `user_message` is a `FencedPromptBody` (str-newtype); test asserts the bytes passed to the SDK are *exactly* the bytes of `user_message` (no string interpolation, no f-string, no `.format`).
-- [ ] AC-6 — On successful 200 response, the adapter parses the JSON into `PlanProposal` (the SDK has already validated against the schema; this is a defensive parse), constructs a `LeafResponse`, and emits `LeafInvoked(prompt_digest_blake3)` *before* the SDK call and `LeafReturned(response_digest_blake3, tokens_in, tokens_out, cache_read, cache_creation)` *after*. Event order asserted.
-- [ ] AC-7 — `prompt_digest_blake3` is `blake3(system[0].text + system[1].text + (system[2].text if present else "") + user_message)`; `response_digest_blake3` is `blake3(response.content[0].text)`. No raw prompt or response bytes appear in the event log.
-- [ ] AC-8 — **`BudgetToken` is consumed but not validated against running totals here** — the adapter accepts the token as a typed function-signature requirement (S3-01 AC-2) but does not call `LlmInvocationGuard.reconcile`; reconciliation happens in `FallbackTier` (S6-01). Test: mock `LlmInvocationGuard.reconcile` and assert it is **not** called from `AnthropicLeafAdapter.invoke`.
+- [ ] AC-6 — `AnthropicLeafAdapter.invoke` signature exactly matches S3-01:
+  ```python
+  async def invoke(
+      self,
+      system_prompt: TrustedPrompt,
+      user_message: FencedPromptBody,
+      *,
+      schema: TypeAdapter[PlanProposal],
+      token: BudgetToken,
+  ) -> LeafResponse: ...
+  ```
+  `schema` and `token` are keyword-only and required. The adapter does not construct or import `LlmInvocationGuard`.
+- [ ] AC-7 — The first SDK request is constructed with:
+  - `output_config={"format": {"type": "json_schema", "schema": schema.json_schema()}}` — current Anthropic structured-output request shape.
+  - `system=[{"type": "text", "text": str(system_prompt), "cache_control": {"type": "ephemeral"}}]` — one trusted cached block. The adapter must not split `TrustedPrompt` on `"\n\n"`, must not inspect for `skill` / `instruction_template`, and must not use any `rag_few_shot` / `rag_retrieved` literal.
+  - `messages=[{"role": "user", "content": str(user_message)}]` — first-attempt user content is **exactly** the `FencedPromptBody` bytes. Test fails on f-string interpolation, `.format`, prefix/suffix, or any raw prompt wrapping on the first attempt.
+- [ ] AC-8 — On successful 200 response, the adapter extracts exactly one text response body, parses it with `schema.validate_json(response_text)`, constructs `LeafResponse`, and emits `LeafInvoked(prompt_digest_blake3)` before the physical SDK call and `LeafReturned(response_digest_blake3, tokens_in, tokens_out, cache_read, cache_creation)` after parse succeeds. Event order is asserted via `EventLog.replay()`.
+- [ ] AC-9 — Token fields map from the Anthropic SDK response usage object: `tokens_in = usage.input_tokens`, `tokens_out = usage.output_tokens`, `cache_read_tokens = usage.cache_read_input_tokens` or `0` when absent, `cache_creation_tokens = usage.cache_creation_input_tokens` or `0` when absent. Values are wrapped in `TokenCount` and then validated by `LeafResponse`'s `Annotated[TokenCount, Field(ge=0)]` fields (S3-01 AC-3).
+- [ ] AC-10 — `prompt_digest_blake3` is `blake3(str(system_prompt) + str(user_message))`; `response_digest_blake3` is `blake3(response_text)`. No raw prompt or response bytes appear in event payloads. Test serializes every emitted event and asserts neither the system prompt, user message, nor response body substring appears.
+- [ ] AC-11 — **`BudgetToken` is consumed but not reconciled here.** The adapter accepts the token as a typed signature requirement but does not call `LlmInvocationGuard.reconcile`, mutate budget state, or import `LlmInvocationGuard`. Reconciliation happens in `FallbackTier` (S6-01). Test mocks/monkeypatches `LlmInvocationGuard.reconcile` and asserts it is not reached.
 
-### In-call malformed-JSON retry
+### In-call malformed-output retry
 
-- [ ] AC-9 — When the first SDK response cannot parse as `PlanProposal` (`pydantic.ValidationError`), the adapter appends to `user_message` the literal string `"\n\n[SYSTEM] your previous response was malformed; emit valid PlanProposal."` and calls the SDK **exactly once more**. Second failure → `raise LeafProtocolViolation(first_error, second_error)`.
-- [ ] AC-10 — Cassette-driven test (`tests/unit/fallback/test_leaf_adapter_malformed_retry.py`): first response is hand-crafted invalid JSON; second response is a valid `PlanProposalRefuse`. Assert exactly two SDK calls; assert returned `LeafResponse.plan.kind == "refuse"`; assert one `LeafProtocolViolation` is **not** emitted (only on second failure).
-- [ ] AC-11 — Second-failure cassette test: both responses invalid JSON → `LeafProtocolViolation` raised; event `leaf.protocol_violation` emitted once; no `LeafReturned` event.
+- [ ] AC-12 — If the first SDK response cannot be parsed by `schema.validate_json(...)` (including malformed JSON, missing text content, or a schema-invalid structured response), the adapter builds exactly one retry request. The retry request's user content is `str(user_message) + "\n\n[SYSTEM] your previous response was malformed; emit valid PlanProposal."`. This suffix is trusted adapter-owned text; the adapter must **not** call `FencedPromptBody(...)` or any prompt-newtype constructor (S2-04 sole-mint invariant). An AST test asserts no `TrustedPrompt(` / `FencedPromptBody(` calls exist in `anthropic_adapter.py`.
+- [ ] AC-13 — Unit test (`tests/unit/fallback/test_leaf_adapter_malformed_retry.py`): first response is hand-crafted invalid JSON; second response is a valid `PlanProposalRefuse`. Assert exactly two schema-parse attempts, exactly two physical SDK calls (modulo no transport errors), returned `LeafResponse.plan.kind == "refuse"`, and no `LeafProtocolViolationEvent` emitted.
+- [ ] AC-14 — Second-failure test: both responses invalid -> `LeafProtocolViolation(first_error, second_error)` raised; workflow-internal `LeafProtocolViolationEvent` emitted once; no `LeafReturned` event. Exception and event are distinct types/names.
 
 ### Transport retries (1s / 4s / 16s)
 
-- [ ] AC-12 — On `anthropic.APIStatusError` (5xx or rate-limit 429), the adapter retries with sleeps `[1.0, 4.0, 16.0]` seconds (three retries total = four SDK calls). After the fourth failure, the `APIStatusError` propagates *unwrapped* to the caller (Phase 5's `GateRunner` handles it). Test uses `unittest.mock.patch("asyncio.sleep")` to assert the exact sleep schedule.
-- [ ] AC-13 — Non-`APIStatusError` exceptions (e.g., `EgressViolation` from `EgressGuard`, `LeafProtocolViolation` from AC-9) do **not** trigger transport retry; they propagate immediately.
-- [ ] AC-14 — Transport retries only apply to the *outer* SDK call; the in-call malformed-JSON retry (AC-9) is independent (a malformed-JSON failure is **not** an `APIStatusError`).
+- [ ] AC-15 — On `anthropic.APIStatusError` (5xx or rate-limit 429), the adapter retries with sleeps `[1.0, 4.0, 16.0]` seconds (three retries total = four physical SDK calls). After the fourth failure, the original `APIStatusError` propagates *unwrapped* to the caller. Test monkeypatches `asyncio.sleep` and the SDK method; asserts sleep schedule, call count, and propagated exception identity.
+- [ ] AC-16 — Non-`APIStatusError` exceptions (`EgressViolation`, `LeafProtocolViolation`, `pydantic.ValidationError` after the one in-call retry, unexpected SDK exceptions) do **not** trigger transport retry; they propagate immediately under their own policy.
+- [ ] AC-17 — Transport retry and malformed-output retry are independent: an `APIStatusError` happens before any response parse and is retried by AC-15; a schema parse failure happens after a 200 response and uses AC-12's one in-call retry. A test covers `APIStatusError` on the first physical attempt followed by a malformed 200 then a valid 200, proving both counters are separate and bounded.
 
-### EgressGuard composition
+### EgressGuardPort composition
 
-- [ ] AC-15 — Every SDK call is wrapped in `async with self._egress_guard.pinned_to("api.anthropic.com:443"):`. Test installs a mock `EgressGuard` whose `pinned_to` context manager asserts `host == "api.anthropic.com:443"`; the test fails if any SDK call escapes the `async with`.
+- [ ] AC-18 — Every physical SDK call (first attempt, transport retries, malformed-output retry) is wrapped in `async with self._egress_guard.pinned_to("api.anthropic.com:443"):`. Test installs a recording async context manager and asserts one enter/exit pair per physical SDK call, all with `host == "api.anthropic.com:443"`.
 
 ### Fence + import-linter
 
-- [ ] AC-16 — `tests/fence/test_only_leaf_imports_anthropic.py` exists, AST-walks `src/codegenie/`, asserts the **only** file containing `import anthropic` or `from anthropic` is `src/codegenie/fallback/leaf/anthropic_adapter.py`. A deliberately-violating fixture (a test-only Python file under `tests/fence/fixtures/`) is verified to fail the fence walk so the test cannot pass vacuously.
-- [ ] AC-17 — `make lint` and `make lint-imports` pass after this story; the path-scoped admission in S1-05 is what makes this possible. Re-run `tests/fence/test_pyproject_fence_phase4.py` — it must still be green.
-- [ ] AC-18 — `make fence` (the existing Phase 0/2 fence job) is still green: the global `FORBIDDEN_LLM_SDKS` excludes `anthropic` per ADR-0003, but path-scoped admission means the *runtime closure* of any module **not** under `src/codegenie/fallback/leaf/` does not transitively pull `anthropic` — verified by S1-05's runtime-closure assertion.
+- [ ] AC-19 — `tests/fence/test_only_leaf_imports_anthropic.py` exists, consumes the shared S1-05 Phase-4 fence scanner, and asserts the **only** source file containing `import anthropic` or `from anthropic` is `src/codegenie/fallback/leaf/anthropic_adapter.py`. A deliberately-violating fixture under `tests/fence/fixtures/` is verified to fail the same scanner so the test cannot pass vacuously.
+- [ ] AC-20 — `pyproject.toml`'s Phase-4 import-linter contract from S1-06 gains exactly one `ignore_imports` edge for Anthropic: `"codegenie.fallback.leaf.anthropic_adapter -> anthropic"`. No other `anthropic` ignore edge is added. Shape test asserts exact singleton.
+- [ ] AC-21 — `make lint` and `make lint-imports` pass after this story; `tests/fence/test_pyproject_fence_phase4.py`, `tests/fence/test_only_leaf_imports_anthropic.py`, and the S1-05 runtime-closure assertion remain green.
 
-### Cassettes (first two recorded)
+### Cassettes (adapter is cassette-ready; live recording deferred)
 
-- [ ] AC-19 — `tests/cassettes/anthropic/leaf_adapter_llm_from_scratch.yaml` and `tests/cassettes/anthropic/leaf_adapter_rag_hit_few_shot.yaml` are recorded against the live API (operator runs `make refresh-cassettes` from S3-06; the cassette discipline from S3-04 must already be installed in conftest). Each cassette is **scanned by `CassetteSanitizer` before write** — `Authorization`, `X-API-Key`, `Cookie`, `anthropic-version` are absent; no `sk-ant-` substring appears anywhere.
-- [ ] AC-20 — Each cassette is entered into `tests/cassettes/anthropic/cassettes.lock` with its BLAKE3 (S3-05's manifest). `tests/security/test_cassettes_clean.py` passes against both cassettes.
-- [ ] AC-21 — Replay-mode test (`record_mode="none"`) of both cassettes passes: `LeafResponse.plan.kind` matches the expected variant (`callsite_rewrite` for the major-bump scenario; the adapter returns the cassette-recorded `PlanProposal`).
+- [ ] AC-22 — No live cassette YAML files are created or committed by S3-02. Tests under `tests/unit/fallback/` use SDK fakes/mocks only; any live-API cassette scenario tests are marked `pytest.mark.uses_anthropic_cassette` and skipped unless S3-04/S3-06 enable the refresh workflow.
+- [ ] AC-23 — The two cassette scenarios are specified as fixtures/markers for S3-06 to record later: `leaf_adapter_llm_from_scratch` expects `PlanProposalCallsiteRewrite` on `fixtures/vuln-major-bump/express-cve-2026-1234`; `leaf_adapter_rag_hit_few_shot` expects the cassette-recorded `PlanProposal` on `fixtures/vuln-rag-hit/express-rerun`. The adapter code must be compatible with `pytest-recording`, but this story must not bypass the S3-04 sanitizer hooks.
+- [ ] AC-24 — `tests/security/test_cassettes_clean.py` and `tests/cassettes/anthropic/cassettes.lock` are not required to exist yet in S3-02. Their absence does not block this story; S3-05 owns the scanner/manifest and will consume the scenario markers from AC-23.
 
 ### Cross-cutting
 
-- [ ] AC-22 — `mypy --strict src/codegenie/fallback/leaf/` clean. `ruff check`, `ruff format --check` clean on touched files.
-- [ ] AC-23 — TDD red test exists, was demonstrably failing before implementation, now green.
+- [ ] AC-25 — `mypy --strict src/codegenie/fallback/leaf/` clean. `ruff check`, `ruff format --check` clean on touched files.
+- [ ] AC-26 — Adapter-local request/response payload shapes use typed aliases (`TypedDict`) or frozen Pydantic models. No `Any`, no untyped functions, no raw dict-shuffling across helper boundaries.
+- [ ] AC-27 — TDD red test exists, was demonstrably failing before implementation, now green.
 
 ## Implementation outline
 
-1. Add `anthropic>=X,<Y` and `keyring>=24,<26` to `pyproject.toml` `[project.dependencies]` (S1-05 already admitted them; pin the bounds — see open question §7 in manifest).
+1. Add strictly bounded `anthropic` and `keyring>=24,<26` to `pyproject.toml` `[project.dependencies]` if S1-05 has not already done so; record the exact Anthropic lower/upper bound rationale in the attempt log because cassette compatibility depends on it.
 2. Create `src/codegenie/fallback/leaf/anthropic_adapter.py`:
    - Top-level `import anthropic` (the **one** allowed site).
-   - `class AnthropicKeyMissing(Exception)` (or `Frozen` Pydantic if errors module exists) with the `codegenie auth set` diagnostic string.
-   - `class LeafProtocolViolation(Exception)` carrying both error contexts.
-   - `class CachedSystemBlock(BaseModel)` frozen-extra-forbid: `kind: Literal["skill", "instruction_template", "rag_few_shot"]`, `text: str`.
-   - `class AnthropicLeafAdapter` with `__init__`, private `_load_key()`, private `_build_request(system_prompt, user_message, schema, has_few_shot)`, async `invoke(...)`, private `_call_sdk_with_transport_retry(request)`.
-3. Implement the in-call malformed-JSON retry inside `invoke` (try parse; on `ValidationError` append the system note, call SDK once more, parse again or `raise LeafProtocolViolation`).
-4. Implement transport retry as a small loop over `[1.0, 4.0, 16.0]` `await asyncio.sleep(s)` between attempts; `APIStatusError`-only.
-5. Wrap the SDK call in `async with self._egress_guard.pinned_to("api.anthropic.com:443"):`.
-6. Emit `LeafKeyLoaded` / `LeafInvoked` / `LeafReturned` / `LeafProtocolViolation` with BLAKE3 digests (use `codegenie.hashing.blake3` from Phase 0/1).
-7. Land `tests/fence/test_only_leaf_imports_anthropic.py` + its deliberately-violating fixture.
-8. Record the two cassettes via `make refresh-cassettes` (depends on S3-06 ergonomic; if S3-06 hasn't landed yet, this AC is parked until S3-06 is green).
+   - Local `EgressGuardPort(Protocol)` and typed SDK request aliases.
+   - `class AnthropicKeyMissing(Exception)` with the `codegenie auth set` diagnostic string.
+   - `class LeafProtocolViolation(Exception)` carrying both parse error contexts.
+   - `class AnthropicLeafAdapter` with `__init__`, `_load_key()`, `_build_request(...)`, `_parse_response(...)`, async `invoke(...)`, and `_call_sdk_with_transport_retry(...)`.
+3. Register workflow-internal events in `src/codegenie/plugins/events.py`: `LeafKeyLoaded`, `LeafInvoked`, `LeafReturned`, `LeafProtocolViolationEvent`. Extend `tests/unit/plugins/test_events.py` with round-trip/replay tests.
+4. Build the first request from one cached trusted-system block and exact fenced user bytes. Do not split `TrustedPrompt` or inspect RAG markers.
+5. Use `output_config={"format": {"type": "json_schema", "schema": schema.json_schema()}}`, then parse response text with `schema.validate_json(...)` before constructing `LeafResponse`.
+6. Implement malformed-output retry by appending the trusted suffix to SDK request content only; do not construct a new prompt newtype.
+7. Implement transport retry as a small loop over `_TRANSPORT_RETRY_BACKOFF_SECONDS: Final[tuple[float, ...]] = (1.0, 4.0, 16.0)` and catch only `anthropic.APIStatusError`.
+8. Wrap every SDK call in `async with self._egress_guard.pinned_to("api.anthropic.com:443"):`.
+9. Add the `anthropic` import-linter ignore edge and the targeted fence test with positive-control fixture.
+10. Add cassette scenario markers/fixtures, but do not record cassettes or create `cassettes.lock`.
 
 ## TDD plan — red / green / refactor
 
-### Red — write the failing test first
+### Red — write the failing tests first
 
 ```python
 # tests/unit/fallback/test_leaf_adapter.py
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from pydantic import TypeAdapter
+
 from codegenie.fallback.leaf.anthropic_adapter import (
     AnthropicLeafAdapter,
     AnthropicKeyMissing,
-    LeafProtocolViolation,
 )
+from codegenie.fallback.plan_proposal import PlanProposal
 
 
 @pytest.mark.asyncio
-async def test_init_refuses_when_keyring_returns_none(event_log_spy):
+async def test_init_refuses_when_keyring_returns_none(event_log):
     egress = MagicMock()
     with patch("keyring.get_password", return_value=None):
         with pytest.raises(AnthropicKeyMissing) as exc:
-            AnthropicLeafAdapter(event_log=event_log_spy, egress_guard=egress)
+            AnthropicLeafAdapter(event_log=event_log, egress_guard=egress)
     assert "codegenie auth set" in str(exc.value)
-    assert event_log_spy.entries[-1].id == "leaf.key_loaded"
-    assert event_log_spy.entries[-1].fields["present"] is False
+    events = list(event_log.replay())
+    assert events[-1].event_type == "leaf_key_loaded"
+    assert events[-1].present is False
 
 
 @pytest.mark.asyncio
-async def test_init_does_not_fall_back_to_env(monkeypatch, event_log_spy):
+async def test_init_does_not_fall_back_to_env(monkeypatch, event_log):
     monkeypatch.setenv("CODEGENIE_ANTHROPIC_KEY_CI", "sk-ant-NOPE")
-    egress = MagicMock()
     with patch("keyring.get_password", return_value=None):
         with pytest.raises(AnthropicKeyMissing):
-            AnthropicLeafAdapter(event_log=event_log_spy, egress_guard=egress)
+            AnthropicLeafAdapter(event_log=event_log, egress_guard=MagicMock())
 
 
 @pytest.mark.asyncio
-async def test_transport_retry_schedule_is_1_4_16(monkeypatch, anthropic_sdk_mock):
-    # ... arrange SDK to raise APIStatusError 3x, then succeed on the 4th call.
+async def test_request_uses_type_adapter_schema_and_exact_fenced_body(
+    adapter_with_sdk_mock,
+    trusted_prompt,
+    fenced_body,
+    budget_token,
+):
+    schema = TypeAdapter(PlanProposal)
+    await adapter_with_sdk_mock.invoke(
+        trusted_prompt,
+        fenced_body,
+        schema=schema,
+        token=budget_token,
+    )
+    request = adapter_with_sdk_mock.sdk.calls[0].kwargs
+    assert request["output_config"]["format"]["schema"] == schema.json_schema()
+    assert request["messages"] == [{"role": "user", "content": str(fenced_body)}]
+    assert request["system"] == [
+        {
+            "type": "text",
+            "text": str(trusted_prompt),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transport_retry_schedule_is_1_4_16(monkeypatch, adapter_with_sdk_mock):
     sleeps: list[float] = []
-    async def fake_sleep(s: float) -> None: sleeps.append(s)
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
     monkeypatch.setattr("asyncio.sleep", fake_sleep)
-    # ... invoke ...
+    adapter_with_sdk_mock.sdk.raise_api_status_error_times(3)
+    await adapter_with_sdk_mock.invoke_valid_request()
     assert sleeps == [1.0, 4.0, 16.0]
+    assert adapter_with_sdk_mock.sdk.call_count == 4
+```
 
-
+```python
+# tests/unit/fallback/test_leaf_adapter_malformed_retry.py
 @pytest.mark.asyncio
-async def test_in_call_malformed_json_retries_exactly_once(anthropic_sdk_mock):
-    # first response: invalid JSON; second response: valid PlanProposalRefuse.
-    # assert exactly 2 SDK calls; assert returned plan.kind == "refuse"
-    ...
+async def test_in_call_schema_failure_retries_exactly_once(adapter_with_sdk_mock):
+    adapter_with_sdk_mock.sdk.queue_text("not json")
+    adapter_with_sdk_mock.sdk.queue_plan_refuse(reason="out_of_scope")
+
+    response = await adapter_with_sdk_mock.invoke_valid_request()
+
+    assert adapter_with_sdk_mock.sdk.call_count == 2
+    retry_content = adapter_with_sdk_mock.sdk.calls[1].kwargs["messages"][0]["content"]
+    assert retry_content.endswith(
+        "\n\n[SYSTEM] your previous response was malformed; emit valid PlanProposal."
+    )
+    assert response.plan.kind == "refuse"
+```
+
+```python
+# tests/fence/test_anthropic_adapter_prompt_newtype_boundary.py
+import ast
+from pathlib import Path
 
 
-def test_no_module_outside_leaf_imports_anthropic():
-    # AST-walk src/codegenie/, asserting the only import is in anthropic_adapter.py
-    ...
+def test_adapter_does_not_mint_prompt_newtypes():
+    tree = ast.parse(Path("src/codegenie/fallback/leaf/anthropic_adapter.py").read_text())
+    forbidden = {"TrustedPrompt", "FencedPromptBody"}
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in forbidden
+    ]
+    assert calls == []
 ```
 
 ### Green — make it pass
 
-Author the adapter file as outlined above; each test is the spec for one section.
+Author the adapter file as outlined above; add event models and focused tests. Use SDK fakes for every unit test. Do not create live cassettes in this story.
 
 ### Refactor — clean up
 
-- Extract `_build_system_blocks(...)` into a pure helper (functional-core/imperative-shell discipline).
-- Move retry sleep schedule to a module-level `Final` tuple `_TRANSPORT_RETRY_BACKOFF_SECONDS: Final[tuple[float, ...]] = (1.0, 4.0, 16.0)`.
+- Extract `_build_system_blocks(...)`, `_build_output_config(...)`, and `_parse_leaf_response(...)` as pure helpers; `invoke(...)` stays the imperative shell that emits events, opens the egress context, and calls the SDK.
+- Move retry suffix and sleep schedule to module-level `Final` constants.
+- Keep `EgressGuardPort` small and local. Do not introduce a global registry, factory, or concrete guard import.
 - Module-level `_WARNING_IDS: Final[frozenset[str]] = frozenset({"leaf.key_loaded", "leaf.invoked", "leaf.returned", "leaf.protocol_violation"})` validated at import time per Phase-1 ADR-0007.
 
 ## Files to touch
 
 | Path | Why |
 |---|---|
-| `pyproject.toml` | Pin `anthropic` + `keyring` versions. |
+| `pyproject.toml` | Pin `anthropic` + `keyring`; add exactly one Anthropic import-linter ignore edge if S1-05/S1-06 already landed the contracts. |
 | `src/codegenie/fallback/leaf/anthropic_adapter.py` | The adapter (this story's primary deliverable). |
+| `src/codegenie/plugins/events.py` | Register `LeafKeyLoaded`, `LeafInvoked`, `LeafReturned`, `LeafProtocolViolationEvent`. |
+| `tests/unit/plugins/test_events.py` | Event registration / replay tests. |
 | `tests/unit/fallback/test_leaf_adapter.py` | Init/refuse/retry/schema unit tests. |
-| `tests/unit/fallback/test_leaf_adapter_malformed_retry.py` | In-call JSON-retry semantics. |
-| `tests/unit/fallback/test_anthropic_response_format.py` | Asserts `response_format=PlanProposal.model_json_schema()`. |
+| `tests/unit/fallback/test_leaf_adapter_malformed_retry.py` | In-call schema-retry semantics. |
+| `tests/unit/fallback/test_anthropic_structured_output.py` | Asserts `output_config.format.schema == schema.json_schema()` and `schema.validate_json(...)` parse path. |
 | `tests/fence/test_only_leaf_imports_anthropic.py` | AST source-scan: only one importer of `anthropic`. |
+| `tests/fence/test_anthropic_adapter_prompt_newtype_boundary.py` | AST source-scan: adapter does not mint prompt newtypes. |
 | `tests/fence/fixtures/violating_anthropic_import.py.txt` | Deliberately-violating fixture (proves the fence walk catches violations). |
-| `tests/cassettes/anthropic/leaf_adapter_llm_from_scratch.yaml` | Cassette 1 (records under S3-06 ergonomic; sanitized by S3-04 hooks). |
-| `tests/cassettes/anthropic/leaf_adapter_rag_hit_few_shot.yaml` | Cassette 2 (same). |
+| `tests/unit/fallback/test_leaf_adapter_cassette_scenarios.py` | Cassette-ready scenario markers / expected variants; skipped until S3-04/S3-06 enable live recording. |
 
 ## Out of scope
 
-- `EgressGuard` implementation (S3-03; this story consumes the injected `egress_guard` but does not install it).
-- `CassetteSanitizer` (S3-04; the hooks must already be installed for AC-19 to land — coordinate with S3-04).
-- `cassettes.lock` walker (S3-05).
-- `make refresh-cassettes` ergonomic (S3-06; AC-19 may be parked until S3-06 lands if executed strictly in order).
+- Concrete `EgressGuard` implementation (S3-03; this story consumes an injected port and tests with a mock).
+- `CassetteSanitizer` hooks (S3-04).
+- `cassettes.lock` walker / scanner (S3-05).
+- `make refresh-cassettes` ergonomic and live recording (S3-06).
 - `FallbackTier` composition (S6-01).
 - Anthropic prompt-cache *measurement* (Phase 6.5).
 
 ## Notes for the implementer
 
 - `anthropic.AsyncAnthropic` is the SDK entry point; pass `api_key=secret.get_secret_value()` only at the SDK boundary. Do not assign the cleartext to an attribute; keep it inside the SDK client.
-- The `response_format` parameter is the post-2024 Anthropic API; if your pin is older verify the parameter name (you may need `response_format` vs `tool_use` shape).
-- The two cassettes must be recorded with **real** Anthropic keys via `make refresh-cassettes` (S3-06). If S3-04's `before_record_request`/`before_record_response` hooks aren't yet installed in `conftest.py`, the cassettes will leak the `Authorization` header — coordinate S3-02 with S3-04 so the hooks land **before** the first recording session.
+- The current Anthropic structured-output request shape is `output_config={"format": {"type": "json_schema", "schema": ...}}`. Do not use the stale `response_format` spelling unless the pinned SDK version explicitly documents a backward-compatible alias; if an alias is used, record the SDK-doc citation in the attempt log and add a compatibility smoke test.
+- `TrustedPrompt` is already flattened by S2-04; do not split it. `FencedPromptBody` contains RAG few-shots as fenced untrusted bytes; do not extract or promote them into the system block for cache control.
 - `LlmInvocationGuard.reconcile(token, ...)` is called *not* here but in `FallbackTier.run(...)` (S6-01) after `await leaf.invoke(...)` returns — keep the adapter free of budget-state mutations so the capability flows through exactly two frames (ADR-0010 §Pattern fit).
 - The transport-retry backoff `(1.0, 4.0, 16.0)` is *not* a jittered schedule; Phase 5's retry envelope adds jitter at the outer layer. Do not pre-emptively jitter here.
-- C-extension residual: `anthropic`'s `httpx` transport uses Python's `socket` module (not a C `connect(2)`), so `EgressGuard` does catch it. The `import-linter` restriction on native-extension deps (ADR-0005 §Decision item 4) is the compensating control — verify the restriction list is non-empty before merging this story.
+- Do not record cassettes before S3-04/S3-05/S3-06. A live cassette PR before sanitizer hooks is a security bug, not a shortcut.
+- C-extension residual: `anthropic`'s `httpx` transport is expected to use Python socket paths that S3-03's `EgressGuard` catches. The native-extension restriction from S1-06 remains the compensating control for lower-level bypasses.
