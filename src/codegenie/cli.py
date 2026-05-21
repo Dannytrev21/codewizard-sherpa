@@ -967,41 +967,30 @@ def cache_prune(cache_dir: Path | None) -> None:
 
     Calls :meth:`codegenie.plugins.cache_gc.BundleCacheGc.run` unconditionally
     and emits **exactly one** ``cache_gc_completed`` spanning event with
-    ``trigger="operator_cli"`` to ``<cache_dir>/../events/spanning/append.jsonl``
-    (interim wire format — S6-01 absorbs this additively into the chained
-    zstd file). Exits 0 on success.
+    ``trigger="operator_cli"`` through :class:`codegenie.plugins.events.EventLog`
+    onto the BLAKE3-chained, zstd-compressed spanning stream at
+    ``<cache_dir>/../events/spanning/append.jsonl.zst``. S6-01 absorbed the
+    interim uncompressed ``append.jsonl`` wire format — that artifact is no
+    longer produced. Exits 0 on success.
     """
     cache_gc_mod = importlib.import_module("codegenie.plugins.cache_gc")
+    events_mod = importlib.import_module("codegenie.plugins.events")
+    identifiers_mod = importlib.import_module("codegenie.types.identifiers")
     resolved_cache_dir = cache_dir if cache_dir is not None else Path.cwd() / ".codegenie" / "cache"
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    events_dir = resolved_cache_dir.parent / "events" / "spanning"
-    events_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(events_dir, 0o700)
-        os.chmod(events_dir.parent, 0o700)
-    except (FileNotFoundError, PermissionError):
-        pass
-    append_path = events_dir / "append.jsonl"
-
-    def _emit(event: Any) -> None:
-        line = event.model_dump_json()
-        fd = os.open(
-            append_path,
-            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
-            0o600,
-        )
-        try:
-            os.write(fd, line.encode("utf-8") + b"\n")
-            os.fsync(fd)
-        finally:
-            os.close(fd)
 
     sandbox_path_mod = importlib.import_module("codegenie.plugins.sandbox_path")
     sandboxed_cache_dir = sandbox_path_mod.SandboxedPath(absolute=resolved_cache_dir)
     gc = cache_gc_mod.BundleCacheGc(sandboxed_cache_dir)
     result = gc.run()
     event = cache_gc_mod.CacheGcCompletedEvent.from_result(result, trigger="operator_cli")
-    _emit(event)
+
+    event_log = events_mod.EventLog(
+        root=resolved_cache_dir.parent,
+        workflow_id=identifiers_mod.WorkflowId("operator_cli"),
+    )
+    event_log.emit_spanning(event)
+    event_log.flush()
     sys.exit(0)
 
 

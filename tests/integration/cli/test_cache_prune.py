@@ -1,9 +1,11 @@
-"""S3-05 — ``codegenie cache prune`` integration tests.
+"""S3-05 / S6-01 — ``codegenie cache prune`` integration tests.
 
-Covers AC-42..AC-46 — sibling-of-stub registration, ``--help`` exit
-zero, exactly-one event in both populated + empty cases, JSON-lines
-emission to the interim spanning-stream substrate, and a regression
-on the preserved Phase-1+ ``cache gc`` stub.
+Covers S3-05 AC-42..AC-46 — sibling-of-stub registration, ``--help`` exit
+zero, exactly-one event in both populated + empty cases, a regression on the
+preserved Phase-1+ ``cache gc`` stub — plus S6-01 AC-MIG / AC-INTERIM: the
+emit-site migrated from the interim uncompressed ``append.jsonl`` to the
+BLAKE3-chained ``append.jsonl.zst`` spanning stream written by
+:class:`codegenie.plugins.events.EventLog`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import structlog
 from click.testing import CliRunner
 
 from codegenie.cli import cli
+from codegenie.plugins.events import EventLog
+from codegenie.types.identifiers import WorkflowId
 
 
 @pytest.fixture
@@ -63,14 +67,57 @@ def test_cache_prune_event_file_mode_0600(
     tmp_path: Path,
     runner: CliRunner,
 ) -> None:
-    """AC-45 — append.jsonl created with 0o600 file mode."""
+    """AC-45 + AC-MIG — the chained zstd spanning file is created 0o600.
+
+    The interim uncompressed ``append.jsonl`` is no longer produced.
+    """
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     result = runner.invoke(cli, ["cache", "prune", "--cache-dir", str(cache_dir)])
     assert result.exit_code == 0
-    jl = cache_dir.parent / "events" / "spanning" / "append.jsonl"
-    assert jl.exists()
-    assert jl.stat().st_mode & 0o777 == 0o600
+    spanning_dir = cache_dir.parent / "events" / "spanning"
+    chained = spanning_dir / "append.jsonl.zst"
+    assert chained.exists()
+    assert chained.stat().st_mode & 0o777 == 0o600
+    assert not (spanning_dir / "append.jsonl").exists(), "interim wire format must be retired"
+
+
+def test_cache_prune_event_chains_from_genesis(
+    tmp_path: Path,
+    runner: CliRunner,
+    capture_spanning_events,
+) -> None:
+    """AC-INTERIM — the first cache-prune event chains from GENESIS_CHAIN_HEAD.
+
+    A second run chains from the prior on-disk head, so the two records carry
+    distinct ``prev_hash`` values.
+    """
+    import json
+
+    from codegenie.plugins.events import GENESIS_CHAIN_HEAD, _chain_step
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    def _records() -> list[dict]:
+        log = EventLog(root=cache_dir.parent, workflow_id=WorkflowId("operator_cli"))
+        return [json.loads(line) for line in log._spanning_sink.read_all()]
+
+    assert runner.invoke(cli, ["cache", "prune", "--cache-dir", str(cache_dir)]).exit_code == 0
+    first = _records()
+    assert len(first) == 1
+    body = json.dumps(
+        {k: v for k, v in first[0].items() if k != "prev_hash"},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    assert first[0]["prev_hash"] == _chain_step(GENESIS_CHAIN_HEAD, body)
+
+    assert runner.invoke(cli, ["cache", "prune", "--cache-dir", str(cache_dir)]).exit_code == 0
+    both = _records()
+    assert len(both) == 2
+    assert both[0]["prev_hash"] != both[1]["prev_hash"]
+    assert len(capture_spanning_events(cache_dir)) == 2
 
 
 def test_cache_gc_stub_preserved(runner: CliRunner) -> None:

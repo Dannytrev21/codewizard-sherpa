@@ -313,3 +313,25 @@ phase-story-executor runs in this phase. New entries at the bottom.
     target test files under the default `--cov` with `--cov-fail-under=0` and
     read that module's row from the `term-missing` report — do not pass a
     narrow `--cov=` target.
+
+28. **`zstandard` 0.25 `decompress(read_across_frames=True)` is
+    unimplemented, and both `stream_reader` and `decompressobj` decode a
+    *truncated trailing frame* silently** (observed 2026-05-21, S6-01). For a
+    concatenated-zstd-frames file, a torn last frame is a fail-loud event
+    (`EventLogCorrupted`), not silent truncation. The working pattern: walk
+    frame boundaries with `decompressobj().unused_data`, then decode each
+    frame with a *one-shot* `ZstdDecompressor().decompress(frame)` — one-shot
+    decode DOES raise `ZstdError` on a short frame (the streaming readers do
+    not). Catch it and translate.
+
+29. **Re-importing a pre-chain class into a hash-chained discriminated union:
+    keep the chain field in the on-disk envelope, not the model** (observed
+    2026-05-21, S6-01). `CacheGcCompletedEvent` (S3-05) predates the BLAKE3
+    chain and has no `prev_hash`; the story forbade redefining it. Resolution:
+    native variants declare `prev_hash` as a real field; the legacy variant
+    gets its `prev_hash` written as a top-level JSON key by the writer and
+    stripped by the reader before Pydantic validation (`extra="forbid"` would
+    reject it). The chain is verified at the JSON-dict level for *all*
+    variants, so the legacy class participates fully without an edit. When a
+    story AC says "every variant carries field X" but another AC re-imports a
+    class that lacks X, the envelope-vs-model split is the reconciliation.

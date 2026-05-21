@@ -1,7 +1,7 @@
 # Story S6-01 — Two-stream `EventLog` with BLAKE3-chained spanning stream
 
 **Step:** Step 6 — RemediationOrchestrator, TrustScorer, two-stream EventLog, SubgraphNode Protocol, end-to-end happy path
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-21 (phase-story-executor; see [`_attempts/S6-01.md`](_attempts/S6-01.md) for the per-AC evidence table, the as-built drift resolutions, and the gate log — `events.py` 99% branch coverage, `make check` green: 5889 passed + 369 fence, mypy `--strict` + ruff + import-linter 6/6 + pre-commit all green).
 **Effort:** L
 **Depends on:** S2-04, S5-04, S3-05 (S3-05 already shipped `CacheGcCompletedEvent` as the 9th spanning variant; this story re-imports it rather than redefining)
 **ADRs honored:** ADR-0005 (two-stream event log per ADR-0034), ADR-0010 (tagged-union outcomes; newtypes), ADR-0011 (honest-framing — chain is tamper-*evident* not tamper-proof), [Phase 0 ADR-0001](../../00-bullet-tracer-foundations/ADRs/0001-cache-content-hash-algorithm.md) (hashing chokepoint — every BLAKE3/SHA-256 call routes through `codegenie.hashing`), [production ADR-0034](../../../production/adrs/0034-event-sourcing-canonical-primitive.md)

@@ -7,12 +7,12 @@ without this, every ``codegenie gather`` invocation re-applies the
 ``structlog`` processor chain and the in-test ``LogCapture`` is silently
 clobbered.
 
-:func:`capture_spanning_events` is S3-05 AC-46 — reads the interim
-JSON-lines spanning-stream substrate ``<cache_dir>/../events/spanning/
-append.jsonl`` and decodes each line into a
-:class:`~codegenie.plugins.cache_gc.CacheGcCompletedEvent`. S6-01
-absorbs that file additively into the chained zstd format; tests do
-not need to rewrite when that lands (decoder swap only).
+:func:`capture_spanning_events` (S3-05 AC-46) reads the spanning-stream
+substrate ``<cache_dir>/../events/spanning/append.jsonl.zst``. S6-01
+absorbed the interim uncompressed ``append.jsonl`` into the BLAKE3-chained
+``jsonl.zst`` format, so the fixture now decodes via the canonical
+:meth:`codegenie.plugins.events.EventLog.replay` reader — a decoder swap, as
+the S3-05 docstring promised.
 """
 
 from __future__ import annotations
@@ -33,24 +33,21 @@ def _disable_cli_configure_logging(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def capture_spanning_events() -> Callable[[Path], list]:
-    """Return a callable that decodes the spanning JSON-lines log for a cache dir.
+    """Return a callable that decodes the spanning event stream for a cache dir.
 
-    Reads ``<cache_dir>/../events/spanning/append.jsonl`` after CLI
-    exit; returns ``list[CacheGcCompletedEvent]`` decoded via
-    :meth:`~codegenie.plugins.cache_gc.CacheGcCompletedEvent.model_validate_json`
-    on each non-empty line. Interim wire format per S3-05 AC-45.
+    Reads ``<cache_dir>/../events/spanning/append.jsonl.zst`` after CLI exit
+    via :meth:`codegenie.plugins.events.EventLog.replay` — the canonical
+    BLAKE3-chain-verifying reader — and returns the decoded spanning events.
     """
 
     def _read(cache_dir: Path) -> list:
-        from codegenie.plugins.cache_gc import CacheGcCompletedEvent
+        from codegenie.plugins.events import EventLog
+        from codegenie.types.identifiers import WorkflowId
 
-        jl = cache_dir.parent / "events" / "spanning" / "append.jsonl"
-        if not jl.exists():
+        spanning = cache_dir.parent / "events" / "spanning" / "append.jsonl.zst"
+        if not spanning.exists():
             return []
-        return [
-            CacheGcCompletedEvent.model_validate_json(line)
-            for line in jl.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        event_log = EventLog(root=cache_dir.parent, workflow_id=WorkflowId("operator_cli"))
+        return list(event_log.replay())
 
     return _read

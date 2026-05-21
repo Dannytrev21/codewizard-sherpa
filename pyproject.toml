@@ -66,6 +66,13 @@ dependencies = [
   # Not an LLM SDK — ``fence`` (ADR-0002) and the import-linter LLM contracts
   # are unaffected.
   "orjson>=3.9",
+  # Phase 3 S6-01: the two-stream ``EventLog`` compresses each event stream as
+  # ``jsonl.zst``. Each ``emit`` appends one self-contained zstd frame (level
+  # 3) so a torn trailing frame never corrupts the prior BLAKE3 chain.
+  # ``read_across_frames=True`` (zstandard >= 0.21) decodes the concatenated
+  # frames on replay. Not an LLM SDK — the ``fence`` (ADR-0002) and the
+  # import-linter LLM contracts are unaffected.
+  "zstandard>=0.22",
 ]
 
 [project.optional-dependencies]

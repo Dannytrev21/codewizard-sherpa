@@ -57,6 +57,11 @@ repos:
           # own type stubs — mirroring it here lets the isolated mypy hook
           # resolve them.
           - orjson>=3.9
+          # Phase 3 S6-01: ``codegenie.plugins.events`` imports ``zstandard``
+          # (the two-stream ``EventLog`` jsonl.zst compressor). zstandard ships
+          # inline type hints — mirroring it here lets the isolated mypy hook
+          # resolve them.
+          - zstandard>=0.22
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.
