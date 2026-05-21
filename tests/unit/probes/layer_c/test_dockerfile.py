@@ -100,6 +100,31 @@ def test_dockerfile_probe_contract_attributes() -> None:
     assert p.requires == []
 
 
+def test_dockerfile_probe_publishes_raw_slice_for_sibling_readers(tmp_path: Path) -> None:
+    """Regression guard for entrypoint/shell_usage staying empty after Dockerfile parsing."""
+    (tmp_path / "Dockerfile").write_text('FROM alpine\nENTRYPOINT ["node", "index.js"]\n')
+
+    output = asyncio.run(DockerfileProbe().run(_make_repo(tmp_path), _make_ctx(tmp_path)))
+
+    raw_paths = {p.name: p for p in output.raw_artifacts}
+    raw_payload = json.loads(raw_paths["dockerfile.json"].read_text())
+    stage = raw_payload["dockerfile"]["dockerfiles"][0]["stages"][0]
+    assert stage["entrypoint_form"] == "exec"
+    assert stage["entrypoint_argv"] == ["node", "index.js"]
+
+
+def test_dockerfile_probe_publishes_raw_slice_when_marker_absent(tmp_path: Path) -> None:
+    """The sidecar is written even with no Dockerfile, so sibling probes can
+    distinguish "dockerfile probe ran, found nothing" from "upstream never ran"."""
+    output = asyncio.run(DockerfileProbe().run(_make_repo(tmp_path), _make_ctx(tmp_path)))
+
+    raw_paths = {p.name: p for p in output.raw_artifacts}
+    assert "dockerfile.json" in raw_paths
+    raw_payload = json.loads(raw_paths["dockerfile.json"].read_text())
+    assert raw_payload["dockerfile"]["dockerfiles"] == []
+    assert raw_payload["dockerfile"]["confidence"] == "unavailable"
+
+
 # --------------------------------------------------------------------------
 # AC: no shell evaluation, no subprocess in source
 # --------------------------------------------------------------------------

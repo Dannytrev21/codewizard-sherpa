@@ -80,7 +80,7 @@ def _build_evidence(df_slice: dict[str, Any]) -> StaticShellEvidence:
     )
 
 
-@register_probe(heaviness="light")
+@register_probe(heaviness="light", runs_last=True)
 class ShellUsageProbe(Probe):
     """Layer C — static-only shell-usage marker probe.
 

@@ -33,9 +33,11 @@ from codegenie.probes.layer_c.runtime_trace import (
     _IMAGE_REF_PREFIX,
     _PER_SCENARIO_TIMEOUT_S,
     _SCENARIO_TASK_NAME_PREFIX,
+    ParsedTrace,
     RuntimeTraceProbe,
     ScenarioSpec,
 )
+from codegenie.probes.layer_c.scenario_result import TraceScenarioCompleted
 from codegenie.probes.registry import default_registry
 
 # ---------------------------------------------------------------------------
@@ -322,6 +324,65 @@ def test_slice_schema_keys_complete_for_image_digest_unresolved(
 ) -> None:
     output = asyncio.run(RuntimeTraceProbe().run(snapshot, ctx))
     assert set(output.schema_slice.keys()) == set(_EXPECTED_SLICE_KEYS)
+
+
+def test_runtime_trace_success_publishes_typed_raw_slice_for_sbom(
+    snapshot: RepoSnapshot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for SBOM staying upstream_unavailable after runtime_trace runs."""
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    async def _fake_run_all_scenarios(
+        *_args: Any, **_kwargs: Any
+    ) -> tuple[list[Any], dict[str, Any]]:
+        artifact = tmp_path / "ctx" / "out" / "runtime_trace" / "startup.strace"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("")
+        return (
+            [
+                TraceScenarioCompleted(
+                    scenario_name="startup",
+                    artifact_uri=artifact,
+                    wall_clock_ms=1,
+                    syscalls_observed=1,
+                    shared_libs_count=0,
+                )
+            ],
+            {
+                "startup": ParsedTrace(
+                    binaries_executed=frozenset({"/usr/local/bin/node"}),
+                    files_read_at_runtime=frozenset({"/app/package.json"}),
+                )
+            },
+        )
+
+    monkeypatch.setattr(rt, "_run_all_scenarios", _fake_run_all_scenarios)
+    ctx = _make_ctx(tmp_path / "ctx", image_digest_resolver=lambda _root: "sha256:" + "f" * 64)
+
+    output = asyncio.run(RuntimeTraceProbe().run(snapshot, ctx))
+
+    assert "runtime_trace.json" in {p.name for p in output.raw_artifacts}
+
+
+def test_runtime_trace_publishes_raw_slice_on_degraded_paths(
+    snapshot: RepoSnapshot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sidecar is written even on the macOS / degraded path, so ``sbom``
+    and ``certificate`` always have a real slice to read via read_raw_slices."""
+    import json
+
+    from codegenie.output.paths import raw_dir
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    ctx = _make_ctx(tmp_path / "ctx", image_digest_resolver=lambda _root: "sha256:" + "b" * 40)
+    output = asyncio.run(RuntimeTraceProbe().run(snapshot, ctx))
+
+    sidecar = raw_dir(snapshot.root) / "runtime_trace.json"
+    assert sidecar.is_file()
+    assert sidecar in output.raw_artifacts
+    payload = json.loads(sidecar.read_text())
+    assert payload["trace_coverage_confidence"] == "unavailable"
+    assert payload["built_image_digest"] is None
 
 
 # ---------------------------------------------------------------------------

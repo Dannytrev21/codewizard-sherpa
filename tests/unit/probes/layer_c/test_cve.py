@@ -102,7 +102,9 @@ def test_cve_registry_entry_carries_heaviness_only() -> None:
     assert len(entries) == 1
     entry = entries[0]
     assert entry.heaviness == "medium"
-    assert entry.runs_last is False
+    # runs_last=True — cve reads the sbom sidecar; hoisting it to the rest
+    # wave lets it consume a completed upstream slice (sidecar fix follow-on).
+    assert entry.runs_last is True
     fields = {f.name for f in entry.__dataclass_fields__.values()}  # type: ignore[attr-defined]
     assert "requires" not in fields
 

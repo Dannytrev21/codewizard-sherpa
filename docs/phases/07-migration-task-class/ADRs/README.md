@@ -48,6 +48,14 @@ ADRs 0018–0029 are additive per [`final-design.md` §Amendment A](../final-des
 | [0028](0028-allowed-binaries-amendment-crane.md) | `ALLOWED_BINARIES` gains `crane` for daemonless OCI manifest/config/SBOM fetch | amendment-a · subprocess-discipline · allowed-binaries · amendment |
 | [0029](0029-amend-byte-edit-allowlist-for-amendment-a.md) | ADR-0029 amends the ADR-0009 byte-edit allowlist to enumerate every Amendment-A source-file addition | amendment-a · fence · byte-edit-allowlist · extension-by-addition |
 
+### Regression rescue (2026-05-21)
+
+ADR-0030 is a post-Amendment-A remediation, not part of the original design. It re-instates a sound Layer C fix that was reverted for landing as a silent kernel edit — redone here as the loud, ADR-gated path the kernel-frozen fence mandates. Implemented by story [S19-01](../stories/S19-01-layer-c-sidecar-publishing.md).
+
+| # | Title | Tags |
+|---|---|---|
+| [0030](0030-amend-kernel-allowlist-for-layer-c-sidecar-publishing.md) | Re-apply the Layer C raw-sidecar publishing fix (reverted commit `5055292`); amend the kernel-frozen `_KERNEL_ALLOWLIST` for the eight touched Layer C/G probe files | regression-rescue · fence · kernel-frozen · adr-amendment · layer-c · honest-confidence |
+
 ## Conventions
 
 - Filenames are NNNN-kebab-case-title.md with zero-padded four-digit numbers, numbered locally per phase starting at 0001.

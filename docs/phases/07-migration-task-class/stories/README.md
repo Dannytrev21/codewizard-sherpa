@@ -311,6 +311,14 @@ Steps 13–18 are additive per [`../final-design.md` §Amendment A](../final-des
 | S18-01 | [`transformations_applied` list + observability events (`S18-01-migration-observability-events`)](S18-01-migration-observability-events.md) | M | S16-03, S17-01 | Typed `transformations_applied: tuple[TransformationKind, ...]` rendered into the PR description; workflow events `MigrationSizeRegression` (pre/post compressed size), `pre_migration_image_ref` capture for the rollback runbook, attestation diff; ADR-0027. |
 | S18-02 | [Cross-CVE `ShellInvocationTraceProbe` content-cache reuse (`S18-02-trace-probe-cross-cve-cache`)](S18-02-trace-probe-cross-cve-cache.md) | S | S18-01 | The heavy `ShellInvocationTraceProbe` content-cache entry keyed `(Dockerfile, package.json, image-digest)` is reused across CVEs against the same repo; cache-hit asserted; distinct from ADR-0008's uncached `vuln.provenance`; ADR-0027. |
 
+### Step 19: Layer C raw-sidecar publishing — regression rescue (2026-05-21)
+**Step goal:** Re-instate a sound, reverted Layer C fix as the loud, ADR-gated kernel amendment the kernel-frozen fence mandates — so the Layer C marker probes the migration task class depends on report honest confidence again.
+**Step exit criteria mapping:** Not a roadmap exit criterion — a post-Amendment-A remediation. Restores the "honest confidence" / "facts, not judgments" commitments for Layer C container probes; unblocks real Dockerfile / runtime-trace evidence for Phase 7's distroless-migration probes and gates. Not part of the original 18-step DAG.
+
+| ID | Title (slug → file) | Effort | Depends on | Summary (one sentence) |
+|---|---|---|---|---|
+| S19-01 | [Re-apply the Layer C raw-sidecar publishing fix + kernel-allowlist amendment (`S19-01-layer-c-sidecar-publishing`)](S19-01-layer-c-sidecar-publishing.md) | S | none | Re-applies reverted commit `5055292` (DockerfileProbe/RuntimeTraceProbe persist their `raw/<name>.json` sidecars; five consumers register `runs_last=True`; semgrep reports an honest `config_absent` skip); widens `_KERNEL_ALLOWLIST` in `tests/fence/test_kernel_frozen.py` with the eight touched Layer C/G probe files via ADR-0030; lands the recovered `test_layer_c_sidecar_contract.py` producer↔consumer integration guard; ADR-0030. |
+
 ## Cross-cutting concerns
 
 - **Phase 3–6.5 regression suite as hard pre-merge gate:** every Phase 7 story carries "Phase 3–6.5 test suite green + `bench/vuln-remediation/` cassette replay byte-equal (ε ≤ $0.01)" as a done-criterion. Phase 7 ADR-0009 makes this mechanical; S5-01's byte-edit allowlist fence is the load-bearing enforcer.

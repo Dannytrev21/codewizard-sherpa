@@ -163,10 +163,23 @@ def test_runs_last_registry_annotation_present() -> None:
     assert matching[0].runs_last is True
 
 
-def test_sorted_for_dispatch_places_b2_last() -> None:
-    """T-03a — across the real registry, B2 is the last entry."""
+def test_sorted_for_dispatch_places_b2_in_runs_last_tail() -> None:
+    """T-03a — B2 dispatches in the runs_last tail, after every prelude
+    probe whose index freshness it checks (scip, semgrep, conventions,
+    runtime_trace, gitleaks). Other runs_last probes — the Layer C marker
+    consumers entrypoint/shell_usage/certificate/sbom/cve — may sort after
+    B2; B2 checks none of their freshness, so relative order is irrelevant.
+    The load-bearing invariant is that no ``runs_last=False`` probe sorts
+    after B2.
+    """
     entries = default_registry.sorted_for_dispatch()
-    assert entries[-1].cls.__name__ == "IndexHealthProbe"
+    names = [e.cls.__name__ for e in entries]
+    b2_idx = names.index("IndexHealthProbe")
+    non_runs_last_count = sum(1 for e in entries if not e.runs_last)
+    assert entries[b2_idx].runs_last is True
+    # B2 sits at or beyond the runs_last boundary — every prelude probe is
+    # dispatched before it.
+    assert b2_idx >= non_runs_last_count
 
 
 # ---------------------------------------------------------------------------

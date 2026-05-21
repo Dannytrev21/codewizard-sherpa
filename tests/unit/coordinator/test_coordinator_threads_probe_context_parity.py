@@ -35,7 +35,7 @@ from typing import Any
 
 import pytest
 
-from codegenie.coordinator.coordinator import gather
+from codegenie.coordinator.coordinator import _make_probe_context, gather
 from codegenie.output.paths import context_dir
 from codegenie.probes.base import ProbeOutput, RepoSnapshot
 from tests.unit._coordinator_fixtures import FakeProbe, make_snapshot, make_task
@@ -140,6 +140,25 @@ async def test_probe_reading_output_dir_subpath_does_not_attributeerror(
         "raw",
         "regression.json",
     )
+
+
+@pytest.mark.xfail(
+    reason=(
+        "RuntimeTraceProbe needs ProbeContext.image_digest_resolver, but the coordinator "
+        "factory has no way to thread a resolver into the runtime context"
+    ),
+    strict=True,
+)
+def test_coordinator_can_thread_image_digest_resolver_to_probe_context(tmp_path: Path) -> None:
+    """Regression guard for runtime_trace always reporting resolver_unbound in CLI gather."""
+
+    def _resolver(_root: Path) -> str:
+        return "sha256:" + "a" * 64
+
+    ctx = _make_probe_context(tmp_path, 1, image_digest_resolver=_resolver)
+
+    assert ctx.image_digest_resolver is _resolver
+    assert ctx.image_digest_resolver(tmp_path) == "sha256:" + "a" * 64
 
 
 pytestmark = pytest.mark.filterwarnings("ignore::ResourceWarning")

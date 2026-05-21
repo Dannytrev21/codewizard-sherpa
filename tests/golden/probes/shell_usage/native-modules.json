@@ -1,6 +1,6 @@
 {
   "shell_usage": {
-    "confidence": "unavailable",
+    "confidence": "high",
     "dynamic_shell_invocation_count": null,
     "static": {
       "final_stage_cmd_form": "absent",

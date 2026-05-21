@@ -64,7 +64,7 @@ def _summarize(
     return summaries, confidence
 
 
-@register_probe(heaviness="light")
+@register_probe(heaviness="light", runs_last=True)
 class EntrypointProbe(Probe):
     """Layer C — entrypoint marker probe.
 
