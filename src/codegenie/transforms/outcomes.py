@@ -12,6 +12,8 @@ discriminated unions every later Step-1..Step-9 module dispatches on:
 - :data:`RemediationOutcome` — top-level orchestrator outcome (S6-04).
   ``Validated.passed`` / ``Validated.failing`` are the flat denormalisation
   of S6-02's ``TrustOutcome``; ADR-0001 forbids rename.
+- :data:`TrustOutcome` — strict-AND Stage-6 validation result carried by
+  ``remediation-report.yaml`` and later consumed by Phase 5's gate runner.
 - :data:`NodeTransition` — return type of every ``SubgraphNode.run``
   (S6-03). ``Advance.state`` is primitive-value-only per ADR-0010.
 - :data:`AdapterConfidence` — read by ``BundleBuilder`` (S3-04) to trigger
@@ -73,6 +75,8 @@ __all__ = [
     "SkipReason",
     "Skipped",
     "Trusted",
+    "TrustOutcome",
+    "TrustSignal",
     "Unavailable",
     "UnavailabilityReason",
     "Validated",
@@ -347,6 +351,46 @@ RemediationOutcome = Annotated[
     Validated | RequiresHumanReview | RemediationNotApplicable | RemediationFailed,
     Field(discriminator="kind"),
 ]
+
+
+# ---------------------------------------------------------------------------
+# TrustOutcome variants (Stage-6 strict-AND validation result — ADR-0001).
+# ---------------------------------------------------------------------------
+
+
+class TrustSignal(BaseModel):
+    """One objective validation signal emitted by Stage 6.
+
+    ``kind`` is an open-registry :class:`SignalKind`; ``details`` is restricted
+    to primitive values so the report artifact stays YAML/JSON portable and the
+    no-``Any`` transform fence remains meaningful.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: SignalKind
+    passed: bool
+    details: dict[str, str | int | bool | float] = Field(default_factory=dict)
+
+
+class TrustOutcome(BaseModel):
+    """Strict-AND validation result consumed by Phase 5 gates.
+
+    ``passed`` is true exactly when ``failing`` is empty. The invariant mirrors
+    :class:`Validated` so a report cannot claim a successful trust outcome while
+    carrying failed signal names, or the reverse.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    passed: bool
+    failing: list[SignalKind]
+    signals: list[TrustSignal]
+    confidence: Literal["high", "degraded"]
+
+    @model_validator(mode="after")
+    def _passed_iff_no_failing(self) -> TrustOutcome:
+        if self.passed != (len(self.failing) == 0):
+            raise ValueError("TrustOutcome invariant violated: passed must equal (failing == [])")
+        return self
 
 
 # ---------------------------------------------------------------------------

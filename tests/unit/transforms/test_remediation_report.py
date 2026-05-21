@@ -8,22 +8,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from codegenie.transforms.report import (
-    PluginSnapshot,
-    RemediationReport,
-    ReportDiskFull,
-    ReportFileMissing,
-    ReportLoadError,
-    ReportMetadata,
-    ReportOtherIoError,
-    ReportPermissionDenied,
-    ReportSchemaViolation,
-    ReportSizeCapExceeded,
-    ReportSymlinkRefused,
-    ReportUnknownSchemaVersion,
-    ReportYamlSyntax,
-    TransformSnapshot,
-)
 from pydantic import ValidationError
 
 from codegenie.result import Err, Ok
@@ -36,6 +20,24 @@ from codegenie.transforms.outcomes import (
     TrustOutcome,
     TrustSignal,
     Validated,
+)
+from codegenie.transforms.report import (
+    PluginSnapshot,
+    RemediationReport,
+    ReportDiskFull,
+    ReportFileMissing,
+    ReportFilesystemRace,
+    ReportLoadError,
+    ReportMetadata,
+    ReportOtherIoError,
+    ReportPermissionDenied,
+    ReportSchemaViolation,
+    ReportSizeCapExceeded,
+    ReportSymlinkRefused,
+    ReportUnknownSchemaVersion,
+    ReportWriteSymlinkRefused,
+    ReportYamlSyntax,
+    TransformSnapshot,
 )
 from codegenie.types.identifiers import (
     BlobDigest,
@@ -246,10 +248,45 @@ def test_file_missing(tmp_path: Path) -> None:
     assert isinstance(result.unwrap_err(), ReportFileMissing)
 
 
+def test_directory_rejected_as_file_missing(tmp_path: Path) -> None:
+    result = RemediationReport.from_yaml(_sandboxed(tmp_path))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportFileMissing)
+
+
 def test_yaml_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "bad.yaml"
     path.write_text("schema_version: 1\nmetadata: {workflow_id:", encoding="utf-8")
 
+    result = RemediationReport.from_yaml(_sandboxed(path))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportYamlSyntax)
+
+
+def test_open_eloop_is_symlink_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "race.yaml"
+
+    def boom(path_arg: str, flags: int) -> int:
+        raise OSError(errno.ELOOP, "too many symbolic links")
+
+    monkeypatch.setattr("codegenie.transforms.report.os.open", boom)
+    result = RemediationReport.from_yaml(_sandboxed(path))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportSymlinkRefused)
+
+
+def test_open_unexpected_oserror_is_load_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "busy.yaml"
+
+    def boom(path_arg: str, flags: int) -> int:
+        raise OSError(errno.EBUSY, "busy")
+
+    monkeypatch.setattr("codegenie.transforms.report.os.open", boom)
     result = RemediationReport.from_yaml(_sandboxed(path))
 
     assert isinstance(result, Err)
@@ -270,6 +307,18 @@ def test_extra_field_rejected(tmp_path: Path, validated_report: RemediationRepor
     err = result.unwrap_err()
     assert isinstance(err, ReportSchemaViolation)
     assert "magic_field" in err.field_errors
+
+
+def test_non_mapping_document_rejected_at_root(tmp_path: Path) -> None:
+    path = tmp_path / "list.yaml"
+    path.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+
+    result = RemediationReport.from_yaml(_sandboxed(path))
+
+    assert isinstance(result, Err)
+    err = result.unwrap_err()
+    assert isinstance(err, ReportSchemaViolation)
+    assert "<root>" in err.field_errors
 
 
 def test_unknown_schema_version_pre_pydantic(
@@ -372,6 +421,22 @@ def test_failed_outcome_requires_branch_none() -> None:
         )
 
 
+def test_not_applicable_outcome_requires_branch_none() -> None:
+    with pytest.raises(ValidationError, match="not_applicable"):
+        RemediationReport(
+            schema_version=1,
+            metadata=_meta(),
+            plugin=_plugin(recipe=False),
+            transform=None,
+            outcome=RemediationNotApplicable(reason="PEER_DEP_CONFLICT"),
+            trust_outcome=None,
+            branch=BranchName("should-be-none"),
+            event_log_internal_path="x",
+            event_log_spanning_path="y",
+            spanning_chain_head=BlobDigest("0" * 64),
+        )
+
+
 def test_naive_datetime_rejected() -> None:
     with pytest.raises(ValidationError, match="timezone-aware"):
         ReportMetadata(
@@ -382,6 +447,20 @@ def test_naive_datetime_rejected() -> None:
             completed_at=datetime(2026, 5, 17, 12, 0, 30, tzinfo=UTC),
             codegenie_version="0.3.0",
         )
+
+
+def test_write_refuses_destination_symlink(
+    tmp_path: Path, validated_report: RemediationReport
+) -> None:
+    real = tmp_path / "real.yaml"
+    link = tmp_path / "link.yaml"
+    real.write_text("target\n", encoding="utf-8")
+    link.symlink_to(real)
+
+    result = validated_report.write(_sandboxed(link))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportWriteSymlinkRefused)
 
 
 def test_atomic_write_no_partial_on_replace_failure(
@@ -417,6 +496,36 @@ def test_disk_full_translation(
 
     assert isinstance(result, Err)
     assert isinstance(result.unwrap_err(), ReportDiskFull)
+
+
+def test_filesystem_race_translation(
+    tmp_path: Path,
+    validated_report: RemediationReport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(src: str, dst: str) -> None:
+        raise OSError(errno.ELOOP, "race")
+
+    monkeypatch.setattr("codegenie.transforms.report.os.replace", boom)
+    result = validated_report.write(_sandboxed(tmp_path / "r.yaml"))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportFilesystemRace)
+
+
+def test_open_failure_cleans_missing_tmp(
+    tmp_path: Path,
+    validated_report: RemediationReport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(path_arg: str, flags: int, mode: int = 0o777) -> int:
+        raise OSError(errno.EACCES, "denied")
+
+    monkeypatch.setattr("codegenie.transforms.report.os.open", boom)
+    result = validated_report.write(_sandboxed(tmp_path / "r.yaml"))
+
+    assert isinstance(result, Err)
+    assert isinstance(result.unwrap_err(), ReportPermissionDenied)
 
 
 def test_other_io_error_translation(

@@ -14,6 +14,9 @@ three layers of public symbols:
 * The S5-04 lockfile-policy surface (Gap 2 fix): :class:`LockfilePolicy`,
   the :data:`PolicyViolation` / :data:`PolicyLoadError` discriminated unions,
   and :class:`UnauthorizedRegistry` — from :mod:`policy.lockfile_policy`.
+* The S5-05 remediation-report surface:
+  :class:`RemediationReport`, nested snapshots, and report load/write error
+  unions — from :mod:`report`.
 
 Every variant is ``frozen=True`` + ``extra="forbid"`` (ADR-0010).
 Discriminated-union umbrellas use ``Annotated[A | B | C,
@@ -52,6 +55,8 @@ from codegenie.transforms.outcomes import (
     Skipped,
     SkipReason,
     Trusted,
+    TrustOutcome,
+    TrustSignal,
     UnavailabilityReason,
     Unavailable,
     Validated,
@@ -67,6 +72,14 @@ from codegenie.transforms.recipe_engine import (
     RecipeEngine,
     RecipeProtocol,
     match_recipes,
+)
+from codegenie.transforms.report import (
+    PluginSnapshot,
+    RemediationReport,
+    ReportIoError,
+    ReportLoadError,
+    ReportMetadata,
+    TransformSnapshot,
 )
 from codegenie.transforms.transform import Transform, TransformProvenance
 
@@ -92,6 +105,7 @@ __all__ = [
     "NotApplies",
     "PolicyLoadError",
     "PolicyViolation",
+    "PluginSnapshot",
     "RecipeEngine",
     "RecipeError",
     "RecipeFailed",
@@ -102,14 +116,21 @@ __all__ = [
     "RemediationFailed",
     "RemediationNotApplicable",
     "RemediationOutcome",
+    "RemediationReport",
     "RequiresHumanReview",
+    "ReportIoError",
+    "ReportLoadError",
+    "ReportMetadata",
     "SandboxedPath",
     "ShortCircuit",
     "SkipReason",
     "Skipped",
     "Transform",
     "TransformProvenance",
+    "TransformSnapshot",
     "Trusted",
+    "TrustOutcome",
+    "TrustSignal",
     "UnauthorizedRegistry",
     "Unavailable",
     "UnavailabilityReason",
