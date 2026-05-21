@@ -247,3 +247,70 @@ All edits in-place. The story file's `Validation notes` block records the change
 ## Verdict
 
 **HARDENED.** Ready for `phase-story-executor` once S6-01, S6-02, S6-03, S5-05, S5-04, S5-02, S5-01 are all GREEN on the executor's branch. The block-tier closures (C-F1..C-F8) reconcile the story with shipped S1-03/S1-04 reality + S6-02/S6-03 contracts; the design-patterns closures (D-P2 + D-P3) make the structure easy to maintain and extend by addition; the test-quality closures (T-Q1..T-Q5) ensure a wrong implementation fails an assertion verbatim rather than slipping through a thin test.
+
+---
+
+# Re-validation — 2026-05-21 (verdict: RESCUE)
+
+**Date:** 2026-05-21
+**Validator:** phase-story-validator (scheduled autonomous run — re-validation requested after `phase-story-executor` marked S6-04 `BLOCKED` on 2026-05-21; see [`../_attempts/S6-04.md`](../_attempts/S6-04.md) Attempt 1).
+**Verdict:** **RESCUE** — the story cannot be made executor-ready by editing acceptance criteria. Two of its data-flow preconditions are *architecturally unspecified* and one of them *contradicts the frozen Phase-5 contract surface*. Resolving them is a `phase-architect` decision (a new Phase-3 ADR), not a story-hardening edit. **No story edits were made** (RESCUE discipline — the validator does not silently invent architecture).
+
+## Why RESCUE, not a second HARDENED
+
+The 2026-05-19 HARDENED pass reconciled the story with the *type shapes* of its dependencies as they stood at hardening time (S1-03/S1-04 GREEN; S5-01/S5-02/S6-01/S6-02/S6-03 still `HARDENED`-not-`GREEN`). Those five dependencies have since shipped GREEN with concrete surfaces. Attempt 1 of the executor surfaced five **dependency-drift** contradictions (B1–B5 in the attempt log) and recommended "re-run `/phase-story-validator`". This re-validation read the dependency surfaces the executor had explicitly *not* reached (`vuln_index/index.py`, `plugins/protocols.py`, `plugins/recipe_registry.py`, `plugins/resolver.py`, `transforms/engines/npm_lockfile.py`) and found that, underneath the patchable dep-drift, the story sits on a **genuine architectural gap** the validator is not authorised to close by fiat.
+
+The Goal is still sound; the design-pattern choices are still sound. But a story whose own data-flow contradicts a *frozen* ADR cannot be hardened — it must be escalated.
+
+## The blocking architectural gap (not patchable by the validator)
+
+### G1 — `RepoContext` has no ingress to the orchestrator, and the arch contradicts itself
+
+`phase-arch-design.md §Control flow` step 6 and `§Component design C7` both require `BundleBuilder.build(resolution, repo_ctx: RepoContext, vuln: VulnerabilityRecord, vuln_index)` — i.e. a bundle build is mandatory between resolution and the subgraph, and it needs a `RepoContext`.
+
+- `phase-arch-design.md §Control flow` **step 1** says the **CLI** loads `.codegenie/context/repo-context.yaml` — implying the CLI passes the `RepoContext` to the orchestrator.
+- But `RemediationOrchestrator.run(self, repo: SandboxedPath, cve: CveId, context: ApplyContext | None = None)` is **frozen verbatim** by ADR-0001 and pinned by AC-4 + the S6-06 contract snapshot. There is **no parameter** to receive a `RepoContext`.
+- `RemediationOrchestrator.__init__(self, registry, vuln_index, event_log, *, sandbox=None)` is **also frozen** (ADR-0001 / AC-3). No `RepoContext` slot there either.
+
+So the arch's control-flow narrative ("CLI loads it") is structurally impossible against the arch's own frozen contract surface. **This is an internal Consistency contradiction in the design docs**, not a story defect. A validator resolving it (e.g. "the orchestrator loads `repo-context.yaml` off the `repo` path itself") would be *inventing* a new architectural dependency — exactly what the validator skill forbids.
+
+### G2 — no shipped path from `CveId` to `VulnerabilityRecord`
+
+The story's `run` accepts `cve: CveId` (frozen). But every downstream consumer needs a full `VulnerabilityRecord`:
+
+- `match_recipes(registry, plugin_id, cve: VulnerabilityRecord, bundle)` (`recipe_engine.py:156`) — the walker the `MatchRecipeNode` drives.
+- `BundleBuilder.build(..., vuln: VulnerabilityRecord, ...)` (arch §C7).
+
+The shipped `VulnIndex` (S3-02, `vuln_index/index.py`) exposes exactly three query methods — `lookup(name: PackageName, ecosystem: Ecosystem) -> list[VulnerabilityRecord]`, `affecting_range(cve: CveId) -> AffectedRange`, `digest()`. **None maps `CveId → VulnerabilityRecord`.** A single CVE can affect multiple `(package, ecosystem)` rows, so even an additive `find_by_cve` would return a *list* — and selecting the row that matches the *target repo's actual dependency set* requires the repo's dependency list, i.e. the `RepoContext` from G1. G2 therefore collapses into G1: the orchestrator cannot resolve the CVE without the `RepoContext` it has no way to receive.
+
+## Recommended resolution path — route to `/phase-architect` (a new Phase-3 ADR)
+
+The dependency-drift contradictions (B1–B5 below) are all patchable additive widenings. The **blocking** decision G1+G2 needs an ADR that picks, explicitly, **one** of:
+
+1. **Orchestrator self-loads `RepoContext`.** `run()` reads `<repo>/.codegenie/context/repo-context.yaml` itself (a `RepoContext` loader becomes a new orchestrator dependency; missing/stale file → typed `RemediationFailed` / `StaleVulnIndex`-style event). Keeps the frozen `run`/`__init__` signatures intact. Likely the smallest change, but it adds a disk-read dependency the frozen contract never advertised.
+2. **`RepoContext` enters via `__init__`.** Requires an ADR-0001 *amendment* (the `__init__` signature is contract-frozen and S6-06-snapshotted) — a contract change, loud and gated, but it breaks the "Phase 5 already committed to this surface" promise ADR-0001 exists to keep.
+3. **CVE→record resolution is a pre-orchestrator step.** The CLI (S6-05) resolves `CveId + RepoContext → VulnerabilityRecord` and the orchestrator's frozen signature is amended to take `vuln: VulnerabilityRecord` instead of `cve: CveId` — again an ADR-0001 amendment + S6-06 re-snapshot.
+
+The ADR must also decide the additive `VulnIndex` surface (`find_by_cve` returning `list[VulnerabilityRecord]`, or a `(cve, repo_packages) → VulnerabilityRecord` resolver) and where the **bundle build** lives (the story's 5-node flow — `ingest_cve → match_recipe → apply_recipe → stage6_validate → write_branch` — has *no bundle node*, yet arch step 6 mandates a bundle build before the subgraph; the story's `run()` outline omits it entirely, and `SubgraphState.bundle` is left with no populating node).
+
+**Until that ADR lands, S6-04 stays `BLOCKED` and no later Step-6/7/8/9 story may be executed** (S6-05/S6-06 and all of S7/S8/S9 are HARDENED-not-executed and transitively depend on the orchestrator's resolved data model).
+
+## Patchable dependency-drift contradictions (defer to the post-ADR re-harden)
+
+These are **not** blocking on their own — each is a clean additive widening — but the post-ADR re-harden must fold them in. Captured here so the next validation pass does not re-discover them:
+
+- **B1 (`SubgraphState` accumulator slots).** Shipped `SubgraphState` (`plugins/subgraph.py:65-99`, `extra="forbid"`, frozen) has 8 fields: `workflow_id, cve, resolution, bundle, recipe_outcome, transform, trust_outcome, branch`. It has **no slot** for the `VulnerabilityRecord` that `IngestCveNode` must thread to `MatchRecipeNode`, nor for the `ApplicationPlan`, nor for an `ApplyContext`. Resolution: amend S6-03's `SubgraphState` **additively** (`vulnerability_record: VulnerabilityRecord | None = None`, `application_plan: ApplicationPlan | None = None`, `apply_context: ApplyContext | None = None`) — `subgraph.py` becomes a new "Files to touch" entry and an S6-03 amendment.
+- **B2 (`RecipeOutcome`/`Applied` carry no `plan`).** `Applied` (`outcomes.py:247-256`) has `transform_id, plugin_id, recipe_id` — no `plan`. The `ApplicationPlan` lives only on `MatchedRecipe.plan` (`recipe_engine.py:121-136`). AC-9's "`ApplyRecipeNode` consumes `state.recipe_outcome`'s `plan`" is impossible as written; the plan must ride a new `SubgraphState.application_plan` slot (B1).
+- **B3 (`RecipeEngine.apply` signature).** Story outline line 209 prescribes `recipe_engine.apply(plan, bundle, ctx)`. Shipped Protocol (`recipe_engine.py:82-91`): `async def apply(self, repo: SandboxedPath, plan: ApplicationPlan, capability: NpmInstallCapability) -> RecipeOutcome`. Rewrite the outline against the real signature.
+- **B4 (`ApplyRecipeNode` dependency set).** AC-9 pins `ApplyRecipeNode(event_log)`. To run a recipe the node needs the engine, a `repo: SandboxedPath`, an `NpmInstallCapability`, and a `TransformRegistry` (to turn the returned `Applied.transform_id` into the `Transform` object `SubgraphState.transform` is typed against — ADR-0014). The shipped `NpmLockfileRecipeEngine.__init__(self, jail: SubprocessJail, transform_registry: TransformRegistry)` (`engines/npm_lockfile.py:559`) already owns the `TransformRegistry`; the node (or the orchestrator at wire-up) must be constructor-injected with the engine + the same registry. AC-9's 1-arg constructor must be rewritten.
+- **B5 (`Applied.transform_id`, not `transform`).** Outline line 209 ("On `Applied(transform)` …") assumes `Applied` exposes the object; it exposes a `TransformId`. Resolve id → object via the `TransformRegistry` (B4).
+- **B6 (`Plugin` Protocol has no `recipe_registry`).** AC-9's `MatchRecipeNode` "consumes `state.resolution`'s `plugin.recipe_registry`". The `Plugin` Protocol (`plugins/protocols.py:69-107`) is **exactly four members** — `manifest`, `build_subgraph`, `adapters()`, `transforms()` — fence-pinned by `tests/fence/test_plugin_protocol_frozen.py` (ADR-0004; adding a fifth member fails CI). There is **no `recipe_registry`**. `match_recipes` takes a `RecipeRegistry` + a `PluginId`; the `RecipeRegistry` is the module-level registry from `plugins/recipe_registry.py` (populated by `@register_recipe`), and the `PluginId` comes from `ConcreteResolution.plugin.manifest`. `MatchRecipeNode`'s constructor must be re-specified to take the `RecipeRegistry` explicitly.
+- **B7 (`CapabilityBundle` has no `empty()`).** AC-4 builds `ApplyContext(workflow_id=…, capabilities=CapabilityBundle.empty())`. `CapabilityBundle` (`plugins/capabilities.py:173`) ships **no `empty()` classmethod**. Either add one (additive) or have the orchestrator construct the real `CapabilityBundle` for `ApplyContext` — an ADR-adjacent decision (a Phase-3 workflow's capability set is not "empty" — it mints npm-install + git capabilities).
+- **B8 (`EventLog.flush()` is synchronous).** AC-24's `await asyncio.shield(self._event_log.flush_async()) if asyncio.iscoroutinefunction(...)` conditional is dead: shipped `EventLog.flush(self) -> None` (`plugins/events.py:805`) is plain sync. AC-24 should pin the sync call unconditionally.
+- **B9 (`StageOutcome` name collision).** AC-6 wants `StageOutcome: TypeAlias = TrustOutcome` in `trust_scorer.py`. `plugins/events.py:327` already ships a `class StageOutcome(BaseModel)` — the *event* emitted in AC-27. Two unrelated `StageOutcome` symbols in two modules is legal but a foot-gun; the re-harden must call out the disambiguation explicitly (the executor must not cross-import them).
+- **R2 (stale prose).** Story line 620 ("The node must call `self._orchestrator._validate_stage6(...)`") still directly contradicts AC-9 + D-P2 (constructor-injected `validate_fn`, no orchestrator import from `nodes/`). Delete line 620 in the re-harden.
+
+## What this validation did NOT do
+
+Per RESCUE discipline: **no edits to the story file.** The story's `Status` line is updated only to re-point the resolution path (from "re-run `/phase-story-validator`" to "route to `/phase-architect` for the G1/G2 ADR"). The dep-drift list B1–B9 above is recorded so the *post-ADR* `/phase-story-validator` pass can fold it in without re-deriving it. The executor was **not** run — open architectural ambiguity is a hard stop (executor Stage-1 gate; Rule 1 — no silent assumptions).
+
