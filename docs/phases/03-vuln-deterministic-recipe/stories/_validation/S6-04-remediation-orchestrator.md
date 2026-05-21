@@ -313,3 +313,16 @@ These are **not** blocking on their own — each is a clean additive widening �
 ## What this validation did NOT do
 
 Per RESCUE discipline: **no edits to the story file.** The story's `Status` line is updated only to re-point the resolution path (from "re-run `/phase-story-validator`" to "route to `/phase-architect` for the G1/G2 ADR"). The dep-drift list B1–B9 above is recorded so the *post-ADR* `/phase-story-validator` pass can fold it in without re-deriving it. The executor was **not** run — open architectural ambiguity is a hard stop (executor Stage-1 gate; Rule 1 — no silent assumptions).
+
+---
+
+# ADR landed — 2026-05-21 ([ADR-0015](../../ADRs/0015-orchestrator-self-loads-repo-context-and-resolves-cve.md))
+
+The `/phase-architect` route recommended above produced **[ADR-0015 — "The orchestrator self-loads the repo dependency set and resolves `CveId → VulnerabilityRecord`"](../../ADRs/0015-orchestrator-self-loads-repo-context-and-resolves-cve.md)**. It closes G1 and G2:
+
+- **G1** — Option 1 (orchestrator self-loads): `run` / `__init__` stay frozen; the orchestrator derives the context off the `repo: SandboxedPath` it already receives. ADR-0015 also surfaced a fact this re-validation under-stated — **there is no `RepoContext` Python type at all** (only the `repo-context.yaml` artifact + JSON Schema; no loader). ADR-0015 D2 introduces a *narrow* loader (`src/codegenie/transforms/repo_context.py` — `InstalledDependency`, `load_installed_dependencies`, `RepoContextLoadError`), not a full `RepoContext` model.
+- **G2** — additive `VulnIndex.find_by_cve(cve) -> list[VulnerabilityRecord]` + a pure `resolve_cve` resolver; `CveResolution` tagged union maps to `RemediationNotApplicable` / proceed / `RequiresHumanReview` for zero / one / many dependency-set matches.
+- **Bundle build** — orchestrator-owned in the `run()` preamble (ADR-0015 D4), seeding `SubgraphState.bundle`; the 5-node subgraph count is unchanged.
+- **B7** (the `CapabilityBundle.empty()` foot-gun) — ADR-0015 directs the orchestrator to mint a real npm-install + git `CapabilityBundle`.
+
+**Next step (unchanged):** a `/phase-story-validator` re-harden must fold ADR-0015 + the patchable dependency-drift list **B1–B9** above into the story's ACs, Implementation outline, TDD plan, and Files-to-touch (notably: the additive `SubgraphState` slots `installed_dependencies` / `vulnerability_record` — an additive S6-03 amendment; the new `transforms/repo_context.py` module; the additive `NotApplicableReason` / `HumanReviewReason` Literal members). Until that re-harden lands, S6-04 stays `BLOCKED`.

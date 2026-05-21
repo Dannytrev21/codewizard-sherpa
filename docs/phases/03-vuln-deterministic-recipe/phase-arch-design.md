@@ -882,7 +882,7 @@ The **discriminator-on-`kind`** pattern is uniform across `RecipeOutcome`, `Reme
 
 **Happy path in component order:**
 
-1. **CLI parse.** `codegenie remediate <repo> --cve <id>` (click). Mint `WorkflowId` (ULID), construct `SandboxedPath(jail=repo)`, load Phase 2's `.codegenie/context/repo-context.yaml`, warn on staleness.
+1. **CLI parse.** `codegenie remediate <repo> --cve <id>` (click). Mint `WorkflowId` (ULID), construct `SandboxedPath(jail=repo)`. *(Per [ADR-0015](ADRs/0015-orchestrator-self-loads-repo-context-and-resolves-cve.md): the CLI does **not** load `repo-context.yaml` — the frozen `run(repo, cve, context)` signature has no slot for it. The orchestrator self-loads the dependency set off the `repo` path in step 2's preamble.)*
 2. **`RemediationOrchestrator.run(repo, cve, ApplyContext())`.** Construct `EventLog`, emit `WorkflowStarted` (spanning).
 3. **`PluginRegistry.resolve(scope_from_repo_context)`** → `ConcreteResolution` or `UniversalFallbackResolution`. Emit `PluginResolved`.
 4. **`capabilities.mint(plugin_id, scope)`** → `CapabilityBundle`. Emit 1–3 `CapabilityMinted` (spanning).
@@ -893,6 +893,8 @@ The **discriminator-on-`kind`** pattern is uniform across `RecipeOutcome`, `Reme
 9. **`LocalGitOps.create_patch_branch(...)`** under `GitLocalOpsCapability`. `core.hooksPath=/dev/null`; `GIT_TERMINAL_PROMPT=0`; `GIT_ASKPASS=/bin/false`.
 10. **`report.write(...)`** → `remediation-report.yaml` indexes both event streams + outcome. Audit-chain BLAKE3 head computed.
 11. **`EventLog.flush()`; emit `WorkflowCompleted` (spanning); CLI exit.**
+
+> **Amendment 2026-05-21 ([ADR-0015](ADRs/0015-orchestrator-self-loads-repo-context-and-resolves-cve.md) — resolves the S6-04 RESCUE).** Steps 1–6 above glossed two data-flow preconditions that contradicted the frozen `RemediationOrchestrator` contract. As resolved by ADR-0015: **(a)** the orchestrator self-loads the repo dependency set (there is no `RepoContext` Python type — a narrow `load_installed_dependencies` loader reads `repo-context.yaml` off the `repo` path); `run` / `__init__` stay frozen. **(b)** `CveId → VulnerabilityRecord` is resolved by an additive `VulnIndex.find_by_cve(cve)` intersected with the loaded dependency set via a pure `resolve_cve` resolver — zero matches → `RemediationNotApplicable`, one → proceed, many → `RequiresHumanReview`. **(c)** the step-6 `BundleBuilder.build` is orchestrator-owned in the `run()` preamble (before the subgraph loop), seeding `SubgraphState.bundle`. Step 5's "`VulnIndex.lookup(...) → VulnerabilityRecord`" is superseded by (b).
 
 **Decision points:**
 
