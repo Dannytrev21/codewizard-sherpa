@@ -1,10 +1,32 @@
 # Story S1-07 — `test_kernel_frozen.py` guard
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** Ready
+**Status:** RESCUE — 2026-05-21 (phase-story-validator; see [`_validation/S1-07-test-kernel-frozen.md`](_validation/S1-07-test-kernel-frozen.md))
 **Effort:** S
 **Depends on:** S1-05
 **ADRs honored:** ADR-0004 (`PlanOutcome` wraps `RecipeOutcome` — no Phase-3 sum-type widening; the kernel-frozen test is the structural backstop), ADR-0003 (path-scoped fence — kernel-frozen and fence-CI together compose the "no LLM in gather pipeline" invariant), `production/adrs/0031-plugin-architecture.md` (Phase-7 exit criterion — "diff touches only the new plugin directory" — this story lands the test that proves it for Phase 4)
+
+## Validation notes
+
+Validated: 2026-05-21 — phase-story-validator
+Verdict: **RESCUE** — story not edited (its goal is wrong, not just its ACs).
+
+This story prescribes a brand-new `tests/fence/test_kernel_frozen.py` built on a
+BLAKE3 content-snapshot mechanism. That file **already exists** — Phase-3 story
+S1-05 shipped it GREEN on 2026-05-18 as a git-diff-against-baseline-SHA fence.
+Phase-4 `final-design.md:680` and `phase-arch-design.md` §CI gates both say
+Phase 4's job is to **extend** that existing file's allow-list / baselines
+("Phase 3, extended", "allow-list extension") — *not* rebuild it. The goal, all
+ten ACs, the TDD plan, and all four Files-to-touch entries are built on the wrong
+mechanism. The story also cites a non-existent arch section
+("§Implementation-level risks §1").
+
+**Do not send this story to `phase-story-executor`.** It needs a
+`phase-story-writer` re-run. The full audit log — including a concrete
+"Recommended rewrite" brief — is at
+[`_validation/S1-07-test-kernel-frozen.md`](_validation/S1-07-test-kernel-frozen.md).
+The original Goal / Acceptance criteria / TDD plan below are left intact as raw
+material for the re-author.
 
 ## Context
 
