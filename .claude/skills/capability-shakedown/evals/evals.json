@@ -1,0 +1,32 @@
+{
+  "skill_name": "capability-shakedown",
+  "notes": "Run with /skill-creator in a fresh session. Before running eval id 0, plant the bug (see evals/PLANT-A-BUG.md) so the skill exercises the full diagnose -> RED-test -> fix loop. Restore the repo (git checkout) between every with-skill and baseline run. Run the subagents serially, never in parallel — capability-shakedown mutates the working tree.",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Something's off with `codegenie gather` — when I run it against a Node app that has a Dockerfile, the entrypoint section of repo-context.yaml comes back empty. Exercise the gather capability against a sample app, figure out the root cause, and fix it.",
+      "expected_output": "Triggers capability-shakedown. Explores the project, runs `codegenie gather` against a sample app with a Dockerfile, diagnoses the empty entrypoint as a codebase no-op bug (the dockerfile probe does not publish raw/dockerfile.json so the entrypoint consumer reads nothing), does a test-gap analysis, writes a test that fails on the bug first, fixes the producer, verifies `make check` is green, sweeps affected docs, and writes a report under docs/_shakedowns/.",
+      "files": [],
+      "assertions": [
+        {"text": "Root-caused the empty entrypoint to the dockerfile probe not publishing its raw/dockerfile.json sidecar (a codebase no-op bug), not to a sample-app or environment cause"},
+        {"text": "Wrote or identified a test and observed it FAIL on the unfixed code before applying the fix (RED-first discipline)"},
+        {"text": "Applied a code fix that makes the entrypoint slice populate, and `make check` passes green afterward"},
+        {"text": "Performed an explicit test-gap analysis explaining why the existing suite missed the bug"},
+        {"text": "Wrote a shakedown report under docs/_shakedowns/ with a findings table and root-cause classes"},
+        {"text": "Did not push to git and did not commit without an explicit --commit flag"}
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Exercise `codegenie vuln-index refresh` end to end against a sample app and tell me whether it actually works. If something is missing or broken, diagnose the root cause — is it our code, the environment, or the sample app — and fix it.",
+      "expected_output": "Triggers capability-shakedown. Derives the vuln-index refresh command and its expected output (a populated sqlite vuln-index), runs it, and classifies any gap into a root-cause bucket with evidence. Either fixes a real finding through the appropriate route or reports a clean run explicitly (not a silent pass).",
+      "files": [],
+      "assertions": [
+        {"text": "Derived the correct `codegenie vuln-index refresh` invocation and stated what a correct run should produce before running it"},
+        {"text": "Classified every finding into exactly one root-cause bucket (codebase-bug / environment / sample-app / by-design) with evidence"},
+        {"text": "If the run was clean, said so explicitly with how to verify — did not declare a silent pass"},
+        {"text": "Wrote a shakedown report under docs/_shakedowns/"}
+      ]
+    }
+  ]
+}
