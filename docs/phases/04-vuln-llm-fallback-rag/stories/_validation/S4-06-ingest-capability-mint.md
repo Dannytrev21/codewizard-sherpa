@@ -1,4 +1,4 @@
-# Validation report: S4-06 - `SolvedExampleWriter` + Phase-4-local capability mint
+# Validation report: S4-06 - `SolvedExampleWriter` + capability mint boundary
 
 **Validated:** 2026-05-22 13:45 EDT
 **Verdict:** HARDENED
@@ -6,105 +6,107 @@
 
 ## Summary
 
-S4-06 ships the Phase-4 ingestion writer for solved examples: a small `src/codegenie/rag/ingest.py` surface that turns a validated fallback outcome into a canonical `SolvedExample`, writes through `SolvedExampleStore.add(example, capability)`, and exposes the temporary `_phase4_local_capability_mint(...)` used before Phase 5's gates mint exists.
+S4-06 ships the Phase-4 solved-example writer, the interim write-capability mint, the CI boundary around that mint, and the typed `SolvedExampleHarvested` event S6-03 will emit. The goal is sound and traces to High-level-impl Step 4, phase-arch Component 10, final-design Component 9, ADR-0016, and ADR-0003.
 
-The draft was directionally correct but not executor-ready. It relied on a non-existent `.importlinter` file, asked import-linter to block a function symbol it cannot see, invented a `rag/events.py` event API, and copied stale S1-04 model fields into `RecordProvenance`. The story is now hardened with **4 block, 9 harden, and 1 nit** findings addressed.
+The draft was not executor-ready. It tried to enforce a function-symbol import with import-linter, referenced a non-existent `.importlinter` file, pre-allowed future `codegenie.gates.*` imports that import-linter would treat as unmatched, copied stale S1-04 `RecordProvenance` fields, used stale type names, and placed `SolvedExampleHarvested` in a new `rag/events.py` module instead of the actual `plugins.events` event union. All blockers were fixable in place. The story is now hardened with 18 findings addressed: **5 block, 10 harden, 3 nit**.
 
 ## Context brief
 
-- **Story promise:** provide the writer and local mint that S6-03's inline harvest path can call after `TrustOutcome.passed AND confidence == "high"`.
-- **Source constraints:** S1-04 owns the `SolvedExample` and four-field `RecordProvenance` shapes; S4-03 owns `SolvedExampleStore.add(example, capability)`; S4-05 established that events live in `codegenie.plugins.events.py` and use `event_type`.
-- **Pattern constraints:** module-boundary enforcement, functional core / imperative shell, dependency inversion through the store/embedder protocols, typed event sourcing, and deterministic identifiers.
-- **Open ambiguities:** the implementation must stop and surface a conflict if already-landed `SolvedExampleId` code requires full-record hashing, because this story requires a stable ID preimage for ingestion idempotence.
+- **Story promise:** provide `ingest_solved_example(...)`, an interim Phase-4 mint, a lint/test boundary that makes the mint private by module, and a typed harvest event for caller emission.
+- **Source constraints:** import-linter config lives in `pyproject.toml`; existing event log lives in `src/codegenie/plugins/events.py`; S1-04 owns the exact `SolvedExample` / `RecordProvenance` shapes; S4-03 requires `SolvedExample.embedding_vector`.
+- **Pattern constraints:** honest Module Boundary + CI enforcement, functional core / imperative shell, dependency inversion through `SolvedExampleStore` and `Embedder`, and extension by addition for Phase 5's gates mint.
+- **Open ambiguities after edit:** none. The arch's "mint under ingest.py" shorthand is resolved by a private module because that is the only import-linter-enforceable shape.
 
 ## Findings by critic
 
 ### Coverage critic
 
-**C1 (block) - Function-level import-linter contract was impossible.** The draft tried to set `forbidden_modules = codegenie.rag.ingest._phase4_local_capability_mint`. Import-linter reasons about modules/packages, not functions, so the contract would either be invalid or give false confidence.
-**Fix:** AC-6/AC-7 now require an AST fence that catches both direct imports and fully-qualified attribute access of the private mint. AC-8 keeps normal import-linter checks green through `pyproject.toml`.
+**C1 (block) - The mint boundary was not mechanically enforceable.** import-linter cannot forbid importing a function symbol inside a public module. A contract naming `codegenie.rag.ingest._phase4_local_capability_mint` does not name an importable module.
+**Fix:** AC-5 moves the mint to `src/codegenie/rag/_capability_mint.py`; AC-6 adds a module-level forbidden contract; AC-7 adds AST guards for symbol-level bypasses.
 
-**C2 (block) - Event class used a non-existent RAG event API.** The draft added `src/codegenie/rag/events.py` with a `kind` field. That bypasses the shipped event registry and would not be replayable by `EventLog`.
-**Fix:** AC-9 adds `SolvedExampleHarvested` to `src/codegenie/plugins/events.py` as a `WorkflowSpanningEvent` with `event_type`, `prev_hash`, union registration, and replay tests.
+**C2 (block) - `.importlinter` does not exist.** The draft referenced `.importlinter`, but the repo uses `pyproject.toml [tool.importlinter]` and `make lint-imports`.
+**Fix:** AC-6/AC-7 use `pyproject.toml`, mirroring S1-06 and Phase-3 shape tests.
 
-**C3 (harden) - Deliberate violation design would break default CI.** The draft put a real forbidden import in `tests/fixtures/violations/` and tried to toggle lint behavior with an env var or special make target.
-**Fix:** AC-7 tests the shared AST scanner against fixture source without adding a violating module to the default lint corpus.
+**C3 (harden) - No live-fire proof the mint contract fires.** A static shape test catches drift but not runtime import-linter behavior.
+**Fix:** AC-7 plants a temporary violating module, runs the real `lint-imports` console script, asserts non-zero exit, and cleans up in `finally`.
 
-**C4 (harden) - Writer/event responsibilities were blurred.** The draft defined the event in the writer story but risked making `ingest_solved_example` emit it.
-**Fix:** AC-9 and Notes state that S6-03 emits `SolvedExampleHarvested` after a successful write; the writer remains silent.
+**C4 (harden) - Deterministic id was underspecified.** The draft said BLAKE3 canonical body bytes but did not say which fields are in or out.
+**Fix:** AC-3 pins the exact stable identity fields and excludes workflow/run-context fields.
 
 ### Test-Quality critic
 
-**T1 (harden) - Mint fence only checked `ImportFrom`.** A contributor could bypass the check with `import codegenie.rag.ingest as ingest; ingest._phase4_local_capability_mint(...)`.
-**Fix:** AC-6 requires the scanner to catch both `from ... import ...` and fully-qualified attribute access.
+**T1 (block) - Pre-allowing future gates imports breaks lint.** S1-06 verified import-linter 2.x defaults unmatched ignores to errors. The draft's `{src/codegenie/gates/}` pre-allowlist would fail until the gates module exists.
+**Fix:** AC-6 allows only the real S4-06 edge; Notes instruct Phase 5 to append its edge when real.
 
-**T2 (harden) - No idempotence test.** The draft claimed deterministic IDs but did not require a test that two equivalent outcomes produce the same `SolvedExampleId`.
-**Fix:** AC-10 requires an idempotence test over the same outcome and embedder model.
+**T2 (harden) - Stale provenance fields could survive tests.** The implementation snippet wrote `record_chain_head`, `model_id`, `embedding_dim`, `trust_outcome_passed`, `confidence`, and other fields removed by S1-04.
+**Fix:** AC-4 adds an AST/source stale-field guard; AC-2/Outline use only the four S1-04 fields.
 
-**T3 (harden) - Event registry drift was unpinned.** Adding an event class without union and replay tests could silently leave it unreachable.
-**Fix:** AC-11 requires spanning discriminator mapping and `EventLog.emit_spanning(...)` / replay coverage.
+**T3 (harden) - Writer silence was untested.** The story said the caller emits `SolvedExampleHarvested`, but no test prevented writer-side event emission.
+**Fix:** AC-10 asserts `ingest_solved_example(...)` never reaches `EventLog` / `emit_internal`.
 
-**T4 (harden) - Runtime capability limitation needed executable documentation.** The draft mentioned Python cannot prevent hand-forged capabilities, but the test title said `store.add()` rejects them.
-**Fix:** AC-10 keeps the documentation test but makes the expected behavior explicit: direct construction still works; CI/review owns the boundary.
+**T4 (harden) - Forged-capability limitation needed a positive assertion.** The design says no runtime unforgeability, but the test plan risked implying fabricated capabilities should fail.
+**Fix:** AC-8 documents and tests the intentional runtime limitation.
 
 ### Consistency critic
 
-**K1 (block) - Stale `RecordProvenance` fields were reintroduced.** The draft constructed fields removed by S1-04: `record_chain_head`, `model_id`, `embedding_dim`, `trust_outcome_passed`, and `confidence`.
-**Fix:** AC-3 locks the four-field `RecordProvenance` shape and forbids stale fields in the writer.
+**K1 (block) - Wrong event module and discriminator.** `src/codegenie/rag/events.py` with `kind` would fork the event registry and bypass `EventLog.emit_internal(...)`.
+**Fix:** AC-9 registers `SolvedExampleHarvested` in `src/codegenie/plugins/events.py` as a `WorkflowInternalEvent` with `event_type`.
 
-**K2 (block) - Placeholder outcome used non-existent type names.** `TaskClassName`, `LanguageName`, and `BuildSystemName` conflict with S1-01/S1-04, which established `TaskClassId`, `Language`, and `PackageManager`.
-**Fix:** AC-2 uses the canonical newtypes/literal and requires a frozen typed projection instead of dict shuffling.
+**K2 (block) - Outcome and model names drifted from S1-04/S1-01.** The draft used `TaskClassName`, `LanguageName`, `BuildSystemName`, omitted `advisory_digest`, and left `embedding_vector` ambiguous.
+**Fix:** AC-1 uses `TaskClassId`, `Language`, `PackageManager`, includes `advisory_digest`, and AC-2 requires `embedding_vector`.
 
-**K3 (harden) - Story referenced `.importlinter`.** This repo keeps import-linter config in `pyproject.toml`.
-**Fix:** references, AC-8, and files-to-touch now name `pyproject.toml` and forbid creating `.importlinter`.
+**K3 (harden) - Dependency list was too narrow.** The draft depended only on S4-05 but imports S1-01, S1-02, S1-03, S1-04, S1-06, S4-01, S4-03, S4-04, and S4-05 surfaces.
+**Fix:** header dependencies expanded and preconditions named.
 
-**K4 (harden) - `SolvedExample` embedding storage was ambiguous.** The draft allowed `embedding_vector` to be "depending on schema," which left S4-03/S4-04 integration underspecified.
-**Fix:** AC-1 and AC-3 require `embedding_vector` on `SolvedExample`, matching the S4-03 validation caveat that S1-04 must carry the vector.
+**K4 (harden) - Writer gate responsibility was blurred.** The draft carried confidence into the writer projection even though final-design puts the `TrustOutcome.passed AND confidence == "high"` rule in the caller.
+**Fix:** AC-1 omits confidence and AC-2/Notes state the writer must not gate.
 
 ### Design-Patterns critic
 
-**D1 (harden) - Identity preimage mixed deterministic and per-run fields.** Full-record hashing would include `created_at` or workflow context and break re-ingestion idempotence.
-**Fix:** AC-4 defines a deterministic stable preimage and Notes call out the conflict if stricter full-record hashing has already landed.
+**D1 (harden) - Functional core / imperative shell needed sharper edges.** The draft built and wrote everything inline, making deterministic-id tests and side-effect tests harder.
+**Fix:** Implementation outline names pure helpers for identity bytes, id construction, and record construction; `ingest_solved_example` is the impure shell.
 
-**D2 (harden) - Keep capability creation off the class.** A `SolvedExampleWriteCapability.mint(...)` classmethod would make minting reachable from every importer of the class.
-**Fix:** AC-5 and Notes require a private module function and explain why.
+**D2 (harden) - Classmethod mint would defeat the boundary.** The draft's Notes correctly warned against classmethod minting, but the AC shape still made the function public through `ingest.py`.
+**Fix:** private module plus `__all__` exclusion keeps the import boundary concrete.
 
-**D3 (harden) - Avoid premature plugin/registry machinery.** A registry would add moving parts before more than one writer exists.
-**Fix:** Out of scope explicitly rejects a generic writer registry for this phase.
+**D3 (harden) - No speculative registry.** A writer registry or plugin architecture is unnecessary for one writer and one interim mint.
+**Fix:** Notes explicitly reject a registry for S4-06; the extension point is Phase 5's replacement mint module.
 
-**D4 (harden) - Preserve functional core / imperative shell.** The writer should orchestrate embed/write; pure identity generation stays isolated.
-**Fix:** Implementation outline separates `_solved_example_id_for(...)` from the writer shell.
-
-**D5 (nit) - `record_event_chain_head` needed naming precision.** `chain_head` is overloaded between event-log and content-manifest contexts.
-**Fix:** AC-9 names the event field `record_event_chain_head` and defines it as `outcome.event_chain_head`.
+**D4 (nit) - `ModelId(str(embedder.model_digest()))` needs a boundary comment.** `model_digest()` returns `BlobDigest`; S1-04's field is `ModelId`.
+**Fix:** Notes call this out as an explicit adapter until the model field is amended.
 
 ## Research briefs
 
-None. The validation used only current repository context: Phase 4 design docs, ADR-0009, ADR-0016, sibling validation reports, `src/codegenie/plugins/events.py`, existing import-linter shape tests, and S1-01/S1-04 story contracts.
+None. No finding required external research. The decisive references were in-repo: import-linter config/tests, S1-06 validation, `src/codegenie/plugins/events.py`, prior Phase-4 event-surface validations, S1-04 model contract, and S4-03/S4-04 validator reports.
 
 ## Conflict resolutions
 
-- **Architecture shorthand vs executable lint:** prose that says import-linter blocks the minting symbol is treated as shorthand. The executable boundary is an AST fence because import-linter cannot target a function.
-- **Canonical body hashing vs ingestion idempotence:** the story now hashes a stable identity preimage. If implementation code has already made full-body hashing mandatory, the executor must surface the conflict rather than produce nondeterministic solved-example IDs.
-- **Writer event visibility vs caller ownership:** `SolvedExampleHarvested` is defined here for S6-03, but emission stays in S6-03 so the writer does not depend on `EventLog`.
-- **Capability naming vs runtime guarantee:** the type remains named `SolvedExampleWriteCapability`, but the story explicitly documents that Phase 4 provides a module-boundary convention enforced by tests and review, not runtime unforgeability.
+- **Arch location vs import-linter mechanics:** arch prose says `_phase4_local_capability_mint` is under `ingest.py`; import-linter cannot enforce that symbol boundary. The enforceable equivalent is a one-purpose private module imported only by `ingest.py`, plus an AST fence for symbol bypasses.
+- **Future gates allowlist vs current lint pass:** final-design names `{gates, ingest}` as the long-term allowlist; S1-06 verified unmatched future ignores fail today. The story ships only the current edge and leaves Phase 5 to extend it.
+- **Event registration now vs emission later:** registering `SolvedExampleHarvested` here is useful for S6-03, but writer emission would blur responsibilities. AC-9 registers; AC-10 keeps writer silent.
 
 ## Edits applied
 
-1. Header updated to `HARDENED`; dependencies expanded to S1-01, S1-04, S4-03, S4-04, and S4-05.
-2. Validation notes added with the corrected enforcement and event API decisions.
-3. References replaced stale `.importlinter` and `rag/events.py` assumptions with `pyproject.toml` and `src/codegenie/plugins/events.py`.
-4. Goal narrowed to writer, temporary mint, and symbol-scope fence.
-5. AC-1 through AC-4 now lock writer behavior, typed projection fields, S1-04 model shape, and deterministic ID generation.
-6. AC-5 documents the local mint and Phase-5 TODO signature.
-7. AC-6 through AC-8 replace the impossible import-linter function contract with an AST fence and normal import-linter verification.
-8. AC-9 through AC-11 add the real `SolvedExampleHarvested` event shape and replay tests.
-9. Implementation outline, TDD plan, files-to-touch, out-of-scope, and implementer notes were rewritten to match the current repo architecture.
+1. Header set to `HARDENED`; dependency line expanded.
+2. Validation notes inserted.
+3. Context rewritten around the enforceable private-module mint boundary.
+4. Goal rewritten as four deliverables: writer, private mint, pyproject/fence boundary, event registration.
+5. AC-1 adds the typed `ValidatedPlanOutcome` shape and removes stale `*Name` aliases.
+6. AC-2 pins keyword-only writer behavior, exact embed/store call counts, exact `RecordProvenance` fields, and no event emission.
+7. AC-3 adds deterministic id field-inclusion/exclusion rules.
+8. AC-4 adds the stale S1-04 field guard.
+9. AC-5 moves the mint to `src/codegenie/rag/_capability_mint.py` and forbids re-export from `ingest.py`.
+10. AC-6 replaces `.importlinter` with a `pyproject.toml` contract and removes future unmatched ignores.
+11. AC-7 adds contract shape, AST, and live-fire planted-violation tests.
+12. AC-8 documents the intentional forged-capability runtime limitation.
+13. AC-9 moves `SolvedExampleHarvested` to the real `plugins.events` surface.
+14. AC-10 pins writer silence.
+15. Implementation outline, TDD plan, files-to-touch, out-of-scope, and notes rewritten to match the hardened architecture.
 
 ## Verdict rationale
 
-**HARDENED.** The story is now small, typed, and enforceable. It preserves the intended extension path for Phase 5 while avoiding false security guarantees in Phase 4. The remaining risk is explicit: if implementation has already hardened `SolvedExampleId` to require full-record hashing, the executor must reconcile that with ingestion idempotence before coding.
+**HARDENED.** The story's goal is valid, but the draft mixed an unenforceable symbol-level lint boundary with stale S1-04 and event-log assumptions. The hardened version keeps the scope intact while making the module boundary observable, preserving the functional-core / imperative-shell split, and using the repo's existing event-sourcing registry. No RESCUE condition remains.
 
 ## Recommended next step
 
-`phase-story-executor` can implement S4-06. Start with the tests for `rag/ingest.py` and the AST fence, then extend `src/codegenie/plugins/events.py` by mirroring the existing spanning-event registration pattern.
+`phase-story-executor` can implement S4-06 after the known S4-03/S1-04 precondition is cleared: `SolvedExample` must carry `embedding_vector: EmbeddingVector`. Start with the mint contract tests and event registration, then implement `ingest.py`.
