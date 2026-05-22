@@ -1,90 +1,81 @@
 # Validation report: S4-02 — Embeddings cache.sqlite
 
-**Validated:** 2026-05-22 05:15Z
+**Validated:** 2026-05-22 01:21 EDT
 **Verdict:** HARDENED
 **Validator version:** phase-story-validator v1
 
 ## Summary
 
-S4-02 adds `CachedEmbedder`, a BLAKE3(text)-keyed sqlite cache-aside decorator over S4-01's `Embedder` Protocol. The story's goal is sound and traces to phase arch §Component 8, ADR-0007 §Consequences, and edge case #13. The validator found 15 issues: 3 block-tier contradictions and 12 fixable harden/nit issues. All were patched in place, so this is HARDENED, not RESCUE.
-
-The biggest fix is the sqlite key shape. The draft schema used `text_blake3 TEXT PRIMARY KEY`, but AC-5 required preserving an old-model row and inserting a new-model row for the same text under a different `model_digest`. The story now requires `PRIMARY KEY (text_blake3, model_digest)`. The other load-bearing fixes align vector serialization with S4-01's tuple-backed `EmbeddingVector` contract and replace the contradictory concurrency design with one lazy sqlite connection guarded by a process-local `threading.RLock`.
-
-## Context brief
-
-- **Goal:** ship `CachedEmbedder` at `src/codegenie/rag/embedding_cache.py`, keyed by `BLAKE3(text)` and `model_digest`, with lazy-open sqlite, cache hit/miss behavior, row/file corruption recovery, and batch support.
-- **Phase constraints:** Phase 4 keeps LLM/RAG code under `src/codegenie/rag/`; no edits to `src/codegenie/{probes,coordinator,cache,output,schema}/`. ADR-0007 requires BLAKE3(input text) plus `model_digest()` column so model upgrades invalidate without hashing vectors.
-- **Dependency lineage:** S4-01 hardened `EmbeddingVector` as a tuple-backed newtype and froze `Embedder` at `embed`, `embed_batch`, `model_digest`.
-- **Open ambiguities:** none after synthesis.
+S4-02 ships the `CachedEmbedder` decorator over S4-01's `Embedder` Protocol: BLAKE3(text)-keyed sqlite cache-aside with model-digest invalidation and rebuild-on-corruption. The goal traces cleanly to Phase-4 arch Component 8, High-level-impl Step 4, ADR-0007, final-design's cache-aside pattern, and edge case #13. The story was sound but had three executor-blocking defects: the schema contradicted model-digest invalidation, vector serialization contradicted S4-01's tuple-backed `EmbeddingVector`, and the concurrency outline mixed incompatible sqlite-connection strategies. All blockers were fixable in place, so the verdict is HARDENED.
 
 ## Findings by critic
 
 ### Coverage critic
 
-**F1 (block) — Schema makes AC-5 impossible.** The draft had `text_blake3 TEXT PRIMARY KEY`, but AC-5 says an old `model_digest` row must remain while a new `model_digest` row for the same text is inserted. A sole text key cannot represent both rows. Fix: schema now uses `PRIMARY KEY (text_blake3, model_digest)`, and tests must prove duplicate text across models is allowed.
+**F1 (block) — AC-2 cannot satisfy AC-5.** AC-2 originally keyed the table by `text_blake3` alone, while AC-5 required preserving an old-model row and inserting a new-model row for the same input text. Proposed fix: make `(text_blake3, model_digest)` the composite primary key and assert duplicate same-text/different-model rows survive.
 
-**F2 (harden) — Batch partial-hit and empty-input cases were underspecified.** The draft covered `["a", "b", "a"]` on a cold cache but not mixed hit/miss batches or `[]`. Fix: AC-6 now adds a partial-hit test and requires `embed_batch([]) == []` without opening the db.
+**F2 (harden) — lazy-open did not cover missing parent directories.** The story said the db is lazy-opened but did not require `.codegenie/rag/` creation. Proposed fix: AC-1 now pins lazy parent creation and tests no filesystem work occurs before the first non-empty call.
 
-**F3 (harden) — File-level corruption recovery missed connection cleanup.** Deleting a corrupt sqlite file while holding a stale connection can leave a broken handle. Fix: AC-7 now requires close/discard before unlink and retry.
+**F3 (harden) — file corruption cleanup missed WAL sidecars.** WAL mode creates `-wal`/`-shm`; deleting only the main db can leave stale sqlite sidecars behind. Proposed fix: AC-7 requires deleting the db plus sidecars before one retry.
 
-**F4 (harden) — Row-level corruption behavior was self-contradictory.** The draft said a bad vector row "raises `EmbeddingsCacheCorrupted`" and also that public `embed()` returns freshly computed output. Fix: AC-8 makes the typed exception internal to `_decode_row`; `embed()` catches it, deletes only the composite-key row, logs, and returns fresh output.
+**F4 (harden) — batch edge cases were underspecified.** `embed_batch([])` and all-cache-hit batches could still open sqlite or delegate. Proposed fix: AC-6 now pins empty-batch no-open behavior and all-hit no-delegation behavior through follow-on tests.
 
 ### Test-Quality critic
 
-**F5 (harden) — TDD spy returned the wrong public type.** The sample `_SpyEmbedder.embed` returned an `np.ndarray` inside `EmbeddingVector`, contradicting S4-01's tuple-backed contract. Fix: sample now returns `EmbeddingVector(tuple(float(x) for x in vec))`.
+**F5 (harden) — batch dedupe order was weak.** AC-6 allowed either `["a", "b"]` or `["b", "a"]`, weakening deterministic behavior. Proposed fix: require first-seen order for missing texts.
 
-**F6 (harden) — TDD sample had unused imports.** `Any` and `pytest` were imported but unused; strict lint would fail the red test scaffold. Fix: removed both.
+**F6 (harden) — digest examples were semantically invalid.** The test spy used `BlobDigest("spy-digest-v1")`, even though `BlobDigest` is a 64-hex semantic type. Proposed fix: examples now use `BlobDigest("1" * 64)` and AC-5 uses `"0" * 64`/`"1" * 64`.
 
-**F7 (harden) — Missing mutation-killer for composite schema.** Without a schema-level test, an executor could leave `text_blake3` as the sole key and still pass most behavior tests until AC-5. Fix: required `test_schema_uses_text_and_model_digest_composite_key`.
+**F7 (harden) — row-corruption test could accept a leaking internal exception.** AC-8 said corruption raises `EmbeddingsCacheCorrupted` but `embed()` returns a fresh vector. Proposed fix: AC-8 now makes the exception internal: `_decode_row` raises it, public `embed()` catches, deletes exactly that row, logs, re-embeds, and returns.
 
-**F8 (harden) — Concurrency test risked asserting the wrong property.** A same-text concurrent miss may compute twice and still be correct. Fix: test guidance now forbids asserting `inner.embed_calls == 1`; it asserts db validity, one final row, equal results, and no locked-db escape.
-
-**F9 (harden) — Property test needed a safe alphabet and a fake embedder.** Hypothesis can generate surrogate codepoints that fail UTF-8 encoding, and real fastembed would make the property slow/flaky. Fix: property plan uses `blacklist_categories=("Cs",)` and the spy embedder.
+**F8 (harden) — property test needed stronger mutation resistance.** The optional property test only checked bit-identical vectors. Proposed fix: it also asserts row count exactly one for the `(text_blake3, model_digest)` pair and spy call count remains one on the second call, killing always-miss and constant-key mutants.
 
 ### Consistency critic
 
-**F10 (block) — AC-8 contradicted S4-01's `EmbeddingVector` contract.** S4-01 hardened `EmbeddingVector = NewType("EmbeddingVector", tuple)`, but S4-02 read-back returned `EmbeddingVector(vec)` where `vec` was an ndarray. Fix: AC-8 now converts decoded `np.float32` bytes back to `tuple(float(...))` before wrapping.
+**F9 (block) — AC-8 contradicted S4-01's hardened `EmbeddingVector` contract.** S4-01 fixes `EmbeddingVector = NewType("EmbeddingVector", tuple)` and prevents numpy from crossing the `Embedder` boundary. The S4-02 draft still described returning arrays from `np.frombuffer`. Proposed fix: serialize via `np.asarray(tuple(vector), dtype=np.float32)` internally and return `EmbeddingVector(tuple(float(x) for x in decoded))`.
 
-**F11 (harden) — `pyproject.toml` touch row was stale.** The repo already has `blake3` in runtime dependencies and `hypothesis` in dev extras. Fix: Files-to-touch now says `pyproject.toml` should remain unchanged unless local verification proves drift.
+**F10 (harden) — `pyproject.toml` was listed as a likely edit despite current deps already satisfying the story.** `blake3` is already in runtime dependencies and `hypothesis` is already in dev extras. Proposed fix: make dependency handling verify-only and remove `pyproject.toml` from Files to touch.
 
-**F12 (nit) — `busy_timeout` was absent from the sqlite PRAGMAs.** AC-10 relies on not leaking locked-db errors in a threaded test. Fix: AC-2 now includes `busy_timeout=5000`.
+**F11 (nit) — logging shape needed the existing no-raw-text commitment.** Arch logging strategy forbids raw prompts/completions and this cache may handle advisory-derived query text. Proposed fix: AC-7 and Notes §5 explicitly prohibit logging raw embedded text.
 
 ### Design-Patterns critic
 
-**F13 (block) — Concurrency design contradicted itself.** The outline used a singleton `_conn`, while AC-10 said safety came from "per-call connection." That is neither a clear adapter boundary nor a testable concurrency contract. Fix: AC-10 and the outline now use a single lazy connection guarded by `threading.RLock`; duplicate miss work is explicitly out of scope.
+**F12 (block) — hidden mutable sqlite connection was not protected.** The implementation outline stored `_conn` on the wrapper while AC-10 claimed per-call connection safety. A shared connection across `asyncio.to_thread` calls without a lock would be an easy locked-db or corruption footgun. Proposed fix: keep the lazy connection but guard all sqlite operations with a process-local `threading.RLock`; explicitly state single-flight embedding is out of scope.
 
-**F14 (harden) — Composite key is an illegal-state fix, not just a SQL detail.** The cache state must distinguish same text across model versions. Fix: Notes §8 explains the invariant and AC-2 makes it representable in the schema.
+**F13 (harden) — composite key should make illegal states unrepresentable.** The model-digest invalidation invariant should live in the table constraint, not just in query discipline. Proposed fix: add Notes §8 and an AC-level schema test for the composite primary key.
 
-**F15 (nit) — Pattern advice needed to preserve protocol composition.** The draft was already good on composition (`CachedEmbedder(inner)` instead of editing `Embedder`), but the tuple/newtype and concurrency details could invite overreach. Fix: added Notes §9 and §10 to keep numpy internal and avoid speculative single-flight machinery.
+**F14 (harden) — functional core needed named pure helpers.** Serialization, deserialization, and key derivation are pure logic and should be independently testable. Proposed fix: implementation outline names `_blake3_hex`, `_decode_vector_bytes`, and tuple-backed serialization helpers.
+
+**F15 (nit) — concurrency target should not imply a single-flight service.** A per-key in-flight map is a separate feature with deadlock risk. Proposed fix: Notes §10 states idempotence is the target; duplicate same-text miss work is allowed.
 
 ## Research briefs
 
-No external research was needed. All findings resolved from in-repo docs, ADR-0007, S4-01's validation report, `CLAUDE.md`, and the local `pyproject.toml`.
+No `NEEDS RESEARCH` findings. All issues were resolved from in-repo sources: S4-01's validation report, Phase-4 arch Component 8 and edge case #13, ADR-0007 Consequences, `pyproject.toml`, and the repo's strict typing / extension-by-addition commitments in `CLAUDE.md`.
 
 ## Conflict resolutions
 
-- **Consistency over implementation convenience:** S4-01's tuple-backed `EmbeddingVector` contract wins over the S4-02 draft's ndarray-flavored examples. The cache may use numpy internally but must expose tuple-backed values.
-- **Coverage and design jointly on key shape:** Coverage identified that AC-5 was impossible; Design-Patterns framed the fix as "make illegal states unrepresentable." Both resolve to the same composite key.
+No critic conflict required external choice. The only design tradeoff was sqlite connection strategy: Design-Patterns flagged the unguarded shared connection, while Coverage only needed observable "no locked db error." The hardened story resolves this with a small `threading.RLock` and keeps single-flight out of scope per Rule 2.
 
 ## Edits applied
 
 1. Header status changed from `Ready` to `HARDENED`; validation notes inserted.
-2. AC-2 schema changed from sole `text_blake3` primary key to composite `(text_blake3, model_digest)` and added `busy_timeout=5000`.
-3. AC-5 now explicitly requires preserving old-model and new-model rows for the same text.
-4. AC-6 now covers partial-hit batches and empty batches that do not open sqlite.
-5. AC-7 now closes/discards stale handles before file rebuild and bans raw text in logs.
-6. AC-8 now models row-level corruption as an internal typed exception and returns tuple-backed `EmbeddingVector` values.
-7. AC-10 now states the `threading.RLock` concurrency contract and explicitly excludes single-flight.
-8. Implementation outline updated for dependency no-op, schema constants, lock discipline, row/file corruption split, strict spy embedder, and property-test strategy.
-9. TDD code sample fixed to remove unused imports and return tuple-backed vectors.
-10. Required tests expanded for schema, partial-hit batch, empty batch, corrupt row, and concurrency.
-11. Files-to-touch clarified that `pyproject.toml` should not change under current repo state.
-12. Notes §8-§10 added for composite key, tuple-backed `EmbeddingVector`, and idempotent-not-single-flight concurrency.
+2. AC-1 now requires lazy parent directory creation and no filesystem work at construction time.
+3. AC-2 schema now uses `PRIMARY KEY (text_blake3, model_digest)` plus `busy_timeout=5000`.
+4. AC-5 now uses valid `BlobDigest` examples and asserts old/new model rows coexist.
+5. AC-6 now pins first-seen batch dedupe, empty-batch no-open, and all-hit no-delegation tests.
+6. AC-7 now deletes WAL sidecars and forbids logging raw embedded text.
+7. AC-8 now aligns with tuple-backed `EmbeddingVector` and makes row-corruption recovery internal.
+8. AC-10 now pins a process-local sqlite lock and explicitly scopes out single-flight embedding.
+9. Implementation outline updated for verify-only deps, composite schema, lazy parent creation, typed BLAKE3 helper, pure vector decode/encode, and row/file corruption split.
+10. TDD sample fixed to return tuple-backed vectors with valid 64-hex digest.
+11. Follow-on tests expanded for composite key, partial-hit batch, empty batch, row corruption, and same-text concurrency.
+12. Files-to-touch narrowed; `pyproject.toml` removed as expected no-op.
+13. Notes added for composite key, tuple-backed vectors, and idempotence-not-single-flight.
 
 ## Verdict rationale
 
-HARDENED. The story's scope and goal are valid; the blockers were localized contradictions in schema, type boundary, and concurrency wording. Those are now patched without changing the goal or adding adjacent work. The executor can implement the story with clear observable ACs and tests that should catch the likely wrong implementations.
+HARDENED. The story's goal and phase fit are correct; no scope rewrite was needed. The blockers were real but local: a schema key contradiction, a type-boundary contradiction with S4-01, and an unsafe/contradictory concurrency prescription. The edited story now gives the executor observable ACs, mutation-resistant tests, and a small maintainable implementation shape.
 
 ## Recommended next step
 
-Run `phase-story-executor` for S4-02. The executor should focus on the composite key, tuple-backed vector boundary, and row/file corruption split; those are the highest-risk parts of the implementation.
+Run `phase-story-executor` on S4-02.

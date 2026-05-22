@@ -15,9 +15,10 @@ Findings addressed: 15 — 3 block, 10 harden, 2 nit
 Changes applied:
 - **AC-2 / AC-5 fixed (block)** — the original schema used `text_blake3 TEXT PRIMARY KEY` while AC-5 required preserving old and new `model_digest` rows for the same text; schema now uses `PRIMARY KEY (text_blake3, model_digest)`.
 - **AC-8 fixed (block)** — aligned serialization with S4-01's hardened `EmbeddingVector = NewType("EmbeddingVector", tuple)` contract; numpy stays inside the cache adapter and read-back returns a tuple-backed `EmbeddingVector`.
-- **AC-10 fixed (block)** — replaced the contradictory "singleton `_conn` + per-call connection" concurrency story with an explicit process-local lock over sqlite operations; duplicate miss computation is allowed, locked-database errors are not.
+- **AC-10 fixed (block)** — replaced the contradictory "unguarded singleton `_conn` + per-call connection" concurrency story with an explicit process-local lock over sqlite operations; duplicate miss computation is allowed, locked-database errors are not.
 - Hardened row-level corruption recovery, sqlite file corruption rebuild, batch partial-hit tests, property-test strategy, strict typing details, and the `pyproject.toml` no-op expectation (`blake3` + `hypothesis` are already present).
 - Tightened the TDD sample so it has no unused imports and the spy embedder returns tuple-backed `EmbeddingVector` values, not numpy arrays.
+- Post-check refinements: valid 64-hex `BlobDigest` examples, first-seen batch miss order, lazy parent-dir creation, and sqlite WAL sidecar cleanup on corruption rebuild.
 
 Full audit log: docs/phases/04-vuln-llm-fallback-rag/stories/_validation/S4-02-embeddings-cache-sqlite.md
 
@@ -50,7 +51,7 @@ Ship a `CachedEmbedder` wrapper at `src/codegenie/rag/embedding_cache.py` that d
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — `CachedEmbedder(inner: Embedder, db_path: Path)` shape.** Constructor takes an inner `Embedder` (any conforming impl, including `FastembedEmbedder`) and a db path; the db is **lazy-opened** on first `embed`/`embed_batch` call, not on `__init__`. The wrapper itself conforms to the `Embedder` Protocol (`isinstance(CachedEmbedder(...), Embedder) is True`).
+- [ ] **AC-1 — `CachedEmbedder(inner: Embedder, db_path: Path)` shape.** Constructor takes an inner `Embedder` (any conforming impl, including `FastembedEmbedder`) and a db path; the db parent directory is created and the db is **lazy-opened** on first non-empty `embed`/`embed_batch` call, not on `__init__`. The wrapper itself conforms to the `Embedder` Protocol (`isinstance(CachedEmbedder(...), Embedder) is True`). A test constructs the wrapper with `db_path=tmp_path / "missing" / "embeddings.cache.sqlite"` and asserts the directory and db file do not exist until the first call.
 - [ ] **AC-2 — Cache schema.** First lazy-open creates the schema if absent:
     ```sql
     CREATE TABLE IF NOT EXISTS embeddings (
@@ -65,11 +66,11 @@ Ship a `CachedEmbedder` wrapper at `src/codegenie/rag/embedding_cache.py` that d
     The composite primary key is load-bearing: a model upgrade must preserve the old row and insert a new row for the same `text_blake3` under the new `model_digest` (AC-5). PRAGMA: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000` (durability is fine for a cache; we re-embed on miss).
 - [ ] **AC-3 — Cache hit avoids second embed.** Given `wrapper = CachedEmbedder(spy_embedder, db_path=tmp)`, `wrapper.embed("hello")` then `wrapper.embed("hello")`: `spy_embedder.embed` is called **exactly once**. Catches the "cache writes never happen" / "every call re-embeds" mutants.
 - [ ] **AC-4 — Cache key is BLAKE3 of input text (not of vector).** Manually compute `blake3.blake3(b"hello").hexdigest()` and assert the row's `text_blake3` column matches verbatim. Catches the "use sha256" / "use truncated digest" mutants.
-- [ ] **AC-5 — Model-digest mismatch on read = cache miss.** With the db pre-populated against `model_digest="old-digest"`, wrapping a new inner embedder whose `model_digest() == "new-digest"`, `wrapper.embed(same_text)` calls the inner embedder (cache treated as miss); the row for `(text_blake3, model_digest="old-digest")` is left untouched (no cascading delete); a new row for `(text_blake3, model_digest="new-digest")` is inserted. The lookup is `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?` — both columns in the predicate, and a schema test asserts the composite primary key exists. (validator: hardened — original schema made this AC impossible with `text_blake3` as sole primary key.)
-- [ ] **AC-6 — `embed_batch` is cache-aware.** `wrapper.embed_batch(["a", "b", "a"])` calls `inner.embed_batch` with the **deduplicated, cache-missing** subset `["a", "b"]` (or `["b", "a"]` — order-irrelevant; deterministic dedup is preferred), then assembles the return list in input order. Returned vectors for index 0 and 2 are bit-identical (same row). A separate partial-hit test pre-populates `"a"`, calls `embed_batch(["a", "b", "a", "c"])`, and asserts the inner receives only `["b", "c"]` (order-insensitive) while all four outputs preserve input order. `embed_batch([])` returns `[]` and must not create or open the sqlite file.
+- [ ] **AC-5 — Model-digest mismatch on read = cache miss.** With the db pre-populated against `model_digest=BlobDigest("0" * 64)`, wrapping a new inner embedder whose `model_digest() == BlobDigest("1" * 64)`, `wrapper.embed(same_text)` calls the inner embedder (cache treated as miss); the row for `(text_blake3, model_digest=BlobDigest("0" * 64))` is left untouched (no cascading delete); a new row for `(text_blake3, model_digest=BlobDigest("1" * 64))` is inserted. The lookup is `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?` — both columns in the predicate, and a schema test asserts the composite primary key exists. (validator: hardened — original schema made this AC impossible with `text_blake3` as sole primary key; digest examples now use valid 64-hex `BlobDigest` values.)
+- [ ] **AC-6 — `embed_batch` is cache-aware.** `wrapper.embed_batch(["a", "b", "a"])` calls `inner.embed_batch` with the **deduplicated, cache-missing** subset in first-seen order (`["a", "b"]`), then assembles the return list in input order. Returned vectors for index 0 and 2 are bit-identical (same row). A separate partial-hit test pre-populates `"a"`, calls `embed_batch(["a", "b", "a", "c"])`, and asserts the inner receives only `["b", "c"]` while all four outputs preserve input order. `embed_batch([])` returns `[]` and must not create or open the sqlite file.
 - [ ] **AC-7 — Corruption rebuild on `sqlite3.DatabaseError`.** When lazy-open or the first schema/read probe raises `sqlite3.DatabaseError` (simulate via a corrupt 1-byte file), the wrapper:
     - Closes and discards any open connection handle.
-    - Deletes the db file.
+    - Deletes the db file plus sqlite WAL sidecars (`embeddings.cache.sqlite-wal`, `embeddings.cache.sqlite-shm`) if present.
     - Re-creates the schema under the same lazy-open path.
     - Returns the embedded vector from the inner embedder (treating the corruption-recovery call as a cache miss).
     - Emits a structured log at WARN level: `cache_rebuilt_on_corruption` with `db_path` and `reason` fields, but never the raw embedded text. No workflow exception is raised unless the retry-open also raises `DatabaseError`.
@@ -84,8 +85,8 @@ Ship a `CachedEmbedder` wrapper at `src/codegenie/rag/embedding_cache.py` that d
 2. **Schema constants** in `src/codegenie/rag/embedding_cache.py`: `_SCHEMA: Final[str]` with the composite-key `CREATE TABLE IF NOT EXISTS embeddings ...`; `_VECTOR_DIM: Final[int] = 384`; `_VECTOR_BYTES: Final[int] = 4 * _VECTOR_DIM`; `_VECTOR_DTYPE: Final = np.dtype("float32")`.
 3. **`CachedEmbedder`** class:
    - `__init__(self, inner: Embedder, db_path: Path) -> None`: stores both; `_conn: sqlite3.Connection | None = None` (lazy); `_lock = threading.RLock()` for single-process concurrency discipline.
-   - `_lazy_open(self) -> sqlite3.Connection`: under `_lock`, if `_conn is None`, ensure `db_path.parent.mkdir(parents=True, exist_ok=True)`, open with `sqlite3.connect(db_path, check_same_thread=False)`, set `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`, execute schema. Wrap open/schema/probe in `sqlite3.DatabaseError` → close/discard any connection, `db_path.unlink(missing_ok=True)` + retry once; if retry fails, raise.
-   - `_blake3_hex(text: str) -> str`: pure helper.
+   - `_lazy_open(self) -> sqlite3.Connection`: under `_lock`, if `_conn is None`, ensure `db_path.parent.mkdir(parents=True, exist_ok=True)`, open with `sqlite3.connect(db_path, check_same_thread=False)`, set `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`, execute schema. Wrap open/schema/probe in `sqlite3.DatabaseError` → close/discard any connection, delete `db_path` plus `db_path`'s `-wal`/`-shm` sidecars, log, and retry once; if retry fails, raise.
+   - `_blake3_hex(text: str) -> BlobDigest`: pure helper returning unprefixed 64-hex BLAKE3 text digest.
    - `embed(self, text: str) -> EmbeddingVector`:
      - `key = self._blake3_hex(text)`; `digest = self.inner.model_digest()`.
      - Under `_lock`, run `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?`.
@@ -125,7 +126,7 @@ class _SpyEmbedder:
 
     def __init__(self) -> None:
         self.embed_calls = 0
-        self._digest = BlobDigest("spy-digest-v1")
+        self._digest = BlobDigest("1" * 64)
 
     def embed(self, text: str) -> EmbeddingVector:
         self.embed_calls += 1
@@ -175,7 +176,7 @@ Land `src/codegenie/rag/embedding_cache.py` with the minimum: schema creation, `
 - `test_cache_key_is_blake3_of_input_text` (AC-4) — manual digest comparison.
 - `test_schema_uses_text_and_model_digest_composite_key` (AC-2 / AC-5) — insert the same `text_blake3` under two `model_digest` values; both rows survive; a same-pair insert replaces only that pair.
 - `test_model_digest_mismatch_treated_as_miss` (AC-5) — pre-populate row with old digest; new inner digest causes inner.embed call.
-- `test_embed_batch_dedups_and_preserves_order` (AC-6) — input `["a", "b", "a"]`; inner.embed_batch receives at most 2 elements; output[0] == output[2].
+- `test_embed_batch_dedups_and_preserves_order` (AC-6) — input `["a", "b", "a"]`; inner.embed_batch receives exactly `["a", "b"]`; output[0] == output[2].
 - `test_embed_batch_partial_hit_only_delegates_misses` (AC-6) — pre-populate `"a"`; `embed_batch(["a", "b", "a", "c"])` delegates only `"b"` and `"c"` and preserves all four output positions.
 - `test_embed_batch_empty_returns_empty_without_opening_db` (AC-6) — `embed_batch([]) == []` and `db_path.exists()` is false after the call.
 - `test_corruption_rebuilds_cache_silently` (AC-7) — write `b"\x00"` to db path before first call; first `embed()` succeeds and returns a fresh vector; db file is now valid; log captured at WARN.
