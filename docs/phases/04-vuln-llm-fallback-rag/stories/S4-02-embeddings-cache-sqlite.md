@@ -1,10 +1,25 @@
 # Story S4-02 — Embeddings cache.sqlite (BLAKE3(text)-keyed cache-aside; lazy-open; rebuild-on-corruption)
 
 **Step:** Step 4 — Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** S
 **Depends on:** S4-01 (`Embedder` Protocol + `FastembedEmbedder` + `model_digest()`)
 **ADRs honored:** ADR-0007 (cache keyed on BLAKE3 of input text + model_digest column; edge case #13 — corruption rebuild)
+
+## Validation notes
+
+Validated: 2026-05-22
+Verdict: HARDENED
+Findings addressed: 15 — 3 block, 10 harden, 2 nit
+
+Changes applied:
+- **AC-2 / AC-5 fixed (block)** — the original schema used `text_blake3 TEXT PRIMARY KEY` while AC-5 required preserving old and new `model_digest` rows for the same text; schema now uses `PRIMARY KEY (text_blake3, model_digest)`.
+- **AC-8 fixed (block)** — aligned serialization with S4-01's hardened `EmbeddingVector = NewType("EmbeddingVector", tuple)` contract; numpy stays inside the cache adapter and read-back returns a tuple-backed `EmbeddingVector`.
+- **AC-10 fixed (block)** — replaced the contradictory "singleton `_conn` + per-call connection" concurrency story with an explicit process-local lock over sqlite operations; duplicate miss computation is allowed, locked-database errors are not.
+- Hardened row-level corruption recovery, sqlite file corruption rebuild, batch partial-hit tests, property-test strategy, strict typing details, and the `pyproject.toml` no-op expectation (`blake3` + `hypothesis` are already present).
+- Tightened the TDD sample so it has no unused imports and the spy embedder returns tuple-backed `EmbeddingVector` values, not numpy arrays.
+
+Full audit log: docs/phases/04-vuln-llm-fallback-rag/stories/_validation/S4-02-embeddings-cache-sqlite.md
 
 ## Context
 
@@ -39,50 +54,55 @@ Ship a `CachedEmbedder` wrapper at `src/codegenie/rag/embedding_cache.py` that d
 - [ ] **AC-2 — Cache schema.** First lazy-open creates the schema if absent:
     ```sql
     CREATE TABLE IF NOT EXISTS embeddings (
-        text_blake3 TEXT PRIMARY KEY,    -- BLAKE3(text.encode("utf-8")) hex
+        text_blake3 TEXT NOT NULL,       -- BLAKE3(text.encode("utf-8")) hex
         model_digest TEXT NOT NULL,       -- inner.model_digest()
         vector BLOB NOT NULL,             -- np.float32 384-dim bytes
-        created_at TEXT NOT NULL          -- ISO-8601 UTC; informational only
+        created_at TEXT NOT NULL,         -- ISO-8601 UTC; informational only
+        PRIMARY KEY (text_blake3, model_digest)
     );
     CREATE INDEX IF NOT EXISTS idx_model ON embeddings(model_digest);
     ```
-    PRAGMA: `journal_mode=WAL`, `synchronous=NORMAL` (durability is fine for a cache; we re-embed on miss).
+    The composite primary key is load-bearing: a model upgrade must preserve the old row and insert a new row for the same `text_blake3` under the new `model_digest` (AC-5). PRAGMA: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000` (durability is fine for a cache; we re-embed on miss).
 - [ ] **AC-3 — Cache hit avoids second embed.** Given `wrapper = CachedEmbedder(spy_embedder, db_path=tmp)`, `wrapper.embed("hello")` then `wrapper.embed("hello")`: `spy_embedder.embed` is called **exactly once**. Catches the "cache writes never happen" / "every call re-embeds" mutants.
 - [ ] **AC-4 — Cache key is BLAKE3 of input text (not of vector).** Manually compute `blake3.blake3(b"hello").hexdigest()` and assert the row's `text_blake3` column matches verbatim. Catches the "use sha256" / "use truncated digest" mutants.
-- [ ] **AC-5 — Model-digest mismatch on read = cache miss.** With the db pre-populated against `model_digest="old-digest"`, wrapping a new inner embedder whose `model_digest() == "new-digest"`, `wrapper.embed(same_text)` calls the inner embedder (cache treated as miss); the row for `(text_blake3, model_digest="old-digest")` is left untouched (no cascading delete); a new row for `model_digest="new-digest"` is inserted. The lookup is `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?` — both columns in the predicate.
-- [ ] **AC-6 — `embed_batch` is cache-aware.** `wrapper.embed_batch(["a", "b", "a"])` calls `inner.embed_batch` with the **deduplicated, cache-missing** subset `["a", "b"]` (or `["b", "a"]` — order-irrelevant; deterministic dedup is preferred), then assembles the return list in input order. Returned vectors for index 0 and 2 are bit-identical (same row).
-- [ ] **AC-7 — Corruption rebuild on `sqlite3.DatabaseError`.** When `sqlite3.connect(db_path).execute("SELECT 1 FROM embeddings LIMIT 1")` raises `DatabaseError` (simulate via a corrupt 1-byte file), the wrapper:
+- [ ] **AC-5 — Model-digest mismatch on read = cache miss.** With the db pre-populated against `model_digest="old-digest"`, wrapping a new inner embedder whose `model_digest() == "new-digest"`, `wrapper.embed(same_text)` calls the inner embedder (cache treated as miss); the row for `(text_blake3, model_digest="old-digest")` is left untouched (no cascading delete); a new row for `(text_blake3, model_digest="new-digest")` is inserted. The lookup is `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?` — both columns in the predicate, and a schema test asserts the composite primary key exists. (validator: hardened — original schema made this AC impossible with `text_blake3` as sole primary key.)
+- [ ] **AC-6 — `embed_batch` is cache-aware.** `wrapper.embed_batch(["a", "b", "a"])` calls `inner.embed_batch` with the **deduplicated, cache-missing** subset `["a", "b"]` (or `["b", "a"]` — order-irrelevant; deterministic dedup is preferred), then assembles the return list in input order. Returned vectors for index 0 and 2 are bit-identical (same row). A separate partial-hit test pre-populates `"a"`, calls `embed_batch(["a", "b", "a", "c"])`, and asserts the inner receives only `["b", "c"]` (order-insensitive) while all four outputs preserve input order. `embed_batch([])` returns `[]` and must not create or open the sqlite file.
+- [ ] **AC-7 — Corruption rebuild on `sqlite3.DatabaseError`.** When lazy-open or the first schema/read probe raises `sqlite3.DatabaseError` (simulate via a corrupt 1-byte file), the wrapper:
+    - Closes and discards any open connection handle.
     - Deletes the db file.
-    - Re-creates the schema.
+    - Re-creates the schema under the same lazy-open path.
     - Returns the embedded vector from the inner embedder (treating the corruption-recovery call as a cache miss).
-    - Emits a structured log at WARN level: `cache_rebuilt_on_corruption` with `db_path` field. No workflow exception is raised.
-- [ ] **AC-8 — Vector serialization is `np.float32` + length-checked.** Stored bytes are exactly `vector.astype(np.float32).tobytes()`; read-back validates `len(bytes) == 4 * 384 = 1536` and `np.frombuffer(bytes, dtype=np.float32).shape == (384,)`. Mismatch on read raises `EmbeddingsCacheCorrupted(row_id)` and the row is deleted + re-embedded; the surrounding `embed()` returns the freshly computed vector.
+    - Emits a structured log at WARN level: `cache_rebuilt_on_corruption` with `db_path` and `reason` fields, but never the raw embedded text. No workflow exception is raised unless the retry-open also raises `DatabaseError`.
+- [ ] **AC-8 — Vector serialization is `np.float32` + length-checked while `EmbeddingVector` remains tuple-backed.** Stored bytes are exactly `np.asarray(tuple(vector), dtype=np.float32).tobytes()` where `vector` is S4-01's tuple-backed `EmbeddingVector`; numpy arrays never cross the public `Embedder` boundary. Read-back validates `len(bytes) == 4 * 384 = 1536` and `np.frombuffer(bytes, dtype=np.float32).shape == (384,)`, then returns `EmbeddingVector(tuple(float(x) for x in decoded))`. Mismatch on read is row-level corruption: `_decode_row` raises `EmbeddingsCacheCorrupted(text_blake3, model_digest, byte_len)`, `embed()` catches it, deletes only that composite-key row, logs `embedding_cache_row_corrupted`, re-embeds, writes the replacement, and returns the freshly computed vector. The typed exception must not escape the public `embed()` path.
 - [ ] **AC-9 — `model_digest()` passthrough.** `wrapper.model_digest() == inner.model_digest()`. The wrapper does not invent a new digest; the cache key already disambiguates per-model.
-- [ ] **AC-10 — Wrapper is concurrency-safe within a single asyncio loop.** Two `embed()` calls awaited under `asyncio.gather` (wrap with `asyncio.to_thread`) on the same `CachedEmbedder` instance do not corrupt the db; the second cache write either no-ops (if the first won) or overwrites with the bit-identical bytes (idempotent). No `sqlite3.OperationalError: database is locked` escapes — WAL mode + `connect(check_same_thread=False)` + per-call connection covers it.
+- [ ] **AC-10 — Wrapper is concurrency-safe within a single asyncio loop.** Two `embed()` calls awaited under `asyncio.gather` (wrap with `asyncio.to_thread`) on the same `CachedEmbedder` instance do not corrupt the db; the post-run table contains one row per `(text_blake3, model_digest)` and both callers receive bit-identical vectors for the same text. No `sqlite3.OperationalError: database is locked` escapes. The implementation uses one lazy-opened sqlite connection guarded by a process-local `threading.RLock` around schema creation, lookup, row delete, insert, and commit. This story does **not** promise single-flight embedding: two concurrent cache misses may both call the inner embedder, but the writes are idempotent.
 - [ ] **AC-11 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/rag/embedding_cache.py` + tests.
 
 ## Implementation outline
 
-1. **Add `blake3` to runtime deps** if not already present (Phase 0/2 may have added it; check `pyproject.toml` first — Rule 8). If absent, this is the ADR-amendment trigger; surface per Rule 7 before adding. (Likely already there for content-addressed cache keys in `src/codegenie/cache/keys.py`.)
-2. **Schema constants** in `src/codegenie/rag/embedding_cache.py`: `_SCHEMA: Final[str]` with `CREATE TABLE IF NOT EXISTS embeddings ...`; `_VECTOR_DIM: Final[int] = 384`; `_VECTOR_DTYPE: Final[type] = np.float32`.
+1. **Dependency check is verify-only.** `blake3` is already in `[project.dependencies]` and `hypothesis` is already in `[project.optional-dependencies].dev` as of this validation run; do not edit `pyproject.toml` for this story unless the executor discovers local drift. If a missing runtime dependency is discovered anyway, surface per Rule 7 before adding it.
+2. **Schema constants** in `src/codegenie/rag/embedding_cache.py`: `_SCHEMA: Final[str]` with the composite-key `CREATE TABLE IF NOT EXISTS embeddings ...`; `_VECTOR_DIM: Final[int] = 384`; `_VECTOR_BYTES: Final[int] = 4 * _VECTOR_DIM`; `_VECTOR_DTYPE: Final = np.dtype("float32")`.
 3. **`CachedEmbedder`** class:
-   - `__init__(self, inner: Embedder, db_path: Path) -> None`: stores both; `_conn: sqlite3.Connection | None = None` (lazy).
-   - `_lazy_open(self) -> sqlite3.Connection`: if `_conn is None`, open with `sqlite3.connect(db_path, check_same_thread=False)`, set pragmas, execute schema. Wrap in try/except `sqlite3.DatabaseError` → `db_path.unlink(missing_ok=True)` + retry once; if retry fails, raise.
+   - `__init__(self, inner: Embedder, db_path: Path) -> None`: stores both; `_conn: sqlite3.Connection | None = None` (lazy); `_lock = threading.RLock()` for single-process concurrency discipline.
+   - `_lazy_open(self) -> sqlite3.Connection`: under `_lock`, if `_conn is None`, ensure `db_path.parent.mkdir(parents=True, exist_ok=True)`, open with `sqlite3.connect(db_path, check_same_thread=False)`, set `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`, execute schema. Wrap open/schema/probe in `sqlite3.DatabaseError` → close/discard any connection, `db_path.unlink(missing_ok=True)` + retry once; if retry fails, raise.
    - `_blake3_hex(text: str) -> str`: pure helper.
    - `embed(self, text: str) -> EmbeddingVector`:
      - `key = self._blake3_hex(text)`; `digest = self.inner.model_digest()`.
-     - `row = conn.execute("SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?", (key, digest)).fetchone()`.
-     - Hit: `vec = np.frombuffer(row[0], dtype=np.float32)`; validate shape; return `EmbeddingVector(vec)`.
-     - Miss: `vec = self.inner.embed(text)`; `conn.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?, ?, ?)", (key, digest, np.asarray(vec, dtype=np.float32).tobytes(), datetime.now(timezone.utc).isoformat()))`; `conn.commit()`; return.
+     - Under `_lock`, run `SELECT vector FROM embeddings WHERE text_blake3=? AND model_digest=?`.
+     - Hit: decode via `_decode_vector_bytes(key, digest, row[0]) -> EmbeddingVector`. If it raises `EmbeddingsCacheCorrupted`, delete only `(key, digest)`, log `embedding_cache_row_corrupted`, and fall through to miss.
+     - Miss: call `self.inner.embed(text)` outside any sqlite write transaction if possible; then under `_lock`, `INSERT OR REPLACE INTO embeddings(text_blake3, model_digest, vector, created_at) VALUES (?, ?, ?, ?)` with `np.asarray(tuple(vec), dtype=np.float32).tobytes()`; `conn.commit()`; return the original tuple-backed `EmbeddingVector`.
    - `embed_batch(self, texts: list[str]) -> list[EmbeddingVector]`:
-     - Compute keys, query missing-set in one `SELECT … WHERE text_blake3 IN (...) AND model_digest=?`, deduplicate `missing_unique`, call `self.inner.embed_batch(missing_unique)`, insert results, then assemble output list in input order.
+     - Compute keys, query cache hits in one `SELECT ... WHERE model_digest=? AND text_blake3 IN (...)`, decode valid rows, delete invalid rows, deduplicate only the missing texts, call `self.inner.embed_batch(missing_unique)`, insert replacements, then assemble output list in input order. Empty input returns `[]` and must not open the sqlite file.
    - `model_digest(self) -> BlobDigest`: delegate to `self.inner`.
-4. **Corruption-recovery code path** (AC-7): isolated in `_lazy_open` so any malformed-db state on first read triggers rebuild; subsequent reads succeed from the now-empty schema.
+4. **Corruption-recovery code paths**:
+   - File-level sqlite corruption (`sqlite3.DatabaseError` while opening/probing schema) rebuilds the whole db file once, emits `cache_rebuilt_on_corruption`, and treats the call as a miss.
+   - Row-level vector corruption (`EmbeddingsCacheCorrupted`) deletes only the composite-key row, emits `embedding_cache_row_corrupted`, and treats the call as a miss.
 5. **Tests** under `tests/unit/rag/test_embedding_cache.py`:
-   - Spy embedder: a `_SpyEmbedder` class implementing `Embedder` with a `calls` counter; deterministic vectors (e.g., `np.arange(384, dtype=np.float32) / 384` for text "a"; permutation for "b").
-   - AC-3 (cache hit avoids second embed), AC-4 (BLAKE3 key), AC-5 (model-digest mismatch is miss), AC-6 (batch dedup), AC-7 (corruption rebuild), AC-8 (vector roundtrip + corrupt-row recovery), AC-9 (digest passthrough), AC-10 (concurrent gather).
+   - Spy embedder: a `_SpyEmbedder` class implementing `Embedder` with a `calls` counter and deterministic tuple-backed vectors (e.g., `EmbeddingVector(tuple(float(x) for x in np.full(384, seed, dtype=np.float32)))`). Avoid `Any` in public test helpers; these tests run under `mypy --strict`.
+   - AC-2 / AC-5 schema test (`PRAGMA table_info` + `PRAGMA index_list` / duplicate insert) proving the composite `(text_blake3, model_digest)` key.
+   - AC-3 (cache hit avoids second embed), AC-4 (BLAKE3 key), AC-5 (model-digest mismatch is miss), AC-6 (batch dedup + partial-hit), AC-7 (file-level corruption rebuild), AC-8 (vector roundtrip + corrupt-row recovery), AC-9 (digest passthrough), AC-10 (concurrent gather).
 6. **Property test** under `tests/property/test_embedding_cache_roundtrip.py` (optional but cheap):
-   - Hypothesis: for any UTF-8 text (excluding control chars to keep sqlite param-binding simple), `wrapper.embed(text)` → second call returns bit-identical bytes via `wrapper.embed(text)`; cache row count grows by exactly 1.
+   - Hypothesis: for any UTF-8-encodable text (`st.text(alphabet=st.characters(blacklist_categories=("Cs",)))`), `wrapper.embed(text)` → second call returns bit-identical tuples and does not increment the spy's embed-call count; the cache row count for that text/model pair is exactly 1. Use the spy embedder, not real `fastembed`.
 
 ## TDD plan — red / green / refactor
 
@@ -94,10 +114,8 @@ Test file: `tests/unit/rag/test_embedding_cache.py`
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-import pytest
 
 from codegenie.types.identifiers import BlobDigest, EmbeddingVector
 
@@ -114,7 +132,7 @@ class _SpyEmbedder:
         # Deterministic vector per text — repeatable across calls
         seed = sum(text.encode("utf-8")) % 7
         vec = np.full(384, seed / 7.0, dtype=np.float32)
-        return EmbeddingVector(vec)
+        return EmbeddingVector(tuple(float(x) for x in vec))
 
     def embed_batch(self, texts: list[str]) -> list[EmbeddingVector]:
         return [self.embed(t) for t in texts]
@@ -155,12 +173,15 @@ Land `src/codegenie/rag/embedding_cache.py` with the minimum: schema creation, `
 ### Required follow-on tests
 
 - `test_cache_key_is_blake3_of_input_text` (AC-4) — manual digest comparison.
+- `test_schema_uses_text_and_model_digest_composite_key` (AC-2 / AC-5) — insert the same `text_blake3` under two `model_digest` values; both rows survive; a same-pair insert replaces only that pair.
 - `test_model_digest_mismatch_treated_as_miss` (AC-5) — pre-populate row with old digest; new inner digest causes inner.embed call.
 - `test_embed_batch_dedups_and_preserves_order` (AC-6) — input `["a", "b", "a"]`; inner.embed_batch receives at most 2 elements; output[0] == output[2].
+- `test_embed_batch_partial_hit_only_delegates_misses` (AC-6) — pre-populate `"a"`; `embed_batch(["a", "b", "a", "c"])` delegates only `"b"` and `"c"` and preserves all four output positions.
+- `test_embed_batch_empty_returns_empty_without_opening_db` (AC-6) — `embed_batch([]) == []` and `db_path.exists()` is false after the call.
 - `test_corruption_rebuilds_cache_silently` (AC-7) — write `b"\x00"` to db path before first call; first `embed()` succeeds and returns a fresh vector; db file is now valid; log captured at WARN.
-- `test_corrupt_row_vector_bytes_recovered` (AC-8) — directly insert a row with `vector = b"short"`; calling `embed(same_text)` re-embeds + replaces.
+- `test_corrupt_row_vector_bytes_recovered` (AC-8) — directly insert a row with `vector = b"short"`; calling `embed(same_text)` does not leak `EmbeddingsCacheCorrupted`, deletes only that row, re-embeds, and replaces it.
 - `test_model_digest_passthrough` (AC-9).
-- `test_concurrent_embed_calls_do_not_corrupt_db` (AC-10) — `asyncio.gather(asyncio.to_thread(wrapper.embed, "a"), asyncio.to_thread(wrapper.embed, "b"))`.
+- `test_concurrent_embed_calls_do_not_corrupt_db` (AC-10) — `asyncio.gather(asyncio.to_thread(wrapper.embed, "a"), asyncio.to_thread(wrapper.embed, "a"))`; assert no locked-db error escapes, both results are equal, and the table has exactly one row for `(BLAKE3("a"), digest)`. Do not assert `inner.embed_calls == 1`; single-flight is explicitly out of scope.
 
 ## Files to touch
 
@@ -170,7 +191,8 @@ Land `src/codegenie/rag/embedding_cache.py` with the minimum: schema creation, `
 | `src/codegenie/rag/errors.py` | Add `EmbeddingsCacheCorrupted` (extend existing module from S4-01). |
 | `tests/unit/rag/test_embedding_cache.py` | Red test + AC follow-ons. |
 | `tests/property/test_embedding_cache_roundtrip.py` | Hypothesis cache roundtrip (optional but cheap). |
-| `pyproject.toml` | Add `blake3` to runtime deps **only** if not already present (verify first). |
+
+`pyproject.toml` is expected to remain unchanged for this story: `blake3` is already a runtime dependency and `hypothesis` is already in the dev extras. Touch it only if local verification proves drift.
 
 ## Out of scope
 
@@ -192,7 +214,7 @@ In the AC-10 concurrent-gather case, two coroutines may both miss and both write
 
 ### §3 — `np.frombuffer` returns read-only views
 
-The view returned by `np.frombuffer(row_bytes, dtype=np.float32)` is read-only. The retriever / property tests should not mutate the returned vector; if a caller needs to mutate, they `.copy()` themselves. Document this in the module docstring so a future contributor doesn't waste an hour on "why can't I modify this?"
+The internal view returned by `np.frombuffer(row_bytes, dtype=np.float32)` is read-only. Convert it immediately to `EmbeddingVector(tuple(float(x) for x in decoded))` before returning; do not leak the view or make callers reason about numpy mutability. Document this in the module docstring so a future contributor doesn't reintroduce an ndarray return.
 
 ### §4 — Vector dim 384 is BGE-small-specific
 
@@ -209,3 +231,15 @@ Use `structlog` (Phase 0 convention) — `log = structlog.get_logger(__name__)` 
 ### §7 — Don't add a `clear()` method
 
 Tempting to add `def clear(self) -> None: self._conn.execute("DELETE FROM embeddings")`. **Don't.** The model-digest column already isolates upgrade scenarios; the operational recovery is "delete the file, the cache lazy-rebuilds on next access." If a future story needs cache clear, an ADR amendment is the bar — surface per Rule 7.
+
+### §8 — Composite key is not optional
+
+`text_blake3` alone is not a valid primary key because ADR-0007's invalidation contract keeps old-model rows cold while inserting new-model rows for the same input text. The cache lookup is `(text_blake3, model_digest)`, the write key is `(text_blake3, model_digest)`, and row-level corruption deletes exactly that pair. A table-level `PRIMARY KEY (text_blake3, model_digest)` is the simplest way to make the invariant representable.
+
+### §9 — `EmbeddingVector` is tuple-backed
+
+S4-01 hardened `EmbeddingVector` to a tuple-backed newtype so numpy never leaks through the `Embedder` Protocol. `embedding_cache.py` may use numpy internally to serialize/deserialize `float32` bytes, but its public inputs and outputs stay `EmbeddingVector(tuple(...))`. Avoid tests that assert `isinstance(vector, np.ndarray)`; that would regress the S4-01 contract.
+
+### §10 — Concurrency target is idempotence, not single-flight
+
+The cache wrapper is a lightweight sqlite cache-aside decorator, not an in-process single-flight service. Concurrent same-text misses may both call `inner.embed`; AC-10 only requires the sqlite file to remain valid, the final row to be correct, and no locked-db exception to escape. If a later benchmark proves duplicate same-text miss work matters, add a per-key in-flight map in a separate story with its own deadlock tests.
