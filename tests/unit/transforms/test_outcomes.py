@@ -325,6 +325,8 @@ def test_reason_literal_sets_pinned():
         "ALL_RECIPES_NOT_APPLICABLE",
         # S5-01 additive — registry walker's "zero recipes" dispatch case.
         "NO_RECIPES_REGISTERED",
+        # ADR-0015 additive — CVE does not intersect the repo dependency set.
+        "CVE_NOT_IN_DEPENDENCY_SET",
     }
     assert members(SkipReason) == {"plugin_disabled", "registry_skipped"}
     assert members(EscalationReason) == {
@@ -341,6 +343,8 @@ def test_reason_literal_sets_pinned():
         "no_concrete_match",
         "trust_outcome_failed",
         "policy_violation_unrecoverable",
+        # ADR-0015 additive — one CVE maps to multiple installed packages.
+        "MULTI_PACKAGE_CVE",
     }
     assert members(DegradationReason) == {"timeout", "partial_results", "rate_limited"}
     assert members(UnavailabilityReason) == {

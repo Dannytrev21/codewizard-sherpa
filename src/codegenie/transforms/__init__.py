@@ -93,6 +93,7 @@ from codegenie.transforms.report import (
 from codegenie.transforms.transform import Transform, TransformProvenance
 from codegenie.transforms.trust_scorer import (
     EmptySignals,
+    StageOutcome,
     TrustScorer,
     UnregisteredSignalKind,
 )
@@ -138,6 +139,7 @@ __all__ = [
     "ReportMetadata",
     "SandboxedPath",
     "ShortCircuit",
+    "StageOutcome",
     "SkipReason",
     "Skipped",
     "Transform",

@@ -41,16 +41,20 @@ from pydantic import BaseModel, ConfigDict
 
 from codegenie.plugins.bundle import Bundle
 from codegenie.plugins.resolver import PluginResolution
+from codegenie.transforms.apply_context import ApplyContext
 from codegenie.transforms.outcomes import (
     Advance,
+    ApplicationPlan,
     Escalate,
     NodeTransition,
     RecipeOutcome,
     ShortCircuit,
     TrustOutcome,
 )
+from codegenie.transforms.repo_context import InstalledDependency
 from codegenie.transforms.transform import Transform
 from codegenie.types.identifiers import BranchName, CveId, WorkflowId
+from codegenie.vuln_index.models import VulnerabilityRecord
 
 __all__ = [
     "Advance",
@@ -93,6 +97,10 @@ class SubgraphState(BaseModel):
     cve: CveId
     resolution: PluginResolution | None = None
     bundle: Bundle | None = None
+    installed_dependencies: tuple[InstalledDependency, ...] = ()
+    vulnerability_record: VulnerabilityRecord | None = None
+    application_plan: ApplicationPlan | None = None
+    apply_context: ApplyContext | None = None
     recipe_outcome: RecipeOutcome | None = None
     transform: Transform | None = None
     trust_outcome: TrustOutcome | None = None

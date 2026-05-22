@@ -182,6 +182,24 @@ class VulnIndex:
         records.sort(key=_sort_key)
         return records
 
+    def find_by_cve(self, cve: CveId) -> list[VulnerabilityRecord]:
+        """Return all records matching ``cve``, deterministically sorted.
+
+        ADR-0015 needs CVE-keyed lookup before the orchestrator intersects
+        records with the target repo dependency set. Missing CVE returns an
+        empty list, matching :meth:`lookup`'s no-match convention.
+        """
+        conn = self._require_open()
+        rows = conn.execute(
+            "SELECT cve_id, ecosystem, package, introduced, fixed, last_affected, "
+            "severity, published_at, source FROM vulnerabilities "
+            "WHERE cve_id = ?",
+            (str(cve),),
+        ).fetchall()
+        records = [_row_to_record(r) for r in rows]
+        records.sort(key=_sort_key)
+        return records
+
     def affecting_range(self, cve: CveId) -> AffectedRange:
         """Return the first matching row's AffectedRange (deterministic order)."""
         conn = self._require_open()

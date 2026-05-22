@@ -102,6 +102,7 @@ NotApplicableReason = Literal[
     "RECIPE_CATALOG_MISS",
     "ALL_RECIPES_NOT_APPLICABLE",
     "NO_RECIPES_REGISTERED",
+    "CVE_NOT_IN_DEPENDENCY_SET",
 ]
 
 SkipReason = Literal["plugin_disabled", "registry_skipped"]
@@ -122,6 +123,7 @@ HumanReviewReason = Literal[
     "no_concrete_match",
     "trust_outcome_failed",
     "policy_violation_unrecoverable",
+    "MULTI_PACKAGE_CVE",
 ]
 
 DegradationReason = Literal["timeout", "partial_results", "rate_limited"]

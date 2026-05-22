@@ -43,7 +43,7 @@ but never redefines them — there is one definition (ADR-0010).
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 from codegenie.errors import CodegenieError
 from codegenie.transforms.outcomes import TrustOutcome, TrustSignal
@@ -59,11 +59,15 @@ if TYPE_CHECKING:  # pragma: no cover — type-checker-only (see "Import-cycle n
 
 __all__ = [
     "EmptySignals",
+    "StageOutcome",
     "TrustOutcome",
     "TrustScorer",
     "TrustSignal",
     "UnregisteredSignalKind",
 ]
+
+StageOutcome: TypeAlias = TrustOutcome
+"""ADR-0015/S6-04 Phase-5 name for the Stage-6 validation return type."""
 
 
 class UnregisteredSignalKind(CodegenieError):
