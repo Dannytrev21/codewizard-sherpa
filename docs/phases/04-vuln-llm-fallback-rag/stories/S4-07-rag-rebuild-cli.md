@@ -1,10 +1,23 @@
 # Story S4-07 — `codegenie rag rebuild [--reembed]` reconstructs chroma deterministically from canonical YAML
 
 **Step:** Step 4 — Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** M
-**Depends on:** S4-03 (chromadb adapter + `digest()` projection), S4-04 (canonical YAML records + manifest with `chain_head`)
+**Depends on:** S4-03 (chromadb adapter + `digest()` projection), S4-04 (canonical YAML records + manifest with `chain_head`), S4-06 (`_phase4_local_capability_mint` + the `tests/fence/test_capability_mint_scoped.py` symbol-scope fence)
 **ADRs honored:** ADR-0016 (canonical YAML + derived sqlite; `codegenie rag rebuild` is the operational-recovery command; `--reembed` triggers re-embedding for model upgrade), Gap 1 (operator path for chromadb-corruption recovery)
+
+## Validation notes
+
+Refined by `phase-story-validator` on 2026-05-22. Verdict: **HARDENED** (1 block, 6 hardens, 1 nit). Full report: `./_validation/S4-07-rag-rebuild-cli.md`.
+
+Changes applied:
+- **Notes §1 rewritten** — the mint-scope control S4-06 *actually ships* is an `ast`-walk fence (`tests/fence/test_capability_mint_scoped.py`), **not** an import-linter contract. The old Notes §1 told the executor to "widen the import-linter contract" — that contract does not exist. The rebuild CLI (`src/codegenie/rag/cli.py`) reuses `_phase4_local_capability_mint`, which is outside S4-06's fence allowlist `{rag/ingest.py, gates/**}`; without the fix, S4-06's fence fails the moment this story lands.
+- **AC-13 added** — widen S4-06's fence allowlist to admit `src/codegenie/rag/cli.py`; the fence suite must stay green.
+- **AC-2 de-hedged** — single capability path: reuse `_phase4_local_capability_mint`. The speculative `_rebuild_capability` alternative is removed (a second mint = a second thing to keep inside the boundary).
+- **AC-12 added** — the `rmtree` safety guard from Notes §9 is now an observable acceptance criterion, not advice an executor can skip (destructive-op guard; Rule 12).
+- **AC-5 / AC-8 hardened** — "`chroma/` deleted and recreated" / "`chroma/` unchanged" are now proven with a seeded sentinel, so a rebuild that silently skips `rmtree` is caught.
+- **AC-6 hardened** — `--reembed` test now asserts *what* changed (each record's `embedding_model` digest + vector length), not just `chain_head_v2 != chain_head_v1`.
+- **Notes §3 + Out of scope clarified** — `--reembed` mutates canonical YAML in place mid-loop, so it is **not** atomically transactional; it is idempotent, so a mid-loop failure is recovered by re-running. The blanket "transactional all-or-nothing" claim only holds for default mode.
 
 ## Context
 
@@ -55,7 +68,7 @@ Ship `codegenie rag rebuild [--reembed]` CLI that reads `<root>/records/*.yaml` 
 - [ ] **AC-2 — Default mode reuses stored vectors.** Without `--reembed`:
     - Reads `manifest.yaml`; iterates `manifest.records` in order.
     - For each record ID: reads `<root>/records/<id>.yaml` → `SolvedExample.from_yaml(...)` (S4-04 added).
-    - Calls `await store.add(example, capability=_rebuild_capability(example.provenance.workflow_id, example.provenance.event_chain_head))` — using a **rebuild-only** capability mint that lives **in the CLI module** so the import-linter contract continues to admit it (or alternatively reuses `_phase4_local_capability_mint`, scoped via the existing contract since `src/codegenie/rag/cli.py` is under `src/codegenie/rag/` — see Notes §1).
+    - Calls `await store.add(example, capability=_phase4_local_capability_mint(workflow_id=example.provenance.workflow_id, chain_head=example.provenance.event_chain_head))` — the rebuild CLI **reuses S4-06's `_phase4_local_capability_mint`**; it does **not** define a parallel `_rebuild_capability` mint (one mint inside the boundary, not two). This makes `src/codegenie/rag/cli.py` a sanctioned mint callsite — see AC-13 + Notes §1 for the fence-allowlist amendment that keeps `tests/fence/test_capability_mint_scoped.py` green. (validator: de-hedged from the original `_rebuild_capability`-or-reuse fork.)
     - Uses the **stored** `example.embedding_vector` field — does **not** call `embedder.embed()`. (Pass the vector to a per-rebuild internal `store._add_with_precomputed_vector(example, vec, capability)` helper, or rely on `SolvedExample.embedding_vector` being persisted in the YAML and consumed by `store.add` — verify S4-04's posture.)
 - [ ] **AC-3 — `--reembed` re-embeds and updates the record's `embedding_model` digest.** With `--reembed`:
     - Constructs the current `FastembedEmbedder` (S4-01) and `CachedEmbedder` wrapper (S4-02).
@@ -69,11 +82,12 @@ Ship `codegenie rag rebuild [--reembed]` CLI that reads `<root>/records/*.yaml` 
     - Seeds a fresh store with 3 hand-built `SolvedExample` instances (`make_solved_example` from S4-03's fixture); records the pre-rebuild `manifest.chain_head` and `store.digest()`.
     - Runs `codegenie rag rebuild` (invoke the CLI function directly, not via subprocess — keeps the test fast).
     - Re-opens the store; asserts the post-rebuild `store.digest() == pre_rebuild_chain_head == pre_rebuild_digest` (transitive byte-identity).
-    - Asserts the `chroma/` directory was deleted and recreated.
+    - **Proves the `rmtree` actually ran (not a no-op mutant):** before invoking rebuild, write a sentinel file `<root>/chroma/_pre_rebuild_sentinel` (or corrupt `<root>/chroma/chroma.sqlite3` with garbage bytes); after rebuild, assert the sentinel is **gone** and `<root>/chroma/` exists and is non-empty. A rebuild that skips `shutil.rmtree` and re-adds on top of the existing (possibly corrupted) sqlite would leave the sentinel behind — this assertion catches that mutant, and it is the corruption-recovery contract of AC-4. (validator: hardened — original "deleted and recreated" assertion was not mutation-resistant; a dir that was never removed also exists post-rebuild.)
 - [ ] **AC-6 — `--reembed` updates digest deterministically.** Same integration shape as AC-5 but with `--reembed`:
     - Pre-rebuild: capture `manifest.chain_head_v1`.
     - Run `rag rebuild --reembed` with the (potentially new) embedder digest.
     - Post-rebuild: assert `store.digest() == manifest.chain_head_v2` (the new chain head after canonical YAML rewrite); assert `chain_head_v2 != chain_head_v1` (the YAML bytes changed — embedding_model digest column updated).
+    - **Assert *what* changed, not just *that* it changed:** re-read each `<root>/records/<id>.yaml` post-rebuild and assert (a) every record's `embedding_model` equals the new embedder `model_digest()`, and (b) every record's `embedding_vector` is still length 384. A rebuild that bumps `chain_head` for an unrelated reason (record reorder, dropped field) would pass a bare `v2 != v1` check but fail this. (validator: hardened — `chain_head_v2 != chain_head_v1` alone is not intent-verifying.)
     - **Run the rebuild twice consecutively**: assert the second run is a no-op in the sense that the post-second-run digest equals the post-first-run digest (re-embedding the same texts with the same embedder produces the same vectors; idempotent).
 - [ ] **AC-7 — Manifest missing → exit 2 with diagnostic.** Empty `<root>/`:
     - CLI exits with code 2.
@@ -83,12 +97,15 @@ Ship `codegenie rag rebuild [--reembed]` CLI that reads `<root>/records/*.yaml` 
     - CLI exits with code 1.
     - stderr names the offending file path verbatim.
     - chromadb directory **not** modified — the rebuild is transactional at the directory level (delete-then-add; the delete happens only after all YAML records are successfully parsed in a dry-run pass). See Implementation Outline §4.
+    - **Prove "not modified" concretely:** seed `<root>/chroma/_pre_rebuild_sentinel` before the failed rebuild; after the exit-1 abort, assert the sentinel **still exists**. This proves the dry-run pass aborted *before* `shutil.rmtree` ran — a rebuild that deletes chroma first and parses second would lose the sentinel. (validator: hardened — original "not modified" was unverifiable as worded.)
 - [ ] **AC-9 — `StoreCorrupted` raised on next-open is the operator nudge.** `tests/unit/rag/test_store_corruption_on_open.py`:
     - Write a 1-byte garbage file to `<root>/chroma/chroma.sqlite3` (the chromadb sqlite location).
     - Construct `ChromaPersistentStore(root_dir=<root>)`; expect `StoreCorrupted` from the lazy-open path (or `_load_existing_record_ids` if it touches chromadb).
     - Diagnostic includes `"codegenie rag rebuild"` literally.
 - [ ] **AC-10 — `make` target.** Add `make rag-rebuild` target (or document the `python -m codegenie rag rebuild` invocation) for operator convenience; mirror Phase 1/2 CLI exposure patterns.
 - [ ] **AC-11 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean.
+- [ ] **AC-12 — `rmtree` refuses to delete outside `--root`.** Before `shutil.rmtree`, the CLI verifies `(root / "chroma").resolve().is_relative_to(root.resolve())` AND that `root / "chroma"` is not a symlink. If either check fails (e.g. `--root /`, or `chroma/` is a symlink pointing elsewhere), the CLI exits **1** with stderr containing the literal substring `"refusing to remove"` and does **not** call `rmtree`. A unit test (`tests/unit/rag/test_rebuild_rmtree_guard.py`) drives both rejection cases: (a) `chroma/` is a symlink to an outside directory; (b) the resolved path escapes `root`. (validator: added — Notes §9 prescribed this destructive-op guard but no AC enforced it; an unguarded `rmtree` under operator-supplied `--root` can wipe a disk — Rule 12 "fail loud".)
+- [ ] **AC-13 — S4-06's mint fence stays green.** S4-06 ships `tests/fence/test_capability_mint_scoped.py`, an `ast`-walk fence whose allowlist for `_phase4_local_capability_mint` is `{src/codegenie/rag/ingest.py, src/codegenie/gates/**}`. Because this story makes `src/codegenie/rag/cli.py` a sanctioned mint callsite (AC-2), the fence allowlist must be **additively widened** to include `src/codegenie/rag/cli.py`. After the change, the full fence suite (`tests/fence/`) and `make check` are green, and the fence still flags any *other* file that references the mint (verified by the deliberate-violation unit test S4-06 AC-7 ships — it must remain red for non-allowlisted paths). (validator: added — without this, S4-06's fence fails the moment this story lands; see Notes §1.)
 
 ## Implementation outline
 
@@ -190,8 +207,10 @@ Why it fails: `codegenie.rag.cli.rebuild` doesn't exist (S4-01 ships `embeddings
 ### Required follow-on tests
 
 - `test_rag_rebuild_missing_manifest_exit_2` (AC-7) — empty `<root>/`; assert exit 2 + stderr contains `"no manifest.yaml found"`.
-- `test_rag_rebuild_corrupt_yaml_aborts_before_chromadb_touch` (AC-8) — write valid manifest + 2 valid records + 1 corrupt record; run rebuild; assert exit 1, stderr names the corrupt path, `<root>/chroma/` directory is **unchanged** (the dry-run pass aborted before the delete).
-- `test_rag_rebuild_reembed_updates_chain_head` (AC-6) — pre-rebuild chain head; run `--reembed` with a "different" model digest (monkeypatch `FastembedEmbedder.model_digest` to return a new digest while keeping `embed` deterministic); assert chain head changed; second `--reembed` is idempotent (chain head unchanged).
+- `test_rag_rebuild_corrupt_yaml_aborts_before_chromadb_touch` (AC-8) — write valid manifest + 2 valid records + 1 corrupt record; **seed `<root>/chroma/_pre_rebuild_sentinel`**; run rebuild; assert exit 1, stderr names the corrupt path, and the sentinel **still exists** (the dry-run pass aborted before `rmtree`).
+- `test_rag_rebuild_reembed_updates_chain_head` (AC-6) — pre-rebuild chain head; run `--reembed` with a "different" model digest (monkeypatch `FastembedEmbedder.model_digest` to return a new digest while keeping `embed` deterministic); assert chain head changed; assert every rebuilt record's `embedding_model` equals the new digest and `embedding_vector` length is 384; second `--reembed` is idempotent (chain head unchanged).
+- `test_rag_rebuild_chromadb_write_failure_exit_1` (AC-1 exit-code coverage) — inject a `store.add` failure (e.g. monkeypatch one `add` to raise); assert the CLI exits **1** and logs `rebuild.digest_mismatch` or a write-failure event. Covers the "`1` on chromadb error" exit code, which AC-8 (YAML-only) does not exercise.
+- `test_rebuild_rmtree_guard_refuses_escape` (AC-12) — `tests/unit/rag/test_rebuild_rmtree_guard.py`; two cases — `chroma/` is a symlink to an outside dir, and the resolved path escapes `root`; both assert exit 1 + `"refusing to remove"` and that `rmtree` was not called.
 - `test_store_open_on_corrupt_sqlite_raises_store_corrupted` (AC-9) — `tests/unit/rag/test_store_corruption_on_open.py`.
 
 ## Files to touch
@@ -205,6 +224,8 @@ Why it fails: `codegenie.rag.cli.rebuild` doesn't exist (S4-01 ships `embeddings
 | `tests/integration/test_phase4_rag_rebuild_missing_manifest.py` | AC-7. |
 | `tests/integration/test_phase4_rag_rebuild_corrupt_yaml.py` | AC-8 transactional. |
 | `tests/unit/rag/test_store_corruption_on_open.py` | AC-9 corruption detection. |
+| `tests/unit/rag/test_rebuild_rmtree_guard.py` | AC-12 — `rmtree` refuses to delete outside `--root` (symlink / escape cases). |
+| `tests/fence/test_capability_mint_scoped.py` | AC-13 — additively widen S4-06's mint-fence allowlist to admit `src/codegenie/rag/cli.py`. |
 | `docs/operations/rag.md` | Stub runbook (S7-10 finalizes). |
 | `Makefile` | Optional `rag-rebuild` target. |
 
@@ -214,18 +235,17 @@ Why it fails: `codegenie.rag.cli.rebuild` doesn't exist (S4-01 ships `embeddings
 - **Phase-11 pgvector adapter rebuild path** — Phase 11; the same canonical YAML + manifest survives the swap.
 - **Cross-machine rebuild migration** (moving a `<root>/` from one host to another) — works by construction (YAML is portable); not a CLI feature.
 - **Rebuild progress UI / TUI** — single line per record at INFO level is enough; no progress bar.
-- **Resume-on-failure** — rebuild is transactional (all or nothing); if a chromadb add fails mid-stream, the operator re-runs from scratch. The wholesale `rmtree` + re-add posture is intentionally simple.
+- **Resume-on-failure** — there is no resume mode. Default-mode rebuild is transactional (all or nothing on the derived `chroma/`); `--reembed` is not atomic but is idempotent (Notes §3), so in both modes the recovery is "re-run from scratch". The wholesale `rmtree` + re-add posture is intentionally simple.
 
 ## Notes for the implementer
 
 ### §1 — `_phase4_local_capability_mint` reuse from the CLI
 
-S4-06's import-linter contract pins the mint symbol to `{src/codegenie/gates/, src/codegenie/rag/ingest.py}`. The rebuild CLI module is `src/codegenie/rag/cli.py` — **outside** that allowlist. Two clean options:
+**Read S4-06 as actually hardened before implementing — the mint-scope control is not what an earlier draft of this note assumed.** S4-06 was hardened away from an import-linter contract: import-linter / grimp `forbidden` contracts operate at *module* granularity and cannot target a *function* symbol like `_phase4_local_capability_mint` (which shares `ingest.py` with the public `ingest_solved_example`). So S4-06 ships **no import-linter contract on the mint**. The control that actually exists is an `ast`-walk fence at `tests/fence/test_capability_mint_scoped.py` (S4-06 AC-6/AC-7), whose allowlist is `{src/codegenie/rag/ingest.py, src/codegenie/gates/**}`.
 
-- **(A) Widen the contract to include `src/codegenie/rag/cli.py`.** Surgical; the CLI is part of the RAG package; consistent with ADR-0003 §Decision ("only `src/codegenie/rag/` may import"). Update the import-linter block to add `src/codegenie/rag/cli.py` as a third allowed source.
-- **(B) Have `cli.py` import from `ingest`** (`from codegenie.rag.ingest import _phase4_local_capability_mint`). Same effective access but goes through the boundary the contract names — and is the **wrong direction** semantically (the CLI is doing rebuild work, not ingestion).
+The rebuild CLI module `src/codegenie/rag/cli.py` reuses `_phase4_local_capability_mint` (`from codegenie.rag.ingest import _phase4_local_capability_mint`) and is **outside** that allowlist. The fix is **not** "widen an import-linter contract" (there is none) — it is to **additively widen the `ast`-fence allowlist** in `tests/fence/test_capability_mint_scoped.py` to include `src/codegenie/rag/cli.py`. This is AC-13. It is a surgical, additive edit to a fence file S4-06 created; downstream stories extending an upstream fence's allowlist is the sanctioned "extension by addition" path. The rebuild capability is conceptually a write capability (it calls `store.add`); making the CLI a sanctioned mint callsite is honest.
 
-**Pick (A).** Surface in this story's `_validation/` log: the import-linter contract gains one allowlist entry; S4-06's executor's AC-3 contract evolves additively. The rebuild capability is **conceptually a write capability** (it's calling `store.add`); making the CLI a legitimate mint site is honest.
+Do **not** define a parallel `_rebuild_capability` in `cli.py`, and do **not** hand-construct `SolvedExampleWriteCapability(...)` in production code to dodge the fence — both defeat the Module Boundary the fence enforces (ADR-0016: the capability is minted, not hand-built). One mint, one fence, one additive allowlist entry.
 
 ### §2 — Don't make `rebuild` async unless the CLI framework forces it
 
@@ -234,6 +254,8 @@ S4-06's import-linter contract pins the mint symbol to `{src/codegenie/gates/, s
 ### §3 — Why the dry-run parse pass
 
 AC-8 hinges on rebuild being **transactional at the directory level**: a corrupt YAML must abort before chromadb is deleted. The dry-run parse-all-records-first pass costs ~ms per record (Pydantic validate from already-loaded YAML); doing it twice (once dry, once for-real) doubles the parse cost but makes the failure-recovery semantics clean. Without the dry-run, a partial rebuild followed by a corrupt-YAML error leaves the operator with a half-rebuilt chromadb — strictly worse than the pre-rebuild state.
+
+**Scope of "transactional" — default mode only.** The all-or-nothing guarantee covers **default mode**, where the canonical YAML records are read-only and only the derived `chroma/` is mutated (and only after the dry-run pass succeeds). **`--reembed` is different**: it rewrites each `<root>/records/<id>.yaml` *in place, mid-loop*, so a failure on record N leaves records `0..N-1` already re-embedded on disk. That is **not** an atomic transaction. It is, however, **idempotent** — re-embedding the same `query_text` with the same embedder yields the same vector (AC-6 pins this) — so the recovery path is simply "re-run `rag rebuild --reembed`": the already-converted records re-convert to the identical bytes and the run completes. Do not claim atomicity for `--reembed`; claim idempotent-recoverability. The "Resume-on-failure" Out-of-scope item is consistent with this: there is no resume *because* a full re-run is safe.
 
 ### §4 — Reembed changes the canonical bytes; manifest must be updated
 
