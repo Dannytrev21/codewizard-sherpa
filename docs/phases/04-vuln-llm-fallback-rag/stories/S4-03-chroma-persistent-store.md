@@ -1,10 +1,30 @@
 # Story S4-03 — `SolvedExampleStore` Protocol + `ChromaPersistentStore` + asyncio.Lock with 30s timeout
 
 **Step:** Step 4 — Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** L
-**Depends on:** S1-04 (`SolvedExample`, `Query`, `RetrievalOutcome`, `RecordProvenance` Pydantic models; `SolvedExampleId`, `StoreDigest`, `Similarity` Newtypes), S1-05 (path-scoped fence admits `chromadb` only under `src/codegenie/rag/`)
+**Depends on:** S1-04 (`SolvedExample`, `Query`, `RetrievalOutcome`, `RecordProvenance` Pydantic models; `SolvedExampleId`, `StoreDigest`, `Similarity` Newtypes — **plus the `embedding_vector` field on `SolvedExample`; see Validation note B — S1-04 as currently specified omits it and must be amended before this story executes**), S1-05 (path-scoped fence admits `chromadb` only under `src/codegenie/rag/`; creates the empty `src/codegenie/rag/__init__.py` namespace marker), S4-01 (creates `src/codegenie/rag/errors.py` and the `rag` package's first error types — **this story *extends* that module**)
 **ADRs honored:** ADR-0016 (chromadb PersistentClient embedded; YAML canonical; sqlite derived; single-writer constraint declared in Protocol + enforced by `asyncio.Lock`; per-(task_class, language, build_system) collection), Gap 3 (lock-contention contract: 30s `await`, then raise `StoreWriteContention`)
+
+## Validation notes
+
+Validated: 2026-05-22
+Verdict: HARDENED
+Findings addressed: 16 — 1 block, 13 harden, 2 nit
+
+**Surfaced cross-story blocker (note B) — requires an S1-04 amendment before this story can execute.** AC-4 reads `example.embedding_vector` and `add()` passes it to chromadb as `embeddings=[...]`. ADR-0016 §Consequences mandates that canonical records carry "embedding model digest **+ vector**" so `codegenie rag rebuild` can re-insert into chromadb *without re-embedding*. But S1-04's `SolvedExample` model (already HARDENED) ships fields `id … embedding_model, created_at` with **no `embedding_vector`**. The chromadb default embedding function is `all-MiniLM`, not the pinned `fastembed` BGE-small, so the store *must* receive an explicit pre-computed vector — it cannot fall back to letting chromadb embed `documents`. Resolution: S1-04 must be amended to add `embedding_vector: EmbeddingVector` to `SolvedExample` (a one-field extension-by-addition — adding a struct field is a sanctioned enforcement mechanism per CLAUDE.md, not a silent edit). This story is hardened to depend on that field explicitly; it stays `HARDENED` (the goal/shape are sound) but **must not be executed until S1-04 carries `embedding_vector`**.
+
+Changes applied:
+- **AC-4 fixed (block, note B)** — made the `example.embedding_vector` dependency explicit; the search key is `embeddings=[list(example.embedding_vector)]`, not `documents`. The `<doc_text>` requirement was removed: it referenced `affected_package`/`failure_mode`, which are `Query` fields, not `SolvedExample` fields, and `documents` is non-searchable stored text once an explicit vector is supplied.
+- **AC-1 / AC-9 (harden)** — the Protocol's `query`/`add` are `async def`; arch §Component 7 and final-design §7 show them as sync `def`. The async form is correct (`asyncio.Lock` + `asyncio.to_thread` both require `await`; arch §Concurrency + HLI Step 4 mandate the lock). Added Notes §10 acknowledging the deviation so the executor does not "fix" it back to sync. AC-9 now also pins each method's signature, not just its name.
+- **AC-5 / Notes §4 (harden)** — removed the contradiction: AC-5 previously said the *public* `query` accepts a `query_embedding` kwarg, while Notes §4 picked option (B) (a *private* `_query_with_embedding`). AC-5 now matches AC-1's four-arg Protocol signature; the private `_query_with_embedding` is the real read path S5-01 calls.
+- **AC-3 / Notes §11 (harden)** — `_load_existing_record_ids()` cannot reconstruct true insertion order across multiple chromadb collections; the canonical insertion-order source is S4-04's `manifest.yaml`. `digest()` cross-process determinism is therefore deferred to S4-04; S4-03's `digest()` contract is within-process (order of `add()` calls in the live store).
+- **AC-7 (harden)** — pinned `close()` idempotency (a second `close()` is a no-op) and `digest()`-after-`close()` behavior (still works — pure in-memory projection).
+- **AC-8 (harden)** — fixed the misleading parenthetical: on timeout the `add()` `finally` does **not** release (the `acquired` guard is `False`); the lock returns to unlocked only when the test releases its own manual hold. The `locked()` assertion catches an unguarded `release()` mutant. Settled on one timeout mechanism — `monkeypatch` of `_ADD_LOCK_TIMEOUT_SECONDS` — and reconciled the 0.1s/0.05s drift.
+- **TDD plan (harden)** — `test_add_then_query_returns_rag_hit` never queried; renamed and split. Added: a real `add → _query_with_embedding → RagHit` round-trip; a positive empty-store-digest test; an explicit insertion-order-sensitivity test (two stores, same records, opposite order → different digests).
+- Nits: `StoreCorrupted` is declared-but-not-exercised here (corruption recovery is later work); chromadb metadata must be a flat `str/int/float/bool` dict.
+
+Full audit log: docs/phases/04-vuln-llm-fallback-rag/stories/_validation/S4-03-chroma-persistent-store.md
 
 ## Context
 
@@ -45,41 +65,49 @@ Ship `SolvedExampleStore` Protocol + `ChromaPersistentStore` adapter at `src/cod
     - `async def query(self, q: Query, *, top_k: int = 5, similarity_floor: float | None = None) -> RetrievalOutcome`.
     - `async def add(self, example: SolvedExample, capability: SolvedExampleWriteCapability) -> SolvedExampleId`.
     - `def digest(self) -> StoreDigest` — synchronous; pure projection over current record IDs.
-    - `def close(self) -> None` — synchronous; releases the chromadb client + closes the asyncio lock state.
+    - `def close(self) -> None` — synchronous; releases the chromadb client. (An `asyncio.Lock` needs no teardown — do **not** write "close the lock"; there is nothing to close. `close()` only drops the chromadb client reference.)
+    `query`/`add` are `async def`; arch §Component 7 and final-design §7 show them as sync `def`, but the `asyncio.Lock` (arch §Concurrency, HLI Step 4) and `asyncio.to_thread` wrapping both require `await`. The async form is the resolved contract — see Notes §10.
     Module docstring states the **single-writer constraint** verbatim per ADR-0016 §Decision (and AC-9's fence test grep-anchors on the phrase "single-writer constraint").
 - [ ] **AC-2 — `SolvedExampleWriteCapability` marker shape.** `src/codegenie/rag/store.py` exports `SolvedExampleWriteCapability` as a `@final` frozen dataclass with one field: `workflow_id: WorkflowId`. The class has no public constructor in user-visible surface — S4-06 ships the `_phase4_local_capability_mint` factory; this story only declares the type. Tests in this story construct it via direct call inside the test module (boundary lift acknowledged with `# AC-2-test-only-direct-construction` comment near the construction site).
 - [ ] **AC-3 — `ChromaPersistentStore.__init__` opens chromadb embedded mode.** `ChromaPersistentStore(root_dir: Path)`:
     - Calls `chromadb.PersistentClient(path=str(root_dir / "chroma"))` exactly once; caches the client on `self._client`.
     - Resolves collection-per-partition lazily: `_get_collection(task_class, language, build_system) -> chromadb.Collection` uses `client.get_or_create_collection(name=f"{task_class}__{language}__{build_system}")`.
     - Creates a single asyncio lock on `self._add_lock = asyncio.Lock()`.
-    - Initializes `self._record_ids: list[SolvedExampleId] = []` in insertion order, populated by reading existing collections on init (call `_load_existing_record_ids()`; if no collections exist yet, list is empty).
+    - Initializes `self._record_ids: list[SolvedExampleId] = []`, populated by reading existing collections on init (call `_load_existing_record_ids()`; if no collections exist yet, list is empty). **Insertion-order caveat:** chromadb's `collection.get()` does not guarantee insertion order, and there is one collection per partition — so `_load_existing_record_ids()` cannot reconstruct the true cross-process insertion order in S4-03. It loads in chromadb's returned order; the canonical insertion-order source is S4-04's `manifest.yaml`. See AC-6 and Notes §11 — `digest()` cross-process (close/reopen) determinism is deferred to S4-04; S4-03's `digest()` contract is within-process only.
 - [ ] **AC-4 — `add()` writes to the partition collection and appends to record_ids.** `await store.add(example, capability)`:
-    - Acquires `self._add_lock` with a `30.0` second timeout via `asyncio.wait_for(self._add_lock.acquire(), timeout=30.0)`. Timeout → raise `StoreWriteContention(workflow_id=capability.workflow_id)`. Lock released in `finally`.
+    - Acquires `self._add_lock` with a `_ADD_LOCK_TIMEOUT_SECONDS` (default `30.0`) timeout via `asyncio.wait_for(self._add_lock.acquire(), timeout=_ADD_LOCK_TIMEOUT_SECONDS)`. Timeout → raise `StoreWriteContention(workflow_id=capability.workflow_id)`. The lock is released in a `finally` **guarded by an `acquired` flag** (Implementation Outline §7) — never call `release()` on a lock this coroutine did not acquire.
     - Resolves `collection = self._get_collection(example.task_class, example.language, example.build_system)`.
-    - Calls `collection.add(ids=[example.id], embeddings=[list(example.embedding_vector)], metadatas=[<metadata>], documents=[<doc_text>])` where `<doc_text>` is `Query`-shaped key text (`failure_mode`, `cve_id`, `affected_package`) — the same text the retriever embeds at query time.
-    - chromadb `add` is **sync** (verify in practice); to honor "don't block the event loop", wrap in `await asyncio.to_thread(collection.add, ...)` per Risks section of `High-level-impl.md §Step 4`.
+    - Calls `collection.add(ids=[example.id], embeddings=[list(example.embedding_vector)], metadatas=[<metadata>])` — the **search key is the explicit pre-computed `example.embedding_vector`** (a 384-tuple per S1-01's `EmbeddingVector = NewType("EmbeddingVector", tuple)`). **Do not** pass `documents=` as a search-driving field: chromadb's default embedding function is `all-MiniLM`, not the pinned `fastembed` BGE-small, so letting chromadb embed `documents` would produce vectors incompatible with the retriever's query vectors. `documents=` may be passed as optional human-readable stored text, but it is **not** the query key. (See Validation note B: `example.embedding_vector` requires the S1-04 amendment.)
+    - `<metadata>` is a **flat `dict[str, str | int | float | bool]`** — chromadb metadata cannot hold nested models. Carry the partition triple, `embedding_model`, and the `provenance` **serialized to a flat field** (e.g. `provenance.event_chain_head` as a string, or the whole `RecordProvenance` as a JSON string) — Out of scope confirms `provenance` *is persisted as metadata here*; only its chain *verification* is deferred to S4-05. Do not attempt to store the nested `RecordProvenance` object directly — chromadb will reject it.
+    - chromadb `collection.add` is **sync** (confirm via the spike, Implementation Outline §1); to honor "don't block the event loop", wrap in `await asyncio.to_thread(collection.add, ...)` per Risks section of `High-level-impl.md §Step 4`.
     - Appends `example.id` to `self._record_ids`.
     - Returns `example.id`.
-- [ ] **AC-5 — `query()` returns `RetrievalOutcome` over the matching partition only.** `await store.query(q, top_k=5)`:
-    - Resolves the partition collection from `q.task_class, q.language, q.build_system`. If the collection doesn't exist (no records ever added for that partition) → returns `RagMiss` immediately (per arch §Component 9 "Returns `RagMiss` rather than raising when the store is empty").
-    - Embeds NOTHING — chromadb queries take a pre-embedded `query_embeddings` array; the retriever (S5-01) does the embedding and passes the vector. This story's Protocol takes a **`Query`** but the chromadb-specific embedding is the retriever's responsibility; in S4-03 we *temporarily* internally embed by accepting an optional `query_embedding: EmbeddingVector | None` kwarg with the documented contract: "if `None`, the retriever has not yet been wired — `RagMiss` is returned." (See Notes §4 for the cleanup path.)
-    - Returns `RagHit(few_shot=record, score=Similarity(top_score))` if top result above `similarity_floor` (when provided); else `RagMiss`. **NO band classification here** — the two-threshold band is S5-02; this story's `query` returns the raw scored top-k record and a `RagHit/RagMiss` projection wired to `similarity_floor` only.
+- [ ] **AC-5 — public `query()` honors the Protocol surface; the real read path is private `_query_with_embedding()`.** This story implements **two** read methods (resolving the AC-1 ↔ Notes §4 design choice — option B):
+    - **Public `query(q: Query, *, top_k=5, similarity_floor=None) -> RetrievalOutcome`** — exactly the AC-1 Protocol signature (**no `query_embedding` parameter** — adding one would break the four-method Protocol surface and AC-9's fence). chromadb similarity search needs a *pre-embedded* vector; a `Query` carries typed fields, not a vector, and this story ships no embedder inside the store. The public `query` therefore **resolves the partition collection** from `q.task_class, q.language, q.build_system` and **returns `RagMiss`** — it cannot produce a `RagHit` without a vector. Its docstring states: "the embedding-bearing read path is `_query_with_embedding`, called by `SolvedExampleRetriever` (S5-01); the public `query` returns `RagMiss` until the retriever is wired." This keeps the Protocol surface honest about what it does without a vector.
+    - **Private `_query_with_embedding(q: Query, query_embedding: EmbeddingVector, *, top_k=5, similarity_floor=None) -> RetrievalOutcome`** — the in-house read path S5-01 calls. Resolves the partition collection from `q`; if the collection doesn't exist (no records ever added for that partition) → returns `RagMiss` (per arch §Component 9 "Returns `RagMiss` rather than raising when the store is empty"). Otherwise runs `await asyncio.to_thread(collection.query, query_embeddings=[list(query_embedding)], n_results=top_k)`, takes the top result, and returns `RagHit(few_shot=record, score=Similarity(top_score))` if `similarity_floor is None or top_score >= similarity_floor`; else `RagMiss`.
+    - **NO band classification here** — the two-threshold band is S5-02; both methods return only `RagHit | RagMiss` (never `RagDegraded`), wired to `similarity_floor` alone.
+- [ ] **AC-5b — partition collections are isolated.** A record added under partition `(task_class=A, language=L, build_system=B)` is **never** returned by a `_query_with_embedding` against a different partition triple. The query routes to exactly one collection (O(1) lookup); cross-partition leakage is a correctness failure. (Pinned by `test_partition_collections_are_independent`.)
 - [ ] **AC-6 — `digest()` is BLAKE3-rolled over the current record-id list.** `digest()`:
     - `h = blake3.blake3()`; for each `id in self._record_ids` (in insertion order): `h.update(id.encode("utf-8"))`.
     - Returns `StoreDigest(h.hexdigest())`.
-    - Empty store → returns `StoreDigest(blake3.blake3().hexdigest())` (the BLAKE3 of empty bytes — deterministic).
-    - Two stores that received the **same records in the same order** return identical digests; one store receiving records in a different order returns a different digest. Order is the contract.
-- [ ] **AC-7 — `close()` releases the client + lock state.** After `store.close()`:
+    - Empty store → returns `StoreDigest(blake3.blake3().hexdigest())` (the BLAKE3 of empty bytes — deterministic; the literal hex is `af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262`). A fresh store's `digest()` **equals** this constant — pinned by a positive test, not only by the `!=`-after-add direction.
+    - Two stores that received the **same records in the same order** return identical digests; one store receiving the same records in a **different order** returns a **different** digest. Order is the contract — pinned by an explicit two-store opposite-order test (TDD plan). **Do not sort** `_record_ids` before rolling (Notes §5).
+    - **Within-process scope.** This insertion-order contract holds for the order of `add()` calls in the *live* store. Cross-process determinism (close → reopen → `digest()` byte-identical) is **not** guaranteed in S4-03 because `_load_existing_record_ids()` cannot reconstruct chromadb insertion order (AC-3 caveat); S4-04's `manifest.yaml` is the canonical insertion-order source that makes the rebuild golden test (S4-07) deterministic. See Notes §11.
+- [ ] **AC-7 — `close()` releases the client; is idempotent; `digest()` survives it.** After `store.close()`:
     - `self._client = None`.
-    - Subsequent `query` / `add` calls raise `StoreClosed` (typed exception in `codegenie.rag.errors`).
+    - Subsequent `query` / `_query_with_embedding` / `add` calls raise `StoreClosed` (typed exception in `codegenie.rag.errors`).
+    - **`close()` is idempotent** — a second `close()` on an already-closed store is a no-op (returns `None`, raises nothing). A lifecycle method that raises on double-close is a footgun for `try/finally` teardown.
+    - **`digest()` still works after `close()`** — it is a pure projection over the in-memory `self._record_ids`, which `close()` does not clear; it does not touch `self._client`. `digest()` does **not** raise `StoreClosed`. (Pinned by a follow-on test.)
 - [ ] **AC-8 — `StoreWriteContention` integration test (the load-bearing pin).** `tests/integration/test_phase4_store_contention_30s.py` (the SHORT version of S4-08's `harvest_contention` test — the full multi-coroutine `asyncio.gather` version lives in S4-08):
-    - Acquire `store._add_lock` manually in the test (`await store._add_lock.acquire()`), then call `await store.add(example, capability)` with a **patched** `asyncio.wait_for` that fast-forwards (mock the timeout to ~0.1s for test speed — or use `freezegun` / a `monkeypatch` of the timeout constant to 0.1).
+    - **One** timeout mechanism: `monkeypatch.setattr("codegenie.rag.store._ADD_LOCK_TIMEOUT_SECONDS", 0.05)`. Do not patch `asyncio.wait_for` and do not use `freezegun` — patching the module constant is the clean, single-knob approach and matches the Red test below.
+    - Acquire `store._add_lock` manually in the test (`await store._add_lock.acquire()`), then call `await store.add(example, capability)`; with the lock held, the `add()` must time out.
     - Assert `StoreWriteContention` raised with `exc.workflow_id == capability.workflow_id`.
-    - Assert `self._add_lock.locked()` is `False` after the raise (the `finally` released the never-acquired lock — verify the try/except guards the `wait_for(acquire())` correctly; this is a known subtle pattern).
+    - **Then the test releases its own manual hold** (`store._add_lock.release()` in a `finally`) and asserts `store._add_lock.locked() is False`. Note the mechanics precisely: on timeout, `add()`'s `acquired` flag is `False`, so its `finally` does **not** call `release()` — the lock stays held by the *test* until the test releases it. This assertion catches a buggy `add()` that calls `release()` **unguarded** (without the `acquired` flag): an unguarded release on a lock `add()` never acquired would either raise `RuntimeError` or desync the lock so the test's own `release()` fails. Verify the `try/except/finally` from Implementation Outline §7 — the `acquired` guard is the load-bearing detail.
 - [ ] **AC-9 — `SolvedExampleStore` Protocol fence test.** `tests/fence/test_solved_example_store_protocol_frozen.py` asserts:
-    - `{n for n in dir(SolvedExampleStore) if not n.startswith("_")} == {"query", "add", "digest", "close"}`.
+    - `{n for n in dir(SolvedExampleStore) if not n.startswith("_")} == {"query", "add", "digest", "close"}` (exactly four; no fifth method, no speculative `update`/`delete` — Notes §8).
     - `inspect.iscoroutinefunction(SolvedExampleStore.query)` is `True`; same for `add`.
     - `inspect.isfunction(SolvedExampleStore.digest)` AND not coroutine; same for `close`.
+    - **Signatures are pinned, not just names** — via `inspect.signature`: `add`'s parameter list is exactly `(self, example, capability)` (the `capability` gate is load-bearing — a mutant that drops it must fail the fence); `query`'s is exactly `(self, q, *, top_k, similarity_floor)`; `digest`/`close` take only `(self)`. This catches a "rename a name back, keep the signature wrong" mutant that the name-set check alone misses.
     - Module docstring of `store.py` contains the literal substring `"single-writer constraint"` (the load-bearing ADR-0016 framing).
 - [ ] **AC-10 — Path-scoped fence still green.** `tests/fence/test_pyproject_fence_phase4.py` passes; `chromadb` imported only inside `src/codegenie/rag/store.py`.
 - [ ] **AC-11 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean.
@@ -87,23 +115,27 @@ Ship `SolvedExampleStore` Protocol + `ChromaPersistentStore` adapter at `src/cod
 ## Implementation outline
 
 1. **Spike first** (Risks line 140 of High-level-impl.md): a one-page script that creates a `chromadb.PersistentClient`, opens a collection, calls `add` from two `asyncio.gather`-launched coroutines under `asyncio.to_thread`, confirms no deadlock and the asyncio.Lock works correctly. **If chromadb itself blocks the loop** (it's CPython sync code under the hood), the `asyncio.to_thread` wrapping is the correct shape — confirm via the spike before proceeding. **Throw the spike away** before opening the PR; it lives as a comment in the module docstring naming the verified posture.
-2. **`errors.py` additions** — `StoreWriteContention(Exception)` with `workflow_id: WorkflowId` typed attribute; `StoreCorrupted(Exception)`; `StoreClosed(Exception)`. All three referenced by arch §Component 7 §Failure behavior.
+2. **`errors.py` additions** — *extend* the `src/codegenie/rag/errors.py` module S4-01 creates. Add `StoreWriteContention(Exception)` with a `workflow_id: WorkflowId` typed attribute; `StoreClosed(Exception)`; `StoreCorrupted(Exception)`. All three are named by arch §Component 7 §Failure behavior. `StoreWriteContention` and `StoreClosed` are *exercised* by this story's tests (AC-8, AC-7); `StoreCorrupted` is **declared here for the family but not raised in S4-03** — corruption-recovery is later work (rebuild-from-YAML, S4-04/S4-07). Do not write a test that forces `StoreCorrupted` in this story.
 3. **`store.py` skeleton** — `from __future__ import annotations`; module docstring naming ADR-0016, the single-writer constraint, the Phase-11 pgvector swap precondition.
 4. **`SolvedExampleWriteCapability`** — `@final` frozen dataclass with `workflow_id: WorkflowId`. No constructor magic. Docstring says "minted by `_phase4_local_capability_mint` in S4-06; do not construct directly outside the mint module."
 5. **`SolvedExampleStore` Protocol** — `@runtime_checkable`; four-method surface per AC-1. Method docstrings encode the contract (idempotency, error shapes, return invariants).
 6. **`ChromaPersistentStore` class**:
-   - `__init__(self, root_dir: Path)`.
+   - `__init__(self, root_dir: Path)` — no embedder injected (the store does not embed; see Notes §4).
    - `_get_collection(task_class, language, build_system) -> chromadb.Collection`.
-   - `_load_existing_record_ids()`.
-   - `add(self, example, capability)`: lock + `asyncio.to_thread(collection.add, ...)` + record_ids append.
-   - `query(self, q, *, top_k, similarity_floor, query_embedding=None)`: partition lookup + `asyncio.to_thread(collection.query, ...)` if `query_embedding` provided; else `RagMiss`.
-   - `digest()`: rolled BLAKE3.
-   - `close()`.
+   - `_load_existing_record_ids()` — see AC-3 caveat + Notes §11.
+   - `add(self, example, capability)`: lock + `asyncio.to_thread(collection.add, ...)` (`embeddings=[list(example.embedding_vector)]`) + record_ids append.
+   - `query(self, q, *, top_k=5, similarity_floor=None)` — the AC-1 Protocol surface; resolves the partition and returns `RagMiss` (no vector available; AC-5).
+   - `_query_with_embedding(self, q, query_embedding, *, top_k=5, similarity_floor=None)` — the real read path: partition lookup + `asyncio.to_thread(collection.query, ...)` → `RagHit | RagMiss`. Called by S5-01's retriever.
+   - `digest()`: rolled BLAKE3 over `_record_ids`.
+   - `close()`: idempotent; drops the client; `digest()` still works after.
+   - `_check_open()` helper: raises `StoreClosed` when `self._client is None` — called at the top of `add` / `query` / `_query_with_embedding` (not `digest`).
 7. **30s timeout pattern (subtle):**
    ```python
    acquired = False
    try:
-       await asyncio.wait_for(self._add_lock.acquire(), timeout=30.0)
+       await asyncio.wait_for(
+           self._add_lock.acquire(), timeout=_ADD_LOCK_TIMEOUT_SECONDS
+       )
        acquired = True
        # ... do work
    except asyncio.TimeoutError as e:
@@ -112,6 +144,7 @@ Ship `SolvedExampleStore` Protocol + `ChromaPersistentStore` adapter at `src/cod
        if acquired:
            self._add_lock.release()
    ```
+   Use the module constant `_ADD_LOCK_TIMEOUT_SECONDS` (default `30.0`), never a literal — AC-8's test monkeypatches the constant.
 8. **Tests:**
    - `tests/unit/rag/test_store.py` covers AC-3 through AC-7; AC-9 fence test in `tests/fence/`.
    - `tests/integration/test_phase4_store_contention_30s.py` covers AC-8 (the SHORT contention test; S4-08 lands the full `asyncio.gather` version with two coroutines + monotonic chain head).
@@ -131,9 +164,9 @@ from pathlib import Path
 import pytest
 
 from codegenie.rag.errors import StoreWriteContention
+from codegenie.rag.models import RagHit
 from codegenie.rag.store import (
     ChromaPersistentStore,
-    SolvedExampleStore,
     SolvedExampleWriteCapability,
 )
 from codegenie.types.identifiers import (
@@ -141,14 +174,22 @@ from codegenie.types.identifiers import (
     StoreDigest,
     WorkflowId,
 )
-# Test fixture for SolvedExample construction (S1-04 ships the model):
-from tests.fixtures.rag.fake_solved_example import make_solved_example
+# Test fixtures (S1-04 ships SolvedExample/Query; this story ships the builders):
+from tests.fixtures.rag.fake_solved_example import (
+    make_query_matching,
+    make_solved_example,
+)
+
+
+_EMPTY_BLAKE3 = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+# ^ BLAKE3 hexdigest of empty input — AC-6.
 
 
 @pytest.mark.asyncio
-async def test_add_then_query_returns_rag_hit(tmp_path: Path) -> None:
+async def test_add_appends_record_and_changes_digest(tmp_path: Path) -> None:
     """ADR-0016 §Decision: chromadb is the queryable derived index.
-    Catches "add never writes" and "query always returns RagMiss" mutants."""
+    Catches the "add never writes" mutant: a no-op add leaves digest at
+    the empty-BLAKE3 constant."""
     store = ChromaPersistentStore(root_dir=tmp_path)
     cap = SolvedExampleWriteCapability(workflow_id=WorkflowId("wf-001"))
     example = make_solved_example(
@@ -158,14 +199,35 @@ async def test_add_then_query_returns_rag_hit(tmp_path: Path) -> None:
         build_system="npm",
         cve_id="CVE-2026-1234",
     )
+    assert store.digest() == StoreDigest(_EMPTY_BLAKE3)  # fresh store (AC-6)
+
     sid = await store.add(example, cap)
     assert sid == SolvedExampleId("ex-001")
+    # After one add, digest must have moved off the empty constant.
+    assert store.digest() != StoreDigest(_EMPTY_BLAKE3)
+    store.close()
 
-    # Empty digest is BLAKE3 of nothing; after one add it must differ.
-    assert store.digest() != StoreDigest(
-        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
-        # ^ BLAKE3 of empty input
+
+@pytest.mark.asyncio
+async def test_add_then_query_with_embedding_returns_rag_hit(tmp_path: Path) -> None:
+    """The load-bearing round-trip: a record added to the store is
+    retrievable. Catches the "query always returns RagMiss" mutant and a
+    "store.add silently drops the vector" mutant. Uses the private
+    _query_with_embedding (AC-5) — the public query() has no vector and
+    returns RagMiss by contract."""
+    store = ChromaPersistentStore(root_dir=tmp_path)
+    cap = SolvedExampleWriteCapability(workflow_id=WorkflowId("wf-001"))
+    example = make_solved_example(id_="ex-001")  # carries embedding_vector
+    await store.add(example, cap)
+
+    q = make_query_matching(example)  # same partition triple as `example`
+    outcome = await store._query_with_embedding(
+        q, example.embedding_vector, top_k=5
     )
+    assert isinstance(outcome, RagHit)
+    assert outcome.few_shot.id == SolvedExampleId("ex-001")
+    # Querying with the record's own vector → top similarity ~1.0.
+    assert outcome.score >= 0.99
     store.close()
 
 
@@ -200,7 +262,7 @@ Why it fails: `codegenie.rag.store` doesn't exist.
 
 ### Green — make it pass
 
-Land the minimum: `_ADD_LOCK_TIMEOUT_SECONDS: Final[float] = 30.0` module constant, the Protocol declaration, `ChromaPersistentStore` with the three methods, the timeout pattern from Implementation Outline §7. Use `asyncio.to_thread(collection.add, ...)` to keep the event loop responsive.
+Land the minimum: `_ADD_LOCK_TIMEOUT_SECONDS: Final[float] = 30.0` module constant, the Protocol declaration, `ChromaPersistentStore` with the four public methods (`query`, `add`, `digest`, `close`) **plus** the private `_query_with_embedding`, the timeout pattern from Implementation Outline §7. Use `asyncio.to_thread(collection.add, ...)` / `asyncio.to_thread(collection.query, ...)` to keep the event loop responsive.
 
 ### Refactor
 
@@ -210,11 +272,15 @@ Land the minimum: `_ADD_LOCK_TIMEOUT_SECONDS: Final[float] = 30.0` module consta
 
 ### Required follow-on tests
 
-- `test_protocol_surface_frozen` (AC-9) — fence test.
-- `test_digest_changes_on_add` (AC-6) — empty digest != after-add digest; same records added in different order produce different digests.
-- `test_query_empty_partition_returns_rag_miss` (AC-5).
-- `test_close_disables_subsequent_operations` (AC-7) — `pytest.raises(StoreClosed)` after `close()`.
-- `test_partition_collections_are_independent` — adding an example with `(task_class="vuln_remediation", language="ts", build_system="npm")` doesn't appear when querying `(task_class="distroless_migration", ...)`.
+- `test_protocol_surface_frozen` (AC-9) — fence test; the exact four-name set, coroutine-ness, **and** `inspect.signature` of every method (the `capability` param on `add` is load-bearing).
+- `test_empty_store_digest_is_blake3_of_empty` (AC-6) — a fresh store's `digest()` **equals** `_EMPTY_BLAKE3` (positive direction — catches a `digest()` that hashes something other than the empty roll).
+- `test_digest_is_insertion_order_sensitive` (AC-6) — **two** stores; add the *same* two records `ex-A`, `ex-B` to store-1 and `ex-B`, `ex-A` to store-2; assert `store1.digest() != store2.digest()`. Then a third store with `ex-A`, `ex-B` (same order as store-1): `store3.digest() == store1.digest()`. Kills the "sort `_record_ids` before rolling" mutant (Notes §5) — a sorting impl makes all three digests equal.
+- `test_query_empty_partition_returns_rag_miss` (AC-5) — `_query_with_embedding` against a never-populated partition → `RagMiss`, not a raise.
+- `test_public_query_returns_rag_miss_without_vector` (AC-5) — the public `query(q)` returns `RagMiss` even after a matching record was added (it has no vector — by contract).
+- `test_close_disables_subsequent_operations` (AC-7) — `pytest.raises(StoreClosed)` from `add` / `query` / `_query_with_embedding` after `close()`.
+- `test_close_is_idempotent` (AC-7) — a second `close()` raises nothing.
+- `test_digest_survives_close` (AC-7) — `digest()` after `close()` returns the same value it returned before `close()`; no `StoreClosed`.
+- `test_partition_collections_are_independent` (AC-5b) — add a record under `(task_class="vuln_remediation", language="typescript", build_system="npm")`; a `_query_with_embedding` against `(task_class="distroless_migration", language="typescript", build_system="npm")` returns `RagMiss` (the record never leaks across the partition boundary).
 
 ## Files to touch
 
@@ -223,7 +289,7 @@ Land the minimum: `_ADD_LOCK_TIMEOUT_SECONDS: Final[float] = 30.0` module consta
 | `src/codegenie/rag/store.py` | `SolvedExampleStore` Protocol + `ChromaPersistentStore` + `SolvedExampleWriteCapability` marker. |
 | `src/codegenie/rag/errors.py` | Extend with `StoreWriteContention`, `StoreCorrupted`, `StoreClosed`. |
 | `tests/fixtures/rag/__init__.py` | New test-fixture package. |
-| `tests/fixtures/rag/fake_solved_example.py` | `make_solved_example(...)` helper — builds a valid `SolvedExample` with sensible defaults; single boundary lift of raw `str` → `SolvedExampleId` etc. |
+| `tests/fixtures/rag/fake_solved_example.py` | `make_solved_example(...)` — builds a valid `SolvedExample` with sensible defaults, **including a valid `embedding_vector`** (a 384-element tuple of floats — see Validation note B; depends on the S1-04 amendment); single boundary lift of raw `str` → `SolvedExampleId` etc. `make_query_matching(example)` — builds a `Query` whose partition triple (`task_class`, `language`, `build_system`) matches a given `SolvedExample`, for the round-trip test. |
 | `tests/unit/rag/test_store.py` | AC red test + follow-ons. |
 | `tests/integration/test_phase4_store_contention_30s.py` | AC-8 (short contention test; S4-08 lands the full multi-coroutine test). |
 | `tests/fence/test_solved_example_store_protocol_frozen.py` | AC-9. |
@@ -252,16 +318,16 @@ ADR-0016 commits to YAML as canonical and chromadb sqlite as derived. The atomic
 
 The phrase "single-writer constraint" must appear verbatim in `SolvedExampleStore`'s docstring (AC-9 grep-anchors on it). The reason: a future contributor who writes a second adapter (pgvector in Phase 11) must read the Protocol's contract and discover that **concurrent writes serialize at the adapter level**. If pgvector's adapter doesn't serialize, the contract is violated even though it could trivially support concurrent writes. The serialization is the Phase-4 conformance bar — the Protocol carries it forward.
 
-### §4 — The temporary `query_embedding=None` kwarg
+### §4 — Two read methods: public `query` + private `_query_with_embedding` (resolved — option B)
 
-The Protocol declares `query(q: Query, *, top_k, similarity_floor) -> RetrievalOutcome` but the `ChromaPersistentStore.query` impl needs the **pre-embedded** vector that the retriever (S5-01) will compute. Two clean options:
+The Protocol declares `query(q: Query, *, top_k, similarity_floor) -> RetrievalOutcome` but chromadb similarity search needs a **pre-embedded** vector, which a `Query` does not carry and which this store does not compute (no embedder is injected). Two options were considered:
 
-- **(A)** Carry an internal embedder reference inside the store. Pollutes the store/retriever boundary and means the store secretly does embedding work.
-- **(B)** Add a private `_query_with_embedding(q, vec, top_k, similarity_floor)` method that the retriever calls; the public `query(q, ...)` method either raises (the retriever's job) or returns `RagMiss`.
+- **(A)** Carry an internal embedder reference inside the store. Rejected — it pollutes the store/retriever boundary, means the store secretly does embedding work, and would force `add()` to embed too (contradicting ADR-0016's "records carry their vector; rebuild does not re-embed").
+- **(B) — chosen.** A private `_query_with_embedding(q, query_embedding, *, top_k, similarity_floor)` method is the real read path; the public `query(q, ...)` keeps exactly the four-arg Protocol signature and returns `RagMiss` (it has no vector). S5-01's retriever embeds the `Query` and calls `_query_with_embedding` explicitly.
 
-Option (B) is the cleaner shape; the public `query` is the Protocol commitment, and the private `_query_with_embedding` is the in-house bypass. The story's AC-5 keeps the public method's behavior on the `query_embedding=None` path (return `RagMiss`) so the Protocol surface is honest about what it does without a vector. S5-01 will call the private method explicitly.
+**Do not** add a `query_embedding` parameter to the *public* `query` — that would change the Protocol surface and break AC-9's four-method fence and signature pin. The vector flows through the *private* method only. AC-5 is the contract; AC-1 is the Protocol shape; they now agree.
 
-**Surface the trade-off in the module docstring.** A reviewer who reads the Protocol and wonders "where does the embedding happen?" deserves an inline answer.
+**Surface the split in the module docstring.** A reviewer who reads the Protocol and wonders "where does the embedding happen?" deserves an inline answer: the retriever embeds; the store stores pre-computed vectors (`add`) and searches with a passed-in vector (`_query_with_embedding`).
 
 ### §5 — `digest()` is order-sensitive on purpose
 
@@ -282,3 +348,11 @@ The Protocol has four methods. A future story might want `delete()` for retracti
 ### §9 — Test posture for the contention test
 
 S4-08 owns the full `asyncio.gather`-two-coroutines + monotonic-chain-head integration test. This story ships the **shorter** integration test that pins just the timeout behavior (manual lock acquisition + timeout assertion) — sufficient to catch a regression where someone changes `30.0` to `30` (still works) or removes the `try/finally` (lock leaks; the test catches via `locked()` assertion).
+
+### §10 — `query`/`add` are `async`, deviating from the arch's illustrative code snippet (acknowledged)
+
+Arch §Component 7 and final-design §7 print the `SolvedExampleStore` Protocol with **synchronous** `def query` / `def add`. This story ships them as **`async def`** and AC-9 pins them as coroutines. The async form is correct and is the resolved contract — arch §Concurrency (line 269) and HLI Step 4 both mandate a process-local `asyncio.Lock` around `add()`, `asyncio.Lock.acquire()` must be `await`ed, and the `asyncio.to_thread` wrapping of the sync chromadb calls requires an async caller. The arch's code snippet is illustrative drift (the sibling `Embedder` Protocol in S4-01 is genuinely sync because it has no lock). **Do not "fix" `query`/`add` back to sync `def`** — that would make the 30 s lock-contention contract (Gap 3, AC-8) unimplementable. This is a deliberate, surfaced deviation per Global Rule 7 (surface conflicts, don't average them).
+
+### §11 — `digest()` cross-process determinism is deferred to S4-04's manifest
+
+`digest()` rolls BLAKE3 over `self._record_ids` in insertion order (AC-6). Within a single live store, insertion order is the order of `add()` calls — deterministic. **Across a close/reopen it is not**, because `_load_existing_record_ids()` rebuilds `_record_ids` from chromadb, and `collection.get()` does not promise insertion order — and there is one collection per partition, so even a stable per-collection order would not give a global insertion order. The canonical insertion-order record is S4-04's `.codegenie/rag/manifest.yaml` (`{records: [...]}`, an ordered list per ADR-0016 §Consequences). S4-07's `rag rebuild` golden test — which needs a byte-identical `digest()` after a rebuild — depends on that manifest, not on chromadb's `get()` order. So in S4-03: state plainly in the `digest()` docstring that cross-process determinism arrives with S4-04; do **not** claim reopen-stability the implementation cannot deliver (Rule 12 — fail loud). `_load_existing_record_ids()` loads in chromadb's returned order as a best effort for the live `_record_ids` list.
