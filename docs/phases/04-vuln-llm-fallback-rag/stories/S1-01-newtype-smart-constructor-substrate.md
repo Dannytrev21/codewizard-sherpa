@@ -1,7 +1,7 @@
 # Story S1-01 — Newtype + smart-constructor substrate
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** HARDENED
+**Status:** Done — 2026-05-22 (phase-story-executor; see [`_attempts/S1-01.md`](_attempts/S1-01.md) for the per-AC evidence table + gate log — Phase-4 identifier substrate landed with 11 new NewTypes, 8 smart constructors, exact `__all__` / `_NEWTYPE_REGISTRY` reconciliation, mypy swap-negative tests, Hypothesis parser properties, and the raw-domain-annotation fence. Story-scoped gates green: 419 type tests, 374 fence tests, `mypy --strict src/codegenie/types`, `ruff`, and `lint-imports`. Full `make check` reached 6085 passed / 40 skipped / 9 xfailed but failed on a pre-existing local timing threshold in `tests/adv/test_tsconfig_pathological.py::test_gather_under_pathological_tsconfig_silently_swallows_under_two_seconds` at 2.06–2.65s on macOS, outside this story's touched surface.)
 **Effort:** S
 **Depends on:** —
 **ADRs honored:** ADR-0001 (closed-sum `PlanProposal` consumes `SandboxedRelativePath`, `SemverString`, `PackageId` — never raw `str`), ADR-0010 (Phase-4 `BudgetToken` is capability-typed — `BudgetTokenId` newtype), ADR-0014 (cassette discipline — `CassetteId` newtype), ADR-0016 (chromadb/YAML canonical — `StoreDigest`, `ChainHead`, `BlobDigest`)

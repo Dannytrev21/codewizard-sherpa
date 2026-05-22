@@ -138,6 +138,31 @@ SemverVersion = NewType("SemverVersion", str)
 # (composer + ``BundleCacheStore.put`` + ``BundleCacheStore.get``) met.
 BundleCacheKey = NewType("BundleCacheKey", str)
 
+# --- Phase-4 catalog (S1-01 — LLM fallback + solved-example RAG) ----------
+
+# BLAKE3 hex of canonical solved-example YAML. S4-04 owns canonical records.
+SolvedExampleId = NewType("SolvedExampleId", str)
+# Kernel-tier vector carrier. Shape/dtype validation belongs to S4-01's embedder.
+EmbeddingVector = NewType("EmbeddingVector", tuple)  # type: ignore[type-arg]
+# BLAKE3 digest of the embedded Chroma/YAML store state. S4-03/S4-04 consume.
+StoreDigest = NewType("StoreDigest", str)
+# Cosine similarity score in [-1.0, 1.0]. S5-02 consumes as threshold input.
+Similarity = NewType("Similarity", float)
+# Provider/model slug such as ``claude-sonnet-4-5-20250929``. S3-02 consumes.
+ModelId = NewType("ModelId", str)
+# Non-negative bounded token count. S2-05 budget guard consumes.
+TokenCount = NewType("TokenCount", int)
+# Provider response identifier. Constructed by S3-02's Anthropic adapter.
+LeafResponseId = NewType("LeafResponseId", str)
+# UUID4 budget capability identifier. S2-05 consumes.
+BudgetTokenId = NewType("BudgetTokenId", str)
+# Cassette lock relpath key. Constructed by S3-04/S3-05 cassette discipline.
+CassetteId = NewType("CassetteId", str)
+# 16-byte lowercase hex canary nonce. S2-03 consumes.
+HexNonce = NewType("HexNonce", str)
+# BLAKE3-rolled manifest chain head. S4-04/S4-05 consume.
+ChainHead = NewType("ChainHead", str)
+
 # --- Phase-7 catalog (S1-01) ----------------------------------------------
 
 # OCI image reference (``registry/name[:tag]`` or ``name[:tag]``). The smart
@@ -188,19 +213,26 @@ __all__ = [
     "AttemptNumber",
     "BlobDigest",
     "BranchName",
+    "BudgetTokenId",
     "BundleCacheKey",
+    "CassetteId",
+    "ChainHead",
     "ConventionId",
     "CveId",
     "DockerStageName",
     "Ecosystem",
+    "EmbeddingVector",
     "ErrorId",
     "EventId",
+    "HexNonce",
     "ImageDigest",
     "ImageRef",
     "IndexId",
     "IndexName",
     "Language",
     "LayerDigest",
+    "LeafResponseId",
+    "ModelId",
     "PackageId",
     "PackageManager",
     "PackageName",
@@ -213,8 +245,12 @@ __all__ = [
     "RuntimeId",
     "SemverVersion",
     "SignalKind",
+    "Similarity",
     "SkillId",
+    "SolvedExampleId",
+    "StoreDigest",
     "TaskClassId",
+    "TokenCount",
     "TransformId",
     "TransformKind",
     "WorkflowId",
@@ -271,6 +307,20 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
         "Phase-3 ``blake3:<64-hex>`` Bundle cache key (ADR-0010); "
         "S3-05 smart-constructed via ``compose_bundle_cache_key``."
     ),
+    # Phase-4 (S1-01 — LLM fallback + solved-example RAG).
+    "SolvedExampleId": "Phase-4 solved-example YAML id (ADR-0016); S4-04 canonical record key.",
+    "EmbeddingVector": (
+        "Phase-4 embedding vector carrier (ADR-0007); S4-01 validates BGE-small shape."
+    ),
+    "StoreDigest": "Phase-4 RAG store digest (ADR-0016); S4-03/S4-04 store verification.",
+    "Similarity": "Phase-4 cosine similarity score (ADR-0008); S5-02 threshold classifier.",
+    "ModelId": "Phase-4 provider model id (ADR-0005); S3-02 Anthropic adapter.",
+    "TokenCount": "Phase-4 token-count budget primitive (ADR-0010); S2-05 budget guard.",
+    "LeafResponseId": "Phase-4 leaf LLM response id (ADR-0005); S3-02 adapter boundary.",
+    "BudgetTokenId": "Phase-4 budget token id (ADR-0010); S2-05 capability issuer.",
+    "CassetteId": "Phase-4 cassette lock id (ADR-0014); S3-04/S3-05 cassette discipline.",
+    "HexNonce": "Phase-4 canary nonce (ADR-0013); S2-03 injection guard.",
+    "ChainHead": "Phase-4 manifest chain head (ADR-0016); S4-04/S4-05 provenance verify.",
     # Phase-7 (S1-01 — vuln.provenance newtype catalog).
     "ImageRef": "Phase-7 OCI image reference (ADR-0004); BaseImageStage.ref + Dockerfile recipes.",
     "ImageDigest": (

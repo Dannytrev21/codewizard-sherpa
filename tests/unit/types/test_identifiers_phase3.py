@@ -258,6 +258,19 @@ PHASE7_NEWTYPE_NAMES = {
     "DockerStageName",
 }
 PHASE7_TYPE_ALIAS_NAMES = {"ProvenanceAdapterId"}
+PHASE4_NAMES = {
+    "BudgetTokenId",
+    "CassetteId",
+    "ChainHead",
+    "EmbeddingVector",
+    "HexNonce",
+    "LeafResponseId",
+    "ModelId",
+    "Similarity",
+    "SolvedExampleId",
+    "StoreDigest",
+    "TokenCount",
+}
 
 
 def test_newtype_names_pinned() -> None:
@@ -293,6 +306,7 @@ def test_all_is_exact_set() -> None:
         | PHASE3_LITERAL_NAMES
         | PHASE7_NEWTYPE_NAMES
         | PHASE7_TYPE_ALIAS_NAMES
+        | PHASE4_NAMES
     )
     assert ids.__all__ == sorted(ids.__all__), "__all__ must be sorted"
 
@@ -342,6 +356,10 @@ def test_newtype_registry_matches_all() -> None:
         if name in PHASE7_NEWTYPE_NAMES:
             assert "ADR-0004" in doc or "ADR-0006" in doc, (
                 f"{name} Phase 7 docstring missing ADR-0004 / ADR-0006 citation"
+            )
+        elif name in PHASE4_NAMES:
+            assert "ADR-000" in doc or "ADR-001" in doc, (
+                f"{name} Phase 4 docstring missing Phase 4 ADR citation"
             )
         else:
             assert "ADR-0010" in doc, f"{name} docstring missing ADR-0010 citation"

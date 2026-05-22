@@ -28,13 +28,17 @@ from codegenie.types.identifiers import (
     AttemptNumber,
     BlobDigest,
     BranchName,
+    BudgetTokenId,
+    ChainHead,
     CveId,
     DockerStageName,
     Ecosystem,
     EventId,
+    HexNonce,
     ImageDigest,
     ImageRef,
     LayerDigest,
+    ModelId,
     PackageId,
     PackageName,
     PluginId,
@@ -44,6 +48,10 @@ from codegenie.types.identifiers import (
     RuntimeId,
     SemverVersion,
     SignalKind,
+    Similarity,
+    SolvedExampleId,
+    StoreDigest,
+    TokenCount,
     TransformId,
     TransformKind,
     WorkflowId,
@@ -53,13 +61,17 @@ __all__ = [
     "parse_attempt_number",
     "parse_blob_digest",
     "parse_branch_name",
+    "parse_budget_token_id",
+    "parse_chain_head",
     "parse_cve_id",
     "parse_docker_stage_name",
     "parse_ecosystem",
     "parse_event_id",
+    "parse_hex_nonce",
     "parse_image_digest",
     "parse_image_ref",
     "parse_layer_digest",
+    "parse_model_id",
     "parse_package_id",
     "parse_package_name",
     "parse_plugin_id",
@@ -69,6 +81,10 @@ __all__ = [
     "parse_runtime_id",
     "parse_semver",
     "parse_signal_kind",
+    "parse_similarity",
+    "parse_solved_example_id",
+    "parse_store_digest",
+    "parse_token_count",
     "parse_transform_id",
     "parse_transform_kind",
     "parse_workflow_id",
@@ -80,6 +96,14 @@ __all__ = [
 _CVE_RX: Final[re.Pattern[str]] = re.compile(r"^CVE-\d{4}-\d{4,7}$")
 _ULID_RX: Final[re.Pattern[str]] = re.compile(r"^[0-7][0-9A-HJKMNP-TV-Z]{25}$")
 _HEX64_RX: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
+_HEX32_RX: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{32}$")
+_UUID4_RX: Final[re.Pattern[str]] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+_MODEL_ID_RX: Final[re.Pattern[str]] = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?:-\d{8})?$"
+)
 _SNAKE_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 _RECIPE_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _PLUGIN_RX: Final[re.Pattern[str]] = re.compile(
@@ -163,6 +187,9 @@ def _regex_parser(
 _cve_match = _regex_parser(_CVE_RX, max_len=21, name="CveId")
 _ulid_match = _regex_parser(_ULID_RX, max_len=26, name="Ulid")
 _hex64_match = _regex_parser(_HEX64_RX, max_len=64, name="Hex64")
+_hex32_match = _regex_parser(_HEX32_RX, max_len=32, name="Hex32")
+_uuid4_match = _regex_parser(_UUID4_RX, max_len=36, name="BudgetTokenId")
+_model_id_match = _regex_parser(_MODEL_ID_RX, max_len=128, name="ModelId")
 _signal_match = _regex_parser(_SNAKE_RX, max_len=31, name="SignalKind")
 _primitive_match = _regex_parser(_SNAKE_RX, max_len=31, name="PrimitiveName")
 _transform_kind_match = _regex_parser(_SNAKE_RX, max_len=31, name="TransformKind")
@@ -245,6 +272,78 @@ def parse_blob_digest(s: str) -> Result[BlobDigest, ParseError]:
     if isinstance(r, Err):
         return Err(error=ParseError(message="BlobDigest: must be 64 lowercase hex chars", value=s))
     return Ok(value=BlobDigest(r.value))
+
+
+def parse_solved_example_id(s: str) -> Result[SolvedExampleId, ParseError]:
+    """External boundary: canonical solved-example YAML id. ADR-0016."""
+    r = _hex64_match(s)
+    if isinstance(r, Err):
+        return Err(
+            error=ParseError(message="SolvedExampleId: must be 64 lowercase hex chars", value=s)
+        )
+    return Ok(value=SolvedExampleId(r.value))
+
+
+def parse_store_digest(s: str) -> Result[StoreDigest, ParseError]:
+    """Internal boundary: RAG store digest. ADR-0016."""
+    r = _hex64_match(s)
+    if isinstance(r, Err):
+        return Err(error=ParseError(message="StoreDigest: must be 64 lowercase hex chars", value=s))
+    return Ok(value=StoreDigest(r.value))
+
+
+def parse_chain_head(s: str) -> Result[ChainHead, ParseError]:
+    """Internal boundary: RAG manifest chain head. ADR-0016."""
+    r = _hex64_match(s)
+    if isinstance(r, Err):
+        return Err(error=ParseError(message="ChainHead: must be 64 lowercase hex chars", value=s))
+    return Ok(value=ChainHead(r.value))
+
+
+def parse_hex_nonce(s: str) -> Result[HexNonce, ParseError]:
+    """Internal boundary: canary nonce. ADR-0013."""
+    r = _hex32_match(s)
+    if isinstance(r, Err):
+        return Err(error=ParseError(message="HexNonce: must be 32 lowercase hex chars", value=s))
+    return Ok(value=HexNonce(r.value))
+
+
+def parse_budget_token_id(s: str) -> Result[BudgetTokenId, ParseError]:
+    """Internal boundary: budget capability id. ADR-0010."""
+    r = _uuid4_match(s)
+    return Ok(value=BudgetTokenId(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_model_id(s: str) -> Result[ModelId, ParseError]:
+    """External boundary: LLM provider model slug. NFKC + ASCII-only. ADR-0005."""
+    normalised = unicodedata.normalize("NFKC", s)
+    if not _is_ascii(normalised):
+        return Err(error=ParseError(message="ModelId: non-ASCII after NFKC", value=s))
+    if normalised != s:
+        return Err(error=ParseError(message="ModelId: NFKC-normalisation changed value", value=s))
+    r = _model_id_match(normalised)
+    return Ok(value=ModelId(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_similarity(x: float) -> Result[Similarity, ParseError]:
+    """Internal boundary: cosine similarity score. ADR-0008."""
+    if isinstance(x, bool) or not isinstance(x, (float, int)):
+        return Err(error=ParseError(message="Similarity: must be float", value=repr(x)))
+    value = float(x)
+    if value != value or value in (float("inf"), float("-inf")):
+        return Err(error=ParseError(message="Similarity: must be finite", value=repr(x)))
+    if value < -1.0 or value > 1.0:
+        return Err(error=ParseError(message="Similarity: must be in [-1.0, 1.0]", value=repr(x)))
+    return Ok(value=Similarity(value))
+
+
+def parse_token_count(n: int) -> Result[TokenCount, ParseError]:
+    """Internal boundary: LLM token count. ADR-0010."""
+    if not isinstance(n, int) or isinstance(n, bool):
+        return Err(error=ParseError(message="TokenCount: must be int", value=repr(n)))
+    if n < 0 or n > 2**31 - 1:
+        return Err(error=ParseError(message="TokenCount: must be in 0..2**31-1", value=repr(n)))
+    return Ok(value=TokenCount(n))
 
 
 def parse_workflow_id(s: str) -> Result[WorkflowId, ParseError]:
