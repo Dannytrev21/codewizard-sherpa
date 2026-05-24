@@ -282,6 +282,14 @@ _TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset(
         # the `vuln_provenance` seed; future ADR-0039 primitives land under
         # `primitives/{name}/` by precedent.
         "primitives",
+        # Phase 4 S1-02 — `fallback/` is the additive home for the
+        # LLM-fallback + solved-example RAG surface (Phase-4 ADR-0001 closed
+        # `PlanProposal` discriminated union; Phase-4 ADR-0004 PlanOutcome
+        # wraps RecipeOutcome). Established as a new top-level package by
+        # S1-02 with `plan_proposal.py`; S1-03 adds `plan_outcome.py`.
+        # Future Phase-4 modules (prompt builder, leaf-LLM port, fallback
+        # tier) land under `fallback/` by precedent.
+        "fallback",
     }
 )
 
