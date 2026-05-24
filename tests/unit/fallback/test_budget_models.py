@@ -1,6 +1,14 @@
-"""Phase-4 S1-04 — happy/sad-path tests for ``BudgetSnapshot`` + ``BudgetToken``.
+"""Phase-4 — happy/sad-path tests for ``BudgetSnapshot`` + ``BudgetToken``.
 
-The RAG-side models are exercised in ``tests/unit/rag/test_models.py``.
+S1-04 shipped the original model shapes; **S2-05 reshaped them** to
+match the issuer's needs (``LlmInvocationGuard(max_tokens=, max_dollars=)``
+plus ``outstanding_tokens: dict[BudgetTokenId, TokenCount]`` plus the
+projection fields). Per Global Rule 7 (surface conflicts) the rename
+``cap_tokens`` → ``max_tokens`` is documented in the S2-05 attempt log; the
+old ``_marker`` ``PrivateAttr`` was dropped per S2-05 AC-2 Note (it never
+delivered the schema guard a draft claimed).
+
+The RAG-side models stay under ``tests/unit/rag/test_models.py``.
 """
 
 from __future__ import annotations
@@ -12,9 +20,11 @@ import pytest
 from pydantic import ValidationError
 
 from codegenie.fallback.budget import BudgetSnapshot, BudgetToken
+from codegenie.types.identifiers import BudgetTokenId
 
 _UTC_NOW = datetime(2026, 1, 1, tzinfo=UTC)
 _TOKEN = {
+    "id": "a" * 32,
     "precharged_tokens": 5_000,
     "precharged_dollars": Decimal("0.03"),
     "issued_at": _UTC_NOW,
@@ -22,13 +32,14 @@ _TOKEN = {
 _SNAPSHOT = {
     "consumed_tokens": 100,
     "consumed_dollars": Decimal("0.5"),
-    "outstanding_tokens": 0,
-    "cap_tokens": 1_000,
-    "cap_dollars": Decimal("1.5"),
+    "max_tokens": 1_000,
+    "max_dollars": Decimal("1.5"),
+    "outstanding_tokens": {},
+    "outstanding_dollars": Decimal("0"),
 }
 
 
-# --- extra="forbid" / frozen, parametrized over both budget models (AC-10) ---
+# --- extra="forbid" / frozen, parametrized over both budget models ----------
 
 
 @pytest.mark.parametrize(
@@ -53,7 +64,7 @@ def test_frozen_rejects_assignment(model_cls, payload, field) -> None:  # type: 
         setattr(instance, field, getattr(instance, field))
 
 
-# --- BudgetSnapshot invariants (AC-6 + AC-17) ---
+# --- BudgetSnapshot invariants ----------------------------------------------
 
 
 def test_budget_snapshot_happy() -> None:
@@ -61,24 +72,56 @@ def test_budget_snapshot_happy() -> None:
 
 
 def test_budget_snapshot_keyset_pinned() -> None:
+    """The five stored fields plus two computed projection fields."""
     expected = {
         "consumed_tokens",
         "consumed_dollars",
+        "max_tokens",
+        "max_dollars",
         "outstanding_tokens",
-        "cap_tokens",
-        "cap_dollars",
+        "outstanding_dollars",
+        "remaining_tokens",
+        "remaining_dollars",
     }
     assert set(BudgetSnapshot.model_validate(_SNAPSHOT).model_dump()) == expected
 
 
-def test_budget_snapshot_consumed_plus_outstanding_exceeds_cap_rejected() -> None:
+def test_budget_snapshot_remaining_tokens_projection() -> None:
+    """``remaining_tokens == max - consumed - sum(outstanding)``."""
+    snap = BudgetSnapshot.model_validate(
+        {
+            **_SNAPSHOT,
+            "consumed_tokens": 100,
+            "outstanding_tokens": {BudgetTokenId("b" * 32): 200},
+        }
+    )
+    assert snap.remaining_tokens == 1_000 - 100 - 200
+
+
+def test_budget_snapshot_remaining_dollars_projection() -> None:
+    """``remaining_dollars`` debits both consumed and outstanding."""
+    snap = BudgetSnapshot.model_validate(
+        {
+            **_SNAPSHOT,
+            "consumed_dollars": Decimal("0.5"),
+            "outstanding_dollars": Decimal("0.2"),
+        }
+    )
+    assert snap.remaining_dollars == Decimal("1.5") - Decimal("0.5") - Decimal("0.2")
+
+
+def test_budget_snapshot_consumed_plus_outstanding_exceeds_max_rejected() -> None:
     with pytest.raises(ValidationError):
         BudgetSnapshot.model_validate(
-            {**_SNAPSHOT, "consumed_tokens": 800, "outstanding_tokens": 300}
+            {
+                **_SNAPSHOT,
+                "consumed_tokens": 800,
+                "outstanding_tokens": {BudgetTokenId("c" * 32): 300},
+            }
         )
 
 
-def test_budget_snapshot_consumed_dollars_exceeds_cap_rejected() -> None:
+def test_budget_snapshot_consumed_dollars_exceeds_max_rejected() -> None:
     with pytest.raises(ValidationError):
         BudgetSnapshot.model_validate({**_SNAPSHOT, "consumed_dollars": Decimal("2.0")})
 
@@ -88,44 +131,32 @@ def test_budget_snapshot_negative_dollars_rejected() -> None:
         BudgetSnapshot.model_validate({**_SNAPSHOT, "consumed_dollars": Decimal("-0.5")})
 
 
-def test_budget_snapshot_negative_tokens_rejected() -> None:  # AC-17
+def test_budget_snapshot_negative_tokens_rejected() -> None:
     with pytest.raises(ValidationError):
         BudgetSnapshot.model_validate({**_SNAPSHOT, "consumed_tokens": -1})
 
 
-# --- BudgetToken (AC-7 + AC-13 + AC-17 + AC-18) ---
+# --- BudgetToken -------------------------------------------------------------
 
 
 def test_budget_token_happy() -> None:
     bt = BudgetToken.model_validate(_TOKEN)
     assert bt.precharged_tokens == 5_000
     assert bt.precharged_dollars == Decimal("0.03")
+    assert bt.id == "a" * 32
 
 
 def test_budget_token_keyset_pinned() -> None:
-    # _marker is a PrivateAttr — must NOT appear in model_dump().
-    expected = {"precharged_tokens", "precharged_dollars", "issued_at"}
+    """Four stored fields; S2-05 added ``id`` and dropped ``_marker``."""
+    expected = {"id", "precharged_tokens", "precharged_dollars", "issued_at"}
     assert set(BudgetToken.model_validate(_TOKEN).model_dump()) == expected
 
 
-def test_budget_token_negative_precharged_tokens_rejected() -> None:  # AC-17
+def test_budget_token_negative_precharged_tokens_rejected() -> None:
     with pytest.raises(ValidationError):
         BudgetToken.model_validate({**_TOKEN, "precharged_tokens": -1})
 
 
-def test_budget_token_issued_at_naive_datetime_rejected() -> None:  # AC-13
+def test_budget_token_issued_at_naive_datetime_rejected() -> None:
     with pytest.raises(ValidationError):
         BudgetToken.model_validate({**_TOKEN, "issued_at": datetime(2026, 1, 1)})
-
-
-def test_budget_token_marker_default() -> None:  # AC-18
-    assert BudgetToken.model_validate(_TOKEN)._marker == "budget_token"
-
-
-def test_budget_token_marker_not_serialized() -> None:  # AC-18 — PrivateAttr ⇒ excluded
-    assert "_marker" not in BudgetToken.model_validate(_TOKEN).model_dump()
-
-
-def test_budget_token_forged_marker_rejected() -> None:  # AC-18 — capability cannot be injected
-    with pytest.raises(ValidationError):
-        BudgetToken.model_validate({**_TOKEN, "_marker": "forged"})

@@ -548,3 +548,66 @@ as_packages = true
 source_modules = ["codegenie"]
 forbidden_modules = ["fastembed", "onnxruntime"]
 # ignore_imports omitted — S4-01 appends `codegenie.rag.embedder -> fastembed` / `-> onnxruntime`.
+
+# ---------------------------------------------------------------------------
+# Phase-4 S2-05 — ``BudgetToken`` two-frame capability scope (ADR-0010).
+# The token flows through exactly two frames at runtime
+# (``FallbackTier → LeafLlm.invoke``). To make ``import-linter`` express that
+# at the module-level granularity it operates on, ``BudgetToken`` was split
+# out into its own submodule ``codegenie.fallback.budget_token`` (the
+# issuer ``codegenie.fallback.budget`` re-exports it for ergonomic back-
+# compat — the re-export is the single whitelisted edge below).
+#
+# Each downstream story appends its own ``ignore_imports`` line for the
+# allowed importers when the module lands — extension by addition, mirroring
+# the ADR-0003 path-scoped admission pattern above:
+#   - S3-02 (anthropic_adapter):  codegenie.fallback.leaf.anthropic_adapter -> codegenie.fallback.budget_token
+#   - S6-01 (fallback tier):     codegenie.fallback.tier -> codegenie.fallback.budget_token
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "ADR-0010: BudgetToken is two-frame scoped"
+type = "forbidden"
+as_packages = true
+# `source_modules` enumerates every `codegenie.*` subpackage EXCEPT
+# `codegenie.fallback.budget_token` itself — import-linter's `forbidden`
+# contract requires source and forbidden trees to be disjoint (otherwise it
+# raises "Modules have shared descendants"). Sibling submodules of
+# `codegenie.fallback` are listed individually so the codegenie.fallback
+# subtree is fully covered minus the forbidden submodule. The
+# `tests/fence/test_budget_token_scope.py` shape test pins this list so
+# future additions to the codegenie tree are surfaced (Rule 12 — fail loud).
+source_modules = [
+  "codegenie.adapters",
+  "codegenie.cache",
+  "codegenie.catalogs",
+  "codegenie.config",
+  "codegenie.conventions",
+  "codegenie.coordinator",
+  "codegenie.depgraph",
+  "codegenie.exec",
+  "codegenie.fallback.budget",
+  "codegenie.fallback.fence",
+  "codegenie.fallback.plan_outcome",
+  "codegenie.fallback.plan_proposal",
+  "codegenie.fallback.provenance_gate",
+  "codegenie.grammars",
+  "codegenie.indices",
+  "codegenie.output",
+  "codegenie.parsers",
+  "codegenie.plugins",
+  "codegenie.primitives",
+  "codegenie.probes",
+  "codegenie.rag",
+  "codegenie.report",
+  "codegenie.schema",
+  "codegenie.skills",
+  "codegenie.tccm",
+  "codegenie.transforms",
+  "codegenie.types",
+  "codegenie.vuln_index",
+]
+forbidden_modules = ["codegenie.fallback.budget_token"]
+ignore_imports = [
+  "codegenie.fallback.budget -> codegenie.fallback.budget_token",
+]

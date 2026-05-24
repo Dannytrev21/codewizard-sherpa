@@ -189,6 +189,12 @@ _INTERNAL_VARIANTS = frozenset(
         # Phase-4 S2-04 — ``PromptBuilder`` audit events.
         "PromptAssembled",
         "SegmentCountTruncated",
+        # Phase-4 S2-05 — ``LlmInvocationGuard`` budget audit events.
+        "BudgetPrecharged",
+        "BudgetReconciled",
+        "BudgetReconciledDuplicate",
+        "BudgetCapExceeded",
+        "BudgetUnknownTokenReconcile",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -206,13 +212,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_21_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01 + S2-02 + S2-04: every named internal variant is exported."""
+def test_all_26_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01/02/04/05: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 21
+    assert len(_INTERNAL_VARIANTS) == 26
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -978,3 +984,127 @@ def test_prompt_builder_events_round_trip_through_event_log(tmp_path: Path) -> N
     assert len(truncations) == 1
     assert truncations[0].requested == 42
     assert truncations[0].kept == 16
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S2-05 — ``LlmInvocationGuard`` budget audit events round-trip.
+# Each of the five new variants emits via emit_internal and round-trips
+# through replay() with byte-stable Pydantic equality.
+# ---------------------------------------------------------------------------
+
+
+def test_budget_events_round_trip_through_emit_and_replay(tmp_path: Path) -> None:
+    """AC-13 — every new S2-05 internal event lands on disk and reads back equal."""
+    from decimal import Decimal
+
+    from codegenie.plugins.events import (
+        BudgetCapExceeded,
+        BudgetPrecharged,
+        BudgetReconciled,
+        BudgetReconciledDuplicate,
+        BudgetUnknownTokenReconcile,
+    )
+    from codegenie.types.identifiers import BudgetTokenId, TokenCount
+
+    log = EventLog(root=tmp_path, workflow_id=_wf(), clock=_now)
+    token_id = BudgetTokenId("a" * 32)
+
+    log.emit_internal(
+        BudgetPrecharged(
+            event_id=EventId("01HBDGPREXX"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            token_id=token_id,
+            precharged_tokens=TokenCount(100),
+            precharged_dollars=Decimal("0.0003"),
+        )
+    )
+    log.emit_internal(
+        BudgetReconciled(
+            event_id=EventId("01HBDGRECXX"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            token_id=token_id,
+            actual_in=TokenCount(50),
+            actual_out=TokenCount(30),
+            actual_dollars=Decimal("0.00024"),
+        )
+    )
+    log.emit_internal(
+        BudgetReconciledDuplicate(
+            event_id=EventId("01HBDGDUPXX"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            token_id=token_id,
+        )
+    )
+    log.emit_internal(
+        BudgetCapExceeded(
+            event_id=EventId("01HBDGCAPXX"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            reason="workflow_max_dollars_exceeded",
+        )
+    )
+    log.emit_internal(
+        BudgetUnknownTokenReconcile(
+            event_id=EventId("01HBDGUNKXX"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            token_id=BudgetTokenId("0" * 32),
+        )
+    )
+    log.flush()
+
+    # ``replay()`` sorts by (timestamp, event_id); with a fixed ``clock=_now``
+    # all events share a timestamp so the order is event_id-lexicographic, not
+    # emit order. Assert by class membership instead — the round-trip property
+    # is that every emitted variant lands on disk and reads back equal,
+    # regardless of replay-side sort.
+    replayed = list(log.replay())
+    assert len(replayed) == 5
+    by_type = {type(e): e for e in replayed}
+    assert set(by_type) == {
+        BudgetPrecharged,
+        BudgetReconciled,
+        BudgetReconciledDuplicate,
+        BudgetCapExceeded,
+        BudgetUnknownTokenReconcile,
+    }
+    pre = by_type[BudgetPrecharged]
+    assert isinstance(pre, BudgetPrecharged)
+    assert pre.precharged_dollars == Decimal("0.0003")
+    rec = by_type[BudgetReconciled]
+    assert isinstance(rec, BudgetReconciled)
+    assert rec.actual_in == 50
+    cap = by_type[BudgetCapExceeded]
+    assert isinstance(cap, BudgetCapExceeded)
+    assert cap.reason == "workflow_max_dollars_exceeded"
+
+
+def test_emit_internal_rejects_unregistered_class(tmp_path: Path) -> None:
+    """AC-13 — ``emit_internal`` raises ``TypeError`` for an unregistered class.
+
+    Pydantic-model-but-not-in-``_INTERNAL_CLASSES`` is the realistic regression
+    risk: someone adds a new event class to the file but forgets to register it
+    in the union and the tuple. ``isinstance(event, _INTERNAL_CLASSES)`` is the
+    runtime guard.
+    """
+    from pydantic import BaseModel, ConfigDict
+
+    class _Unregistered(BaseModel):
+        model_config = ConfigDict(frozen=True, extra="forbid")
+        event_type: str = "unregistered"
+        event_id: EventId
+        workflow_id: WorkflowId
+        timestamp: datetime
+
+    log = EventLog(root=tmp_path, workflow_id=_wf())
+    with pytest.raises(TypeError, match="WorkflowInternalEvent"):
+        log.emit_internal(  # type: ignore[arg-type]
+            _Unregistered(
+                event_id=EventId("01HUNREG"),
+                workflow_id=_wf(),
+                timestamp=_now(),
+            )
+        )

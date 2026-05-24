@@ -50,6 +50,7 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Final, Literal, Protocol, runtime_checkable
 
@@ -61,6 +62,7 @@ from codegenie.plugins.cache_gc import CacheGcCompletedEvent
 from codegenie.types.identifiers import (
     BlobDigest,
     BranchName,
+    BudgetTokenId,
     CveId,
     EventId,
     HexNonce,
@@ -68,6 +70,7 @@ from codegenie.types.identifiers import (
     PrimitiveName,
     RecipeId,
     SignalKind,
+    TokenCount,
     TransformId,
     WorkflowId,
 )
@@ -516,6 +519,114 @@ class SegmentCountTruncated(BaseModel):
     kept: int
 
 
+# --- Phase-4 S2-05 — ``LlmInvocationGuard`` budget audit events -------------
+# Names are deliberately distinct from the exceptions ``BudgetExceeded`` /
+# ``BudgetReconcileUnknownToken`` (which live in ``codegenie.fallback.budget``):
+# an event and an exception sharing a name forces every reader / ``grep`` to
+# guess which is meant. Story S2-05 §"Event vs exception names must not
+# collide" pins the rename.
+
+_BUDGET_CAP_REASON = Literal[
+    "per_call_max_exceeded",
+    "workflow_max_tokens_exceeded",
+    "workflow_max_dollars_exceeded",
+]
+
+
+class BudgetPrecharged(BaseModel):
+    """Phase-4 S2-05 — ``LlmInvocationGuard.precharge`` minted a token.
+
+    Emitted exactly once per successful precharge (after every cap check
+    passed and before the token is returned). The ``token_id`` is the
+    uuid4-hex ``BudgetTokenId`` minted inside ``precharge`` — it does not
+    appear anywhere else until the matching :class:`BudgetReconciled` /
+    :class:`BudgetReconciledDuplicate` ties off the budget envelope.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_precharged"] = "budget_precharged"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    token_id: BudgetTokenId
+    precharged_tokens: TokenCount
+    precharged_dollars: Decimal
+
+
+class BudgetReconciled(BaseModel):
+    """Phase-4 S2-05 — first call to ``reconcile`` for a given ``token.id``.
+
+    The token leaves ``_outstanding`` and its ``actual_*`` numbers fold into
+    the running consumption totals. A *second* ``reconcile`` for the same
+    ``token.id`` emits :class:`BudgetReconciledDuplicate` instead and is a
+    no-op (ADR-0010 §Tradeoffs row 3 — Phase-5 retry envelopes may replay).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_reconciled"] = "budget_reconciled"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    token_id: BudgetTokenId
+    actual_in: TokenCount
+    actual_out: TokenCount
+    actual_dollars: Decimal
+
+
+class BudgetReconciledDuplicate(BaseModel):
+    """Phase-4 S2-05 — a duplicate ``reconcile`` for an already-reconciled token.
+
+    Audit trail for Phase-5's retry envelope: a duplicate call is *not* an
+    error and *not* a state mutation — the guard records that one happened
+    so the operator can correlate retries with budget impact, but the
+    running total is unchanged.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_reconciled_duplicate"] = "budget_reconciled_duplicate"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    token_id: BudgetTokenId
+
+
+class BudgetCapExceeded(BaseModel):
+    """Phase-4 S2-05 — a cap check refused a ``precharge``.
+
+    Emitted **before** the matching :class:`~codegenie.fallback.budget.
+    BudgetExceeded` exception is raised, so a partial-mint regression (raise
+    without event, or event without raise) is impossible to land silently.
+    The ``reason`` is the three-member literal the exception carries and
+    matches the cap-check order pinned in S2-05 AC-5.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_cap_exceeded"] = "budget_cap_exceeded"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    reason: _BUDGET_CAP_REASON
+
+
+class BudgetUnknownTokenReconcile(BaseModel):
+    """Phase-4 S2-05 — ``reconcile`` was called with a token the guard never minted.
+
+    Emitted before the matching :class:`~codegenie.fallback.budget.
+    BudgetReconcileUnknownToken` raise — the audit trail records the forged
+    or stale id so an operator can correlate the attempt with the test or
+    cassette that produced it (the guard never mints outside ``precharge``,
+    so an unknown token is always either a hand-built fixture or a
+    cross-workflow leak).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_unknown_token_reconcile"] = "budget_unknown_token_reconcile"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    token_id: BudgetTokenId
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -648,7 +759,12 @@ WorkflowInternalEvent = Annotated[
     | FenceApplied
     | CanaryCollisionEvent
     | PromptAssembled
-    | SegmentCountTruncated,
+    | SegmentCountTruncated
+    | BudgetPrecharged
+    | BudgetReconciled
+    | BudgetReconciledDuplicate
+    | BudgetCapExceeded
+    | BudgetUnknownTokenReconcile,
     Field(discriminator="event_type"),
 ]
 
@@ -690,6 +806,11 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     CanaryCollisionEvent,
     PromptAssembled,
     SegmentCountTruncated,
+    BudgetPrecharged,
+    BudgetReconciled,
+    BudgetReconciledDuplicate,
+    BudgetCapExceeded,
+    BudgetUnknownTokenReconcile,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1034,6 +1155,11 @@ __all__ = [
     "GENESIS_CHAIN_HEAD",
     "AdapterDegraded",
     "BenchReplayable",
+    "BudgetCapExceeded",
+    "BudgetPrecharged",
+    "BudgetReconciled",
+    "BudgetReconciledDuplicate",
+    "BudgetUnknownTokenReconcile",
     "BundleBuilt",
     "BundleEntryPromoted",
     "CacheGcCompleted",
