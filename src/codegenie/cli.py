@@ -631,6 +631,21 @@ def _run_gather_pipeline(
     for probe_name, output in gather_result.outputs.items():
         budget = budgets_by_probe.get(probe_name, default_resource_budget)
         for raw_path in getattr(output, "raw_artifacts", []) or []:
+            if isinstance(raw_path, Path) and not raw_path.is_file():
+                # Capability-shakedown 2026-05-24 — fail loud (Rule 12) when a
+                # cached probe output points at a raw_path that no longer
+                # exists on disk. The common cause is a cache hit whose
+                # probe-staged source file (under .codegenie/_probe_raw/ or
+                # .codegenie/context/<name>.json) was deleted between runs.
+                # Without this event the operator sees a silently incomplete
+                # .codegenie/context/raw/ on warm runs.
+                raw_log.warning(
+                    "probe.raw_artifact.missing_on_cache_hit",
+                    probe=probe_name,
+                    path=str(raw_path),
+                    run_id=run_id,
+                )
+                continue
             if isinstance(raw_path, Path) and raw_path.is_file():
                 # Size-check via ``os.fstat`` before reading so a 200 MB
                 # artifact never lands in RAM just to be truncated. The

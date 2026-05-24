@@ -33,6 +33,10 @@ EXPECTED_EVENT_NAMES = {
     "EVENT_PROBE_MEMO_MISS": "probe.memo.miss",
     "EVENT_PROBE_CATALOG_LOAD": "probe.catalog.load",
     "EVENT_PROBE_RAW_ARTIFACT_TRUNCATED": "probe.raw_artifact.truncated",
+    # Capability-shakedown 2026-05-24 — fail-loud event on cache-hit with
+    # missing raw_path (cli.py raw-artifact loop). Surfaces silent partial
+    # materialization of .codegenie/context/raw/ that prior code masked.
+    "EVENT_PROBE_RAW_ARTIFACT_MISSING_ON_CACHE_HIT": "probe.raw_artifact.missing_on_cache_hit",
 }
 
 # S4-03: `.gitignore` mutation routine event-name family. Kept in a

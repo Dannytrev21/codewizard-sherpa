@@ -56,6 +56,9 @@ EVENT_PROBE_MEMO_HIT: Final[str] = "probe.memo.hit"
 EVENT_PROBE_MEMO_MISS: Final[str] = "probe.memo.miss"
 EVENT_PROBE_CATALOG_LOAD: Final[str] = "probe.catalog.load"
 EVENT_PROBE_RAW_ARTIFACT_TRUNCATED: Final[str] = "probe.raw_artifact.truncated"
+EVENT_PROBE_RAW_ARTIFACT_MISSING_ON_CACHE_HIT: Final[str] = (
+    "probe.raw_artifact.missing_on_cache_hit"
+)
 
 # S3-03: writer-completion event + structured-log field carrying the
 # envelope-level ``RedactedSlice.findings_count``. Phase 2 adds exactly ONE
@@ -77,6 +80,7 @@ __all__ = [
     "EVENT_PROBE_MEMO_HIT",
     "EVENT_PROBE_MEMO_MISS",
     "EVENT_PROBE_PARSER_CAP_EXCEEDED",
+    "EVENT_PROBE_RAW_ARTIFACT_MISSING_ON_CACHE_HIT",
     "EVENT_PROBE_RAW_ARTIFACT_TRUNCATED",
     "EVENT_PROBE_SKIP",
     "EVENT_PROBE_START",

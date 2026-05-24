@@ -140,3 +140,6 @@ The schema grows by **addition** as new probes ship across phases. Existing prob
 
 ??? question "`semgrep` ran but reports `skipped` / `config_absent`"
     `semgrep` defaults to the `p/nodejs` registry pack, which is fetched over the network. When that ruleset can't be loaded (offline, registry unreachable), semgrep still exits cleanly having run **zero rules** — the probe reports `outcome: skipped (config_absent)` rather than a misleading clean scan. Point it at a local org ruleset by setting `semgrep_config` in `.codegenie/config.yaml`. Note that a repo-local `.semgrep.yml` is **not** auto-detected — analyzed-repo scanner config is intentionally not trusted.
+
+??? question "Logs include `probe.raw_artifact.missing_on_cache_hit` warnings"
+    A cache hit served a probe's `ProbeOutput` from `.codegenie/cache/`, but the probe's staged raw artifact (under `.codegenie/_probe_raw/<name>.json` or `.codegenie/context/<name>.json`) is no longer on disk. Result: `.codegenie/context/raw/<name>.json` is **not** re-materialized this run — the YAML envelope still ships full data, but the raw JSON sidecar is missing. The usual cause is manually deleting `.codegenie/context/` while preserving `.codegenie/cache/`. To force a clean re-materialization, delete the whole `.codegenie/` namespace or run `codegenie cache prune --all` and re-gather.

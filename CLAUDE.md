@@ -99,7 +99,7 @@ The codebase prefers data-driven registries over branching code. Established sea
 
 - `@register_probe` (probe collection).
 - `@register_index_freshness_check(IndexName)` (`codegenie.indices.freshness` — B2's per-index freshness logic; Phase 2 ADR-0006 sum-type discipline).
-- `@register_dep_graph_strategy(PackageManager)` (`codegenie.depgraph` — per-ecosystem strategies; Phase 3 fills it).
+- `@register_dep_graph_strategy(PackageManager)` (`codegenie.depgraph` — per-ecosystem strategies; the registry ships empty. Phase-3 work cited it as a *precedent* for sibling registries (S2-01 plugin kernel, S3-03 vuln-index, S6-06 contract snapshot) but did not register a concrete strategy. The `dep_graph` probe correctly emits `confidence=low, reason=no_strategy_for_ecosystem` until a later phase needs dep-graph queries at planning time and ships the first concrete strategy).
 - Module-level `Final` tuples / dicts for marker catalogs (`_GENERATOR_HEADER_MARKERS`, `_REFLECTION_QUERIES`, `_LOCKFILE_PRECEDENCE` — iterated, never branched on).
 - The grammar kernel (`codegenie.grammars.lock.language_for(name) -> tree_sitter.Language`) — adding Phase 8+ Python / Java grammars is one row in `_DISPATCH` + one PyPI wheel in `pyproject.toml` (02-ADR-0011).
 
