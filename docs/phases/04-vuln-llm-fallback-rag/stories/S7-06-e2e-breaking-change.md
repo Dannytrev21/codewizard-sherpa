@@ -1,10 +1,33 @@
 # Story S7-06 — E2E breaking-change exit criterion #1
 
 **Step:** Step 7 — Ship plugin wiring: FallbackTierPlanRecipeEngine + harvest + E2E exit criteria
-**Status:** Ready
+**Status:** HARDENED
 **Effort:** L
-**Depends on:** S7-05 (fixture portfolio), S6-05 (`typecheck.typescript` SignalKind), S6-03 (`on_validated` harvest hook), S7-01 (plugin adapter wired), S3-05 (`cassettes.lock` discipline)
-**ADRs honored:** ADR-0009 (inline harvest gated by `passed AND confidence == "high"`), ADR-0012 (ProvenanceGate spends zero tokens on non-app-layer), ADR-0015 (`typecheck.typescript` SignalKind in strict-AND), ADR-0014 (cassette discipline)
+**Depends on:** S7-05 (fixture portfolio), S6-05 (`typecheck.typescript` SignalKind), S6-03 (`on_validated` harvest hook), S7-01 (plugin adapter wired), S7-02 (`rag_query_builder`), S2-01 (`_APP_LAYER_PROVENANCE_KINDS` + `ProvenanceClassified` event), S1-04 (`RetrievalOutcome` Pydantic discriminator), S3-05 (`cassettes.lock` discipline), Phase-3 S8-02 (CLI-driver + masking-helper precedent)
+**ADRs honored:** ADR-0009 (inline harvest gated by `passed AND confidence == "high"`), ADR-0012 (ProvenanceGate spends zero tokens on non-app-layer), ADR-0015 (`typecheck.typescript` SignalKind in strict-AND), ADR-0014 (cassette discipline), ADR-0017 (`AttemptAnchor` event schema)
+
+## Validation notes
+
+Story hardened by `phase-story-validator` on 2026-05-24. Full report at `_validation/S7-06-e2e-breaking-change.md`. Key changes:
+
+1. **Event-discriminator convention fixed.** Original test used `e["kind"] == "ProvenanceClassified"` / `e["kind"] == "RecipeOutcomeEmitted"`. Phase-3 / Phase-4 `WorkflowInternalEvent` variants in `src/codegenie/plugins/events.py` use `event_type:` (snake_case) as the discriminator, not `kind:` — confirmed in repo. The TDD-plan snippet, helper, and every event filter rewritten to `e["event_type"] == "provenance_classified"`, etc. (CN-B-1.)
+2. **Provenance discriminator literals fixed.** Original `{"AppDirect", "AppTransitive", "AppVendored", "Both"}` is PascalCase; S2-01 HARDENED to **lowercase snake_case** literals `{"app_direct", "app_transitive", "app_vendored", "both"}` (see `_APP_LAYER_PROVENANCE_KINDS` in `src/codegenie/fallback/provenance_gate.py`). The set literal in the test must NOT be duplicated — the test imports `_APP_LAYER_PROVENANCE_KINDS` and asserts membership (Rule 7 — surface conflict; DP-H-1 — DRY single-source for the spec). (CN-B-2 / DP-H-1.)
+3. **RetrievalOutcome discriminator literal fixed.** Original `outcome.kind == "rag_hit"` is wrong. S1-04 HARDENED `RetrievalOutcome = Annotated[RagHit | RagMiss | RagDegraded, Field(discriminator="kind")]` with literals `"hit"`, `"miss"`, `"degraded"`. AC and snippet corrected. (CN-B-3.)
+4. **Phase-3 recipe emits `RecipeSkipped` / `RecipeFailed`, not `RecipeOutcomeEmitted`.** The story optimistically named an event Phase-3 does not currently emit. `RecipeSkipped(reason: str)` is the on-disk shape; `NotApplicableReason` literals are `MAJOR_BUMP_REFUSE` (UPPER_SNAKE), not `major_bump_breaking_change`. AC rewritten to assert `recipe_skipped` (or a Phase-4-added `plan_outcome_emitted` carrying the wrapped `RecipeOutcome` per ADR-0004) **after** verifying the actual event-kind at executor time against `src/codegenie/plugins/events.py`. (CN-B-4 / TQ-H-1.)
+5. **Typed-event parsing replaces dict-shuffling.** Original `r.get("outcome", {}).get("kind") == "not_applicable"` violates CLAUDE.md's "no untyped dict shuffling" load-bearing commitment and the Phase-3 S8-02 precedent (which parses each line into a typed `WorkflowInternalEvent` discriminated-union variant). The TDD-plan snippet rewritten to use `pydantic.TypeAdapter(WorkflowInternalEvent).validate_python(line)` and `isinstance(evt, ProvenanceClassified)` / `match` arms. (DP-B-1 / TQ-H-2.)
+6. **HarvestSkipped event-absence assertion added.** ADR-0009's gate fires `SolvedExampleHarvested` on the high-confidence path and `HarvestSkipped(reason=low_confidence)` on the medium-confidence path; both events must be mutually exclusive. Original ACs assert the positive fire but not the negative — a regression where the gate emits both events (or omits both) would silently pass. New AC added. (CO-H-3.)
+7. **`high_floor` no longer hardcoded.** Original `assert outcome.score >= 0.85` duplicates the threshold; ADR-0008 names `plugin.yaml` as the source of truth. AC rewritten to read `high_floor` from the resolved plugin manifest (`plugins/vulnerability-remediation--node--npm/plugin.yaml`) and assert `>= high_floor`. If plugin.yaml ever raises the floor to 0.90, the test self-adjusts. (DP-H-2 / CO-H-1.)
+8. **Plan-shape assertion strengthened.** Original asserted `plan_outcome.kind == "applied_from_llm"` but not the wrapped `PlanProposal` variant. Express 4→5 is structurally a *call-site rewrite*, not a dep-bump (the bump itself is what Phase-3 already refused). Added AC asserting the underlying `PlanProposal` discriminator equals `"callsite_rewrite"` (per ADR-0001 / S1-02 — `PlanProposalCallsiteRewrite`). A regression where the LLM emits `dep_bump` (and somehow Phase-5 still passes) would now fail-loud. (CO-H-2.)
+9. **Dispatch-order assertion added.** Each AC checked event presence in isolation; out-of-order events (e.g., `SolvedExampleHarvested` before `TrustOutcomeEmitted`) would not be caught. New AC asserts the typed-event sequence appears in the canonical order: `provenance_classified` → recipe-skipped/failed → `leaf_invoked` → `leaf_returned` → `plan_outcome_emitted` → `trust_outcome_emitted` → `solved_example_harvested`. Indices, not timestamps. (CO-H-4.)
+10. **`LlmCostAccrued` stream location pinned.** Per ADR-0017 the `AttemptAnchor` family lives in the **spanning** stream. Original test reads only `.codegenie/events/workflow-internal/`; cost assertion would silently never find the event. AC rewritten to read both streams via a single typed helper. (CN-H-1.)
+11. **Cassette identity assertion narrowed.** Original "in cassettes.lock with matching BLAKE3" depended on CI's separate hygiene scanner. Added an in-test assertion that hashes the on-disk cassette at test-start and looks up the BLAKE3 in `cassettes.lock`, failing-loud with a `make refresh-cassettes` pointer if mismatched. Catches a contributor regenerating the cassette without updating the lock. (TQ-H-3.)
+12. **Mutable default removed from helper signatures + helper module promotion.** Helpers (`_parse_typed_events`, `_load_high_floor`, `_load_cve`, `_load_repo_ctx`, `_mask_nondeterministic_fields`) ship in `tests/integration/_phase4_e2e_helpers.py` from the **Red** test on (not deferred to Refactor). Rule-of-three is crossed within this story (event parse, plan-outcome assert, harvest assert, cost assert, determinism rerun all share the parser) — extraction is justified now, not premature. S7-07 inherits by import; Phase-3 S8-02's `_mask_nondeterministic_fields` is the named precedent. (DP-H-3.)
+13. **Determinism guard split into a separate test function.** Original AC inlined "running twice and comparing bytes" into the main test; pytest sees one function and one pass/fail. Split into `test_phase4_e2e_breaking_change_determinism` so the determinism property fails with its own diagnostic. (TQ-H-4.)
+14. **`tsc` baseline path asserted in tmp.** Per ADR-0015, `.codegenie/typecheck/baseline-<repo-sha>.json` is the per-repo baseline; the test must assert it lands inside `tmp_path`, not in `$HOME` or the source fixture. Mirrors the hermeticity discipline of AC-3. (CN-H-2.)
+15. **`bwrap` / `sandbox-exec` fail-loud applies to macOS too.** Original AC says "Linux/macOS"; AC clarified that on macOS the missing-binary is `sandbox-exec` (Phase 3 ADR-0007 substrate selection) and on Linux it is `bwrap`. Each platform raises with a platform-specific message. (CN-H-3.)
+16. **Notes-for-implementer: extension-by-addition opportunity for next E2E sibling.** S7-07 (replay-lands-RAG) will mirror this story's scaffolding for the cache-hit case. The shared helper module is the kernel; adding a third E2E test (e.g., S7-09 adversarial corpus may want one) must be zero edits to `_phase4_e2e_helpers.py` — additive only. Surfaced as observable constraint: "adding a new Phase-4 E2E test requires zero edits to `_phase4_e2e_helpers.py`." (DP-H-4 — Open/Closed at the file boundary.)
+
+Net effect: every AC is now individually verifiable against typed `WorkflowInternalEvent` / `WorkflowSpanningEvent` variants and named constants from the source tree; thresholds and discriminator literals are sourced from production code (not duplicated); the test no longer passes on a regression that flips outcome discriminators or skips the harvest gate.
 
 ## Context
 
@@ -46,23 +69,26 @@ Land `tests/integration/test_phase4_e2e_breaking_change.py` as a cassette-replay
 
 ## Acceptance criteria
 
-- [ ] `tests/integration/test_phase4_e2e_breaking_change.py` exists, is collected by pytest (not skipped), and is marked `@pytest.mark.integration` and `@pytest.mark.phase4`.
-- [ ] The test runs via `click.testing.CliRunner` (not subprocess) so coverage instruments orchestrator + plugin paths; `result.exit_code == 0` is asserted with `result.output` in the failure message.
-- [ ] `tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml` exists, was recorded via `make refresh-cassettes`, passes `tests/security/test_cassettes_clean.py` (S3-05), and is entered in `cassettes.lock` (S3-05) with a BLAKE3 hash matching its on-disk bytes.
-- [ ] The test runs hermetically: `shutil.copytree` clones the fixture into `tmp_path` before invoking the CLI; `.codegenie/` writes and git branch creation land in tmp; the source fixture stays unchanged across runs.
-- [ ] **Provenance assertion (rules out the refuse false-positive):** the test reads the event stream and finds `ProvenanceClassified(kind="AppTransitive")` (or `AppDirect` — assert it's in the app-layer set, not in `{BaseImage, RuntimeBundled, Unknown}`).
-- [ ] **Phase-3-recipe-returned-NotApplicable assertion:** the event stream contains a `RecipeOutcomeEmitted` for the Phase-3 dep-bump recipe carrying `kind="not_applicable"` with `reason` matching `major_bump_breaking_change` (or whatever the Phase-3 recipe's refusal reason string is — read S7-04 of Phase 3).
-- [ ] **LLM-was-called assertion:** the event stream contains exactly one `LeafInvoked` event and exactly one `LeafReturned` event with `tokens_in > 0` and `tokens_out > 0`.
-- [ ] **Plan-shape assertion:** the event stream's `PlanOutcomeEmitted` event carries variant `AppliedFromLlm` with a non-empty `response_id`.
-- [ ] **Strict-AND-passed assertion:** the Phase-5 `TrustOutcome` event carries `passed=True`, `confidence="high"`, and `signals` contains a `typecheck.typescript` entry with `passed=True`.
-- [ ] **Harvest-fired assertion:** the event stream contains one `SolvedExampleHarvested` event with a non-empty `solved_example_id`.
-- [ ] **Store-queryable assertion:** after the test completes, the test instantiates a `ChromaPersistentStore` against the tmp `.codegenie/rag/chroma/` directory, builds a `Query` matching the express CVE via the plugin's `rag_query_builder` (S7-02), and asserts `store.query(q).top_score >= 0.85` (the harvested record is now queryable above the high floor).
-- [ ] **Cost-recorded assertion:** the event stream contains one `LlmCostAccrued` event with non-zero tokens and dollars; the test captures these for S7-07 to compare against.
-- [ ] **Determinism guard:** running the test twice in a row (cassette replay both times) produces byte-identical `remediation-report.yaml` after masking `workflow_id` / timestamps / `event_id` (mirror Phase-3 S8-02's masking helper).
-- [ ] The test fails-loud (not skips) if `bwrap` / `sandbox-exec` is missing on Linux/macOS — mirror Phase-3 S8-02's contract.
-- [ ] Cassette regeneration is documented: the test's module docstring names `make refresh-cassettes --i-understand-this-spends-tokens CODEGENIE_LIVE_LLM=1` as the regeneration command and cross-links the cassette CODEOWNERS entry (S3-06).
-- [ ] `make check` clean with cassette replay.
-- [ ] TDD red test exists, committed, green.
+- [ ] **AC-1 — Test file shape.** `tests/integration/test_phase4_e2e_breaking_change.py` exists, is collected by pytest (no `@pytest.mark.skip*`, no `xfail`), is marked `@pytest.mark.integration` and `@pytest.mark.phase4`, and a `pytest --collect-only` run lists every test function.
+- [ ] **AC-2 — In-process CLI invocation.** The test imports `from codegenie.cli import cli` and invokes via `click.testing.CliRunner().invoke(cli, ["remediate", str(repo), "--cve", "CVE-2026-1234"], catch_exceptions=False)` so coverage instruments the orchestrator + plugin paths. `result.exit_code == 0` is asserted with `result.output` AND `result.exception` in the failure message.
+- [ ] **AC-3 — Cassette identity, sanitized, lock-pinned.** `tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml` exists, was recorded via `make refresh-cassettes --i-understand-this-spends-tokens CODEGENIE_LIVE_LLM=1`, passes `tests/security/test_cassettes_clean.py` (S3-05), and is entered in `tests/cassettes/anthropic/cassettes.lock` (S3-05). The test itself reads the on-disk cassette bytes at start-of-test, computes BLAKE3, and asserts the digest matches the `cassettes.lock` entry — failing-loud with a `make refresh-cassettes` pointer if mismatched (catches a contributor regenerating the cassette without updating the lock).
+- [ ] **AC-4 — Hermeticity.** `shutil.copytree(FIXTURE, tmp_path / "express-cve-2026-1234")` runs before CLI invocation; every `.codegenie/` write and git branch creation lands inside `tmp_path`; the source fixture is byte-identical pre-and-post (asserted via a recursive `dircmp` or the existing fixture-pinning fence). The `.codegenie/typecheck/baseline-<repo-sha>.json` file (ADR-0015) lands inside `tmp_path`, not in `$HOME` or the source fixture.
+- [ ] **AC-5 — Provenance assertion (rules out the refuse false-positive).** The test parses the workflow-internal stream into typed `WorkflowInternalEvent` variants and finds exactly one `ProvenanceClassified` event whose `provenance_kind` is a member of the imported constant `from codegenie.fallback.provenance_gate import _APP_LAYER_PROVENANCE_KINDS` (today: `{"app_direct", "app_transitive", "app_vendored", "both"}`, lowercase per S2-01 HARDENED). The test does **not** duplicate the set literal — Rule 7 / DRY: the source-of-truth constant is the spec. A regression where `_APP_LAYER_PROVENANCE_KINDS` shrinks (e.g., drops `"both"`) flips this AC automatically.
+- [ ] **AC-6 — Phase-3 recipe refusal assertion.** The event stream contains a `RecipeSkipped` (or, if Phase 4 has shipped a `PlanOutcomeEmitted` wrapping `RecipeOutcome.NotApplicable` per ADR-0004, that variant) with `reason == "MAJOR_BUMP_REFUSE"` (the `NotApplicableReason` literal exported by `codegenie.transforms.outcomes`, UPPER_SNAKE — read the source, do not hardcode). Implementer must verify the actual event name shipped by Phase-3 S7-04 / Phase-4 S6-01 against `src/codegenie/plugins/events.py` at executor time and surface any drift loudly rather than blending discriminator literals.
+- [ ] **AC-7 — LLM-was-called assertion.** The event stream contains exactly one `LeafInvoked` event and exactly one `LeafReturned` event (verified by `event_type` discriminator from `src/codegenie/plugins/events.py` once those events land in S3-* of this phase). `LeafReturned.tokens_in > 0` and `LeafReturned.tokens_out > 0`. Combined with AC-5, rules out the silent-provenance-refuse failure mode (Goal G7).
+- [ ] **AC-8 — Plan-shape assertion (variant + wrapped proposal).** The event stream's `PlanOutcomeEmitted` event (per ADR-0004) carries the `applied_from_llm` discriminator (per S1-04 / Phase-4 `PlanOutcome` sum type), has a non-empty `response_id`, AND the wrapped `PlanProposal` discriminator equals `"callsite_rewrite"` (per ADR-0001 / S1-02 — Express 4→5 is structurally a call-site rewrite, NOT a dep-bump). A regression where the LLM emits `dep_bump` would fail-loud (the dep-bump path is what Phase 3 already refused).
+- [ ] **AC-9 — Strict-AND-passed assertion.** The Phase-5 `TrustOutcome` event carries `passed=True`, `confidence="high"`, and `signals` contains a `typecheck.typescript` entry with `passed=True` (Goal G10 / ADR-0015). Plus an event-ordering assertion: the `typecheck.typescript` signal's `started_at` index is **before** the `npm test` signal's `started_at` index (per ADR-0015 §"signal must fail before npm test runs"). If the implementation does not emit per-signal timing, this sub-clause downgrades to "signal appears in the `signals` list" — surface the omission as a Phase-4 follow-up.
+- [ ] **AC-10 — Harvest-fired assertion (positive AND negative).** The event stream contains exactly one `SolvedExampleHarvested` event with a non-empty `solved_example_id` AND **zero** `HarvestSkipped` events (defensive against ADR-0009 gate emitting both signals on a regression). The two events are mutually exclusive per ADR-0009; the test asserts both halves.
+- [ ] **AC-11 — Store-queryable assertion (high_floor from plugin.yaml).** After the workflow completes, the test instantiates `ChromaPersistentStore` against `tmp_path / ".codegenie" / "rag" / "chroma"`, builds a `Query` via the plugin's `rag_query_builder.build(...)` (S7-02), and asserts `outcome.kind == "hit"` (the `RagHit` discriminator literal per S1-04 — NOT `"rag_hit"`) and `outcome.score >= high_floor` where `high_floor` is read at test time from the resolved `plugins/vulnerability-remediation--node--npm/plugin.yaml` (ADR-0008 — the threshold is configured, not hardcoded). If plugin.yaml ever raises `high_floor` to 0.90, this AC self-adjusts.
+- [ ] **AC-12 — Cost-recorded assertion (spanning stream).** The **spanning** event stream (`.codegenie/events/spanning/append.jsonl.zst` — per ADR-0017 the `AttemptAnchor` family is spanning, NOT workflow-internal) contains one `LlmCostAccrued` event filtered to this run's `workflow_id`, with non-zero tokens AND non-zero dollars. The captured `(tokens_total, dollars)` tuple is asserted equal to the values S7-07 will read for delta comparison; if the schema does not yet pin field names, the test captures them by `event_type` and `model_dump()` into a typed pydantic model.
+- [ ] **AC-13 — Dispatch-order assertion.** The typed-event sequence appears in canonical order: `provenance_classified` → `recipe_skipped` (or `plan_outcome_emitted` variant `applied_from_recipe.kind == "not_applicable"`) → `leaf_invoked` → `leaf_returned` → `plan_outcome_emitted` → `trust_outcome_emitted` → `solved_example_harvested`. Asserted by index in the parsed list (not by wall-clock timestamps — clock skew within a single process is irrelevant; we want the dispatch order to be the spec).
+- [ ] **AC-14 — Determinism guard (separate test).** A second test function `test_phase4_e2e_breaking_change_determinism` runs the workflow twice in succession against fresh `tmp_path` copies, and asserts the two `remediation-report.yaml` bytes are equal after applying the **shared** `_mask_nondeterministic_fields` helper (mirroring Phase-3 S8-02 §AC-4 — the masking discipline: mask `workflow_id`, `event_id`, ISO-8601 timestamps, branch suffix; nothing else). Splitting the determinism property into its own test makes a determinism regression diagnose with its own failure message instead of being subsumed under the main happy-path assertions.
+- [ ] **AC-15 — Typed-event parsing (no dict-shuffling).** The event-stream helper parses each line into a `pydantic.TypeAdapter(WorkflowInternalEvent).validate_python(...)` or `validate_json(...)` typed variant (NOT `dict.get`); per-AC assertions use `isinstance(evt, EventClass)` / `match evt` arms. Mirrors Phase-3 S8-02 AC-8's typed-discriminated-union parsing precedent; CLAUDE.md "no untyped `dict` shuffling" load-bearing commitment.
+- [ ] **AC-16 — Fail-loud on missing jail binary (per-platform).** The test fails-loud (not skips) if the platform-required jail binary is missing: on Linux, `bwrap` (Phase 3 ADR-0007 substrate); on macOS, `sandbox-exec`. Each platform branch raises `pytest.fail` with a platform-specific message; `pytest.skip` is forbidden (Rule 12 — Fail loud).
+- [ ] **AC-17 — Cassette regeneration documented.** The test's module docstring names `make refresh-cassettes --i-understand-this-spends-tokens CODEGENIE_LIVE_LLM=1` as the regeneration command, cross-links the cassette CODEOWNERS entry (S3-06), and explains the BLAKE3 lock-update step that follows (AC-3).
+- [ ] **AC-18 — Helper module shipped from Red, not deferred to Refactor.** `tests/integration/_phase4_e2e_helpers.py` exists by the end of the Red step and exports `_parse_typed_events(events_dir, *, stream: Literal["workflow-internal", "spanning"]) -> list[WorkflowInternalEvent | WorkflowSpanningEvent]`, `_load_high_floor(plugin_yaml: Path) -> float`, `_load_cve(repo_root: Path) -> CveAdvisory`, `_load_repo_ctx(repo_root: Path) -> RepoContext`, `_mask_nondeterministic_fields(text: str) -> str`, and `_assert_cassette_lock_matches(cassette: Path, lock: Path) -> None`. Each helper is typed (no `Any`); each has a docstring naming the architectural concern it owns. S7-07 imports the same module — adding S7-09's E2E test must require **zero edits** to this helper module (Open/Closed at the file boundary; DP-H-4).
+- [ ] **AC-19 — `make check` clean** under cassette replay (no live API calls).
+- [ ] **AC-20 — TDD red test** exists, is committed, and is green after the Green step.
 
 ## Implementation outline
 
@@ -79,6 +105,13 @@ Land `tests/integration/test_phase4_e2e_breaking_change.py` as a cassette-replay
 
 ### Red — write the failing test first
 
+> **Convention reminders before reading the snippet (validator-added):**
+> - Discriminator key is `event_type:` (snake_case) per Phase-3 / Phase-4 `WorkflowInternalEvent` / `WorkflowSpanningEvent` definitions in `src/codegenie/plugins/events.py`. Do NOT use `kind:` for event-type matching.
+> - Provenance literals are lowercase snake_case: `app_direct`, `app_transitive`, `app_vendored`, `both` (S2-01 HARDENED). Source of truth: `_APP_LAYER_PROVENANCE_KINDS` — import it, do not duplicate.
+> - `RetrievalOutcome` discriminator literals are `"hit"`, `"miss"`, `"degraded"` (S1-04 HARDENED), NOT `"rag_hit"`.
+> - `NotApplicableReason` literals are UPPER_SNAKE: `"MAJOR_BUMP_REFUSE"` etc., exported from `codegenie.transforms.outcomes`.
+> - Event names for Phase-4-shipped events (`LeafInvoked`, `LeafReturned`, `PlanOutcomeEmitted`, `TrustOutcomeEmitted`, `LlmCostAccrued`, `SolvedExampleHarvested`, `HarvestSkipped`) must be **verified at executor time** against `src/codegenie/plugins/events.py` (Phase-4 stories S2-* / S6-* land them). The snippet below uses placeholder `event_type` literals in snake_case; the implementer reconciles against the source and surfaces drift loudly (Rule 12).
+
 ```python
 # tests/integration/test_phase4_e2e_breaking_change.py
 """
@@ -86,120 +119,214 @@ Phase 4 roadmap exit criterion #1 — breaking-change CVE solved end-to-end.
 
 Regenerating the cassette:
     make refresh-cassettes --i-understand-this-spends-tokens CODEGENIE_LIVE_LLM=1
+
+After regenerating, recompute the BLAKE3 of the new cassette bytes and update
+`tests/cassettes/anthropic/cassettes.lock` (S3-05). AC-3 fails-loud if the
+on-disk cassette and the lock entry disagree.
+
 The cassette `tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml`
 is owned by the rotating cassette-steward (CODEOWNERS); regeneration requires
 that owner's approval.
 """
 from __future__ import annotations
-import json
 import shutil
+import sys
 from pathlib import Path
+from typing import Final
+
 import pytest
-import zstandard as zstd
 from click.testing import CliRunner
 
-from codegenie.cli import remediate
+from codegenie.cli import cli
+from codegenie.fallback.provenance_gate import _APP_LAYER_PROVENANCE_KINDS
+from codegenie.plugins.events import (
+    ProvenanceClassified,
+    RecipeSkipped,
+    # Phase-4-shipped event types — verify against src/codegenie/plugins/events.py
+    # at executor time; the import names below are the convention, not a guarantee:
+    # LeafInvoked, LeafReturned, PlanOutcomeEmitted, TrustOutcomeEmitted,
+    # SolvedExampleHarvested, HarvestSkipped, LlmCostAccrued,
+)
 from codegenie.rag.store import ChromaPersistentStore
-from codegenie.rag.embedder import FastembedEmbedder
-from plugins.vulnerability_remediation_node_npm.recipes import rag_query_builder
 
+from tests.integration._phase4_e2e_helpers import (
+    _assert_cassette_lock_matches,
+    _load_cve,
+    _load_high_floor,
+    _load_repo_ctx,
+    _mask_nondeterministic_fields,
+    _parse_typed_events,
+)
 
-FIXTURE = Path("tests/fixtures/repos/express-cve-2026-1234")
-CASSETTE = Path("tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml")
+FIXTURE: Final[Path] = Path("tests/fixtures/repos/express-cve-2026-1234")
+CASSETTE: Final[Path] = Path("tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml")
+LOCKFILE: Final[Path] = Path("tests/cassettes/anthropic/cassettes.lock")
+PLUGIN_YAML: Final[Path] = Path("plugins/vulnerability-remediation--node--npm/plugin.yaml")
+JAIL_BINARY: Final[str] = "bwrap" if sys.platform == "linux" else "sandbox-exec"
 
 
 @pytest.fixture
-def vcr_cassette_dir(tmp_path):
+def vcr_cassette_dir() -> str:
     return str(CASSETTE.parent)
 
 
 @pytest.fixture
-def hermetic_repo(tmp_path):
+def hermetic_repo(tmp_path: Path) -> Path:
+    import shutil as _shutil_which
+    if _shutil_which.which(JAIL_BINARY) is None:
+        pytest.fail(
+            f"jail binary {JAIL_BINARY!r} missing on {sys.platform}; "
+            f"cannot run jailed npm install (AC-16; Rule 12 — Fail loud)"
+        )
     target = tmp_path / "express-cve-2026-1234"
     shutil.copytree(FIXTURE, target)
     return target
 
 
-def _parse_events(events_dir: Path) -> list[dict]:
-    files = list(events_dir.rglob("*.jsonl.zst"))
-    assert files, f"no internal event stream under {events_dir}"
-    out = []
-    for f in files:
-        raw = zstd.ZstdDecompressor().decompress(f.read_bytes())
-        for line in raw.decode().splitlines():
-            out.append(json.loads(line))
-    return out
+@pytest.mark.integration
+@pytest.mark.phase4
+@pytest.mark.vcr(CASSETTE.name, record_mode="none")
+def test_phase4_e2e_breaking_change(hermetic_repo: Path, vcr_cassette_dir: str) -> None:
+    # AC-3 — cassette identity check before the workflow even starts.
+    _assert_cassette_lock_matches(CASSETTE, LOCKFILE)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["remediate", str(hermetic_repo), "--cve", "CVE-2026-1234"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, (
+        f"CLI failed: exit={result.exit_code}\n"
+        f"output:\n{result.output}\n"
+        f"exception: {result.exception!r}"
+    )
+
+    internal = _parse_typed_events(
+        hermetic_repo / ".codegenie" / "events", stream="workflow-internal"
+    )
+    spanning = _parse_typed_events(
+        hermetic_repo / ".codegenie" / "events", stream="spanning"
+    )
+
+    # AC-5 — provenance fires; kind is in the imported app-layer set.
+    provs = [e for e in internal if isinstance(e, ProvenanceClassified)]
+    assert len(provs) == 1, f"expected exactly one ProvenanceClassified, got {len(provs)}"
+    assert provs[0].provenance_kind in _APP_LAYER_PROVENANCE_KINDS, (
+        f"provenance_kind={provs[0].provenance_kind!r} is not in "
+        f"_APP_LAYER_PROVENANCE_KINDS={_APP_LAYER_PROVENANCE_KINDS!r} — "
+        "the provenance gate would have refused; LeafInvoked would never fire; "
+        "Phase-4 G7 is silently violated."
+    )
+
+    # AC-6 — Phase-3 recipe refused with MAJOR_BUMP_REFUSE.
+    # NOTE: implementer verifies whether Phase-4 emits a wrapping PlanOutcomeEmitted
+    # event or whether the underlying RecipeSkipped is what surfaces — adjust the
+    # isinstance and reason field accordingly; do not silently weaken to substring match.
+    refused = [e for e in internal if isinstance(e, RecipeSkipped)]
+    assert any(e.reason == "MAJOR_BUMP_REFUSE" for e in refused), (
+        f"no RecipeSkipped(reason='MAJOR_BUMP_REFUSE') in internal stream; "
+        f"saw reasons={[e.reason for e in refused]!r}"
+    )
+
+    # AC-7 — LLM invoked exactly once. (See ADR-0017 / S2-* / S3-* for actual event types.)
+    # leaf_invoked = [e for e in internal if isinstance(e, LeafInvoked)]
+    # leaf_returned = [e for e in internal if isinstance(e, LeafReturned)]
+    # assert len(leaf_invoked) == 1 and len(leaf_returned) == 1
+    # assert leaf_returned[0].tokens_in > 0 and leaf_returned[0].tokens_out > 0
+
+    # AC-8 — plan_outcome_emitted is applied_from_llm with callsite_rewrite proposal.
+    # [plan_out] = [e for e in internal if isinstance(e, PlanOutcomeEmitted)]
+    # assert plan_out.plan_outcome_kind == "applied_from_llm"
+    # assert plan_out.plan_outcome.response_id
+    # assert plan_out.plan_proposal_kind == "callsite_rewrite", (
+    #     "Express 4→5 is structurally a callsite rewrite; dep_bump would mean Phase 3 should not have refused"
+    # )
+
+    # AC-9 — strict-AND passes with typecheck.typescript first.
+    # [trust] = [e for e in internal if isinstance(e, TrustOutcomeEmitted)]
+    # assert trust.passed is True and trust.confidence == "high"
+    # signal_kinds = {s.kind for s in trust.signals}
+    # assert "typecheck.typescript" in signal_kinds
+    # [ts_sig] = [s for s in trust.signals if s.kind == "typecheck.typescript"]
+    # assert ts_sig.passed is True
+    # if hasattr(ts_sig, "started_at"):
+    #     [test_sig] = [s for s in trust.signals if s.kind in {"test_stage", "tests"}]
+    #     assert ts_sig.started_at < test_sig.started_at  # ADR-0015: tsc before npm test
+
+    # AC-10 — harvest fired positively; HarvestSkipped did NOT fire (mutually exclusive per ADR-0009).
+    # harvests = [e for e in internal if isinstance(e, SolvedExampleHarvested)]
+    # skipped = [e for e in internal if isinstance(e, HarvestSkipped)]
+    # assert len(harvests) == 1 and len(skipped) == 0, (
+    #     "ADR-0009 gate: SolvedExampleHarvested and HarvestSkipped are mutually exclusive; "
+    #     f"got harvests={len(harvests)} skipped={len(skipped)}"
+    # )
+    # assert harvests[0].solved_example_id
+
+    # AC-12 — LlmCostAccrued lives in the SPANNING stream per ADR-0017.
+    # cost = [e for e in spanning if isinstance(e, LlmCostAccrued) and e.workflow_id == provs[0].workflow_id]
+    # assert len(cost) == 1
+    # assert cost[0].tokens_total > 0 and float(cost[0].dollars) > 0
+
+    # AC-13 — dispatch order asserted by index, not by timestamps.
+    # order = [e.event_type for e in internal]
+    # def _idx(name: str) -> int:
+    #     return next(i for i, n in enumerate(order) if n == name)
+    # assert (
+    #     _idx("provenance_classified")
+    #     < _idx("recipe_skipped")
+    #     < _idx("leaf_invoked")
+    #     < _idx("leaf_returned")
+    #     < _idx("plan_outcome_emitted")
+    #     < _idx("trust_outcome_emitted")
+    #     < _idx("solved_example_harvested")
+    # )
+
+    # AC-11 — store is queryable post-run; harvested record returns at or above plugin.yaml's high_floor.
+    advisory = _load_cve(hermetic_repo)
+    repo_ctx = _load_repo_ctx(hermetic_repo)
+    high_floor = _load_high_floor(PLUGIN_YAML)
+    from plugins.vulnerability_remediation_node_npm.recipes import rag_query_builder
+    q = rag_query_builder.build(advisory, repo_ctx)
+    store = ChromaPersistentStore(hermetic_repo / ".codegenie" / "rag" / "chroma")
+    try:
+        outcome = store.query(q, top_k=1)
+    finally:
+        store.close()
+    assert outcome.kind == "hit", f"expected RagHit (kind='hit'), got kind={outcome.kind!r}"
+    assert outcome.score >= high_floor, (
+        f"score={outcome.score} below plugin.yaml high_floor={high_floor}; "
+        "harvested record not retrievable above the high-confidence band"
+    )
+
+    # AC-4 — baseline landed inside tmp.
+    baselines = list((hermetic_repo / ".codegenie" / "typecheck").glob("baseline-*.json"))
+    assert baselines, "tsc baseline did not land under tmp .codegenie/typecheck/"
 
 
 @pytest.mark.integration
 @pytest.mark.phase4
 @pytest.mark.vcr(CASSETTE.name, record_mode="none")
-def test_phase4_e2e_breaking_change(hermetic_repo, vcr_cassette_dir):
+def test_phase4_e2e_breaking_change_determinism(tmp_path: Path) -> None:
+    """AC-14 — running the workflow twice yields byte-identical reports after masking."""
     runner = CliRunner()
-    result = runner.invoke(
-        remediate,
-        [str(hermetic_repo), "--cve", "CVE-2026-1234"],
-        catch_exceptions=False,
+    reports: list[bytes] = []
+    for i in range(2):
+        repo = tmp_path / f"run-{i}" / "express-cve-2026-1234"
+        repo.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(FIXTURE, repo)
+        result = runner.invoke(
+            cli, ["remediate", str(repo), "--cve", "CVE-2026-1234"], catch_exceptions=False
+        )
+        assert result.exit_code == 0, f"run {i} failed: {result.output}"
+        raw = (repo / ".codegenie" / "remediation-report.yaml").read_bytes()
+        reports.append(_mask_nondeterministic_fields(raw.decode("utf-8")).encode("utf-8"))
+    assert reports[0] == reports[1], (
+        "determinism regression — Goal G4 violated; report bytes differ after masking"
     )
-    assert result.exit_code == 0, f"CLI failed:\n{result.output}"
-
-    events = _parse_events(hermetic_repo / ".codegenie" / "events" / "workflow-internal")
-
-    # (a) Provenance fires AppTransitive (rules out refuse false-positive).
-    provs = [e for e in events if e["kind"] == "ProvenanceClassified"]
-    assert provs and provs[0]["provenance_kind"] in {"AppDirect", "AppTransitive", "AppVendored", "Both"}
-
-    # (b) Phase-3 recipe returned NotApplicable for major-bump.
-    recipes = [e for e in events if e["kind"] == "RecipeOutcomeEmitted"]
-    assert any(
-        r.get("outcome", {}).get("kind") == "not_applicable" and "major" in r.get("outcome", {}).get("reason", "").lower()
-        for r in recipes
-    )
-
-    # (c) LLM was invoked exactly once.
-    leaf_invoked = [e for e in events if e["kind"] == "LeafInvoked"]
-    leaf_returned = [e for e in events if e["kind"] == "LeafReturned"]
-    assert len(leaf_invoked) == 1
-    assert len(leaf_returned) == 1
-    assert leaf_returned[0]["tokens_in"] > 0
-    assert leaf_returned[0]["tokens_out"] > 0
-
-    # (d) PlanOutcome is AppliedFromLlm.
-    [plan_out] = [e for e in events if e["kind"] == "PlanOutcomeEmitted"]
-    assert plan_out["plan_outcome"]["kind"] == "applied_from_llm"
-    assert plan_out["plan_outcome"]["response_id"]
-
-    # (e) Strict-AND passed including typecheck.typescript.
-    [trust] = [e for e in events if e["kind"] == "TrustOutcomeEmitted"]
-    assert trust["passed"] is True
-    assert trust["confidence"] == "high"
-    signal_kinds = {s["kind"] for s in trust["signals"]}
-    assert "typecheck.typescript" in signal_kinds
-    [ts_sig] = [s for s in trust["signals"] if s["kind"] == "typecheck.typescript"]
-    assert ts_sig["passed"] is True
-
-    # (f) Harvest fired.
-    [harvest] = [e for e in events if e["kind"] == "SolvedExampleHarvested"]
-    assert harvest["solved_example_id"]
-
-    # (g) Cost recorded.
-    [cost] = [e for e in events if e["kind"] == "LlmCostAccrued"]
-    assert cost["tokens_total"] > 0
-    assert float(cost["dollars"]) > 0
-
-    # (h) Store is queryable post-run; harvested record returns above high_floor.
-    store = ChromaPersistentStore(hermetic_repo / ".codegenie" / "rag" / "chroma")
-    embedder = FastembedEmbedder()  # picks up the bootstrapped model
-    advisory = _load_cve_yaml(hermetic_repo / "cve.yaml")
-    repo_ctx = _load_repo_ctx(hermetic_repo)
-    q = rag_query_builder.build(advisory, repo_ctx)
-    outcome = store.query(q, top_k=1)
-    assert outcome.kind == "rag_hit", f"expected RagHit, got {outcome.kind}"
-    assert outcome.score >= 0.85
-    store.close()
 ```
 
-Run: `pytest tests/integration/test_phase4_e2e_breaking_change.py -v` — fails on every assertion before the implementation chain is wired.
+Run: `pytest tests/integration/test_phase4_e2e_breaking_change.py -v` — fails on every assertion before the implementation chain is wired (events not emitted, store empty, cassette absent, helper module absent).
 
 ### Green — make it pass
 
@@ -210,18 +337,20 @@ Run: `pytest tests/integration/test_phase4_e2e_breaking_change.py -v` — fails 
 
 ### Refactor — clean up
 
-- Extract `_load_cve_yaml`, `_load_repo_ctx`, and `_parse_events` into a `tests/integration/_phase4_e2e_helpers.py` module shared with S7-07 (Global Rule 7 — surface conflict if S7-07 wants to define them differently).
-- Add a `_mask_nondeterministic_fields` helper if golden-file diffing is also part of this test (mirror Phase-3 S8-02 helper); document each masked field.
-- Run 10× in a row to flake-check; document any flake-mitigation choice in the module docstring.
+- The helper module `tests/integration/_phase4_e2e_helpers.py` lands in **Red** (AC-18), not Refactor — the rule-of-three is already crossed within this story (event parsing, cost lookup, determinism rerun, harvest assertion, store query) plus S7-07. The refactor pass tightens the helpers' docstrings and verifies the module imports cleanly from S7-07.
+- Add per-helper unit tests (mirror Phase-3 S8-02 AC-13): `tests/integration/test__phase4_e2e_helpers.py` exercises `_mask_nondeterministic_fields`, `_parse_typed_events`, and `_assert_cassette_lock_matches` against tiny hand-built inputs (a wrong regex / wrong stream dispatch / wrong BLAKE3 is far cheaper to debug here than inside a failing E2E).
+- Run the E2E 10× in a row under cassette replay (`pytest tests/integration/test_phase4_e2e_breaking_change.py --count=10`); document any flake-mitigation choice in the module docstring.
+- Confirm the determinism test (AC-14) passes; if it flakes, the masker is missing a nondeterministic field — surface and add (do NOT mask substantive fields like `transform.diff_bytes_sha256`; that is a Goal-G4 regression, not a masker omission).
 
 ## Files to touch
 
 | Path | Why |
 |---|---|
-| `tests/integration/test_phase4_e2e_breaking_change.py` | The exit-criterion test. |
-| `tests/integration/_phase4_e2e_helpers.py` | Shared helpers for S7-06 + S7-07 (event-stream parser, fixture loaders). |
+| `tests/integration/test_phase4_e2e_breaking_change.py` | The exit-criterion test (two test functions per AC-14). |
+| `tests/integration/_phase4_e2e_helpers.py` | NEW — shared helpers for S7-06 + S7-07 + future Phase-4 E2E tests (event-stream parser, plugin.yaml threshold loader, fixture loaders, cassette-lock checker, mask helper). Open/Closed at the file boundary (AC-18 / DP-H-4). |
+| `tests/integration/test__phase4_e2e_helpers.py` | NEW — unit tests for each helper in isolation (Refactor step). |
 | `tests/cassettes/anthropic/test_phase4_e2e_breaking_change.yaml` | Recorded (sanitized) Anthropic cassette. |
-| `tests/cassettes/anthropic/cassettes.lock` | New entry with BLAKE3 hash of the cassette. |
+| `tests/cassettes/anthropic/cassettes.lock` | New entry with BLAKE3 hash of the cassette (AC-3 reads this). |
 
 ## Out of scope
 
@@ -232,6 +361,9 @@ Run: `pytest tests/integration/test_phase4_e2e_breaking_change.py -v` — fails 
 
 ## Notes for the implementer
 
+- **Verify event-type literals at executor time.** The TDD snippet uses placeholder snake_case event names (`leaf_invoked`, `plan_outcome_emitted`, `trust_outcome_emitted`, `solved_example_harvested`, `harvest_skipped`, `llm_cost_accrued`). Before commit, grep `src/codegenie/plugins/events.py` for the actual `event_type: Literal[...] = "..."` lines shipped by Phase-4 stories S2-* / S3-* / S6-* and adjust the test imports + literals. If a story is HARDENED-but-not-GREEN and the events have not yet landed, the AC-7/8/10/12/13 tests fail in Red as expected; surface the dependency loudly per Rule 12, do not weaken the AC.
+- **Phase-3 vs Phase-4 recipe-refusal event.** Phase 3 today emits `RecipeSkipped(reason: str)` (per `src/codegenie/plugins/events.py`). ADR-0004 introduces a Phase-4-local `PlanOutcome` wrapping `RecipeOutcome`, and may emit a `plan_outcome_emitted` event whose payload's `applied_from_recipe` arm carries the `NotApplicable("MAJOR_BUMP_REFUSE")` projection. AC-6 accepts either shape, but the implementer must pick the one Phase-4 actually emits and remove the other branch — do not assert against both (Rule 7 — surface conflict, do not blend).
+- **Plugin-package import path.** The story's snippet uses `plugins.vulnerability_remediation_node_npm` (Python-import style). Plugin packages live under `plugins/<plugin-id>/` and the plugin loader (S2-03) registers them by manifest. Confirm the actual import path the loader exposes at executor time; the import in the snippet may need to be deferred behind the plugin resolver rather than a direct module import.
 - **Cassette recording is gated by `make refresh-cassettes --i-understand-this-spends-tokens` (S3-06) + valid keyring entry.** Do not run live API calls inside the test loop; one-time recording is the discipline.
 - The `Provenance.AppTransitive` (or similar app-layer) assertion is the most-likely-to-be-skipped guard — without it, a regression in the provenance adapter (S7-03) could turn this test into a silent provenance-refuse passing case where the LLM is never called and the test still "passes" in the wrong way. **Fail loud per Global Rule 12.**
 - The "harvested record queryable post-run" assertion is the proof of the Phase-4 exit criterion #1 plus the precondition for exit criterion #2 (S7-07). If the record isn't queryable above `high_floor`, S7-07 cannot succeed — surface loudly.
@@ -239,3 +371,4 @@ Run: `pytest tests/integration/test_phase4_e2e_breaking_change.py -v` — fails 
 - The cassette body has been sanitized by S3-04; even so, do not log `cassette.serialize()` anywhere — keep the response BLAKE3-digested in audit events only (arch §Logging strategy).
 - The `LeafInvoked == 1` assertion is the witness that the LLM was actually called — combine with `Provenance.AppTransitive` to rule out the refuse-false-positive failure mode.
 - If the test passes on first replay but fails on second replay, the cassette is being mutated mid-test (a bug in S3-04 or `pytest-recording`); surface immediately per Global Rule 12.
+- **Extension-by-addition rent (DP-H-4).** S7-07 will mirror this story's scaffolding for the cache-hit case; S7-09 may add a third E2E for the adversarial-corpus path. The discipline: adding any future Phase-4 E2E test must require **zero edits** to `tests/integration/_phase4_e2e_helpers.py` (Open/Closed at the file boundary). If a third sibling needs a new helper, add a new function — do not generalize an existing one until a *fourth* consumer crosses the rule-of-three again.
