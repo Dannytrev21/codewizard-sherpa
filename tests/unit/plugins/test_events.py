@@ -159,7 +159,8 @@ def test_spanning_event_on_internal_method_is_rejected(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-6 / AC-7 — the 16 internal + 9 spanning variants
+# AC-6 / AC-7 — the 17 internal + 9 spanning variants
+# (Phase-4 S2-01 grew the internal set by one — ``ProvenanceClassified``.)
 # ---------------------------------------------------------------------------
 
 _INTERNAL_VARIANTS = frozenset(
@@ -180,6 +181,8 @@ _INTERNAL_VARIANTS = frozenset(
         "StageOutcome",
         "FilesystemRaceDetected",
         "GitHooksDisabledForRun",
+        # Phase-4 S2-01 — ``ProvenanceGate`` tier-0 emission.
+        "ProvenanceClassified",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -197,13 +200,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_16_internal_variants_exist() -> None:
-    """AC-6: every named internal variant is exported."""
+def test_all_17_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 16
+    assert len(_INTERNAL_VARIANTS) == 17
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -647,3 +650,79 @@ def test_adapter_degraded_carries_a_typed_signal() -> None:
         detail="registry timeout",
     )
     assert event.event_type == "adapter_degraded"
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S2-01 — ``ProvenanceClassified`` workflow-internal variant
+# ---------------------------------------------------------------------------
+
+
+def test_provenance_classified_is_internal_event_variant() -> None:
+    """S2-01 AC-9: the new variant is registered on the internal discriminator."""
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import ProvenanceClassified, WorkflowInternalEvent
+
+    schema = TypeAdapter(WorkflowInternalEvent).json_schema()
+    mapping = schema["discriminator"]["mapping"]
+    assert "provenance_classified" in mapping
+
+    # Construct with a typed payload — the lower-case discriminator values are
+    # the contract (see the production ADR-0038 ``Provenance.kind`` taxonomy).
+    event = ProvenanceClassified(
+        event_id=EventId("01HPRV000000000000000000"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        provenance_kind="base_image",
+        adapter_error=None,
+    )
+    assert event.event_type == "provenance_classified"
+    assert event.provenance_kind == "base_image"
+
+
+def test_provenance_classified_rejects_unknown_kind() -> None:
+    """The provenance_kind ``Literal`` is closed — bad values fail at construction."""
+    from codegenie.plugins.events import ProvenanceClassified
+
+    with pytest.raises(ValidationError):
+        ProvenanceClassified(
+            event_id=EventId("01HPRV"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            provenance_kind="provenanceClassified",  # type: ignore[arg-type]
+        )
+
+
+def test_provenance_classified_adapter_error_field_defaults_to_none() -> None:
+    """The adapter_error field defaults to None — only present on fold path."""
+    from codegenie.plugins.events import ProvenanceClassified
+
+    event = ProvenanceClassified(
+        event_id=EventId("01HPRV"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        provenance_kind="app_direct",
+    )
+    assert event.adapter_error is None
+
+
+def test_provenance_classified_round_trips_through_event_log(tmp_path: Path) -> None:
+    """Emitting + replaying the event preserves its typed payload."""
+    from codegenie.plugins.events import ProvenanceClassified
+
+    log = EventLog(root=tmp_path, workflow_id=_wf())
+    log.emit_internal(
+        ProvenanceClassified(
+            event_id=EventId("01HPRVROUND"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            provenance_kind="unknown",
+            adapter_error="npm registry timeout",
+        )
+    )
+    log.flush()
+
+    replayed = [e for e in log.replay() if isinstance(e, ProvenanceClassified)]
+    assert len(replayed) == 1
+    assert replayed[0].provenance_kind == "unknown"
+    assert replayed[0].adapter_error == "npm registry timeout"

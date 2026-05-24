@@ -362,6 +362,41 @@ class GitHooksDisabledForRun(BaseModel):
     reason: str
 
 
+class ProvenanceClassified(BaseModel):
+    """Phase-4 S2-01 — ``ProvenanceGate`` classified one CVE's provenance.
+
+    Emitted exactly once per ``ProvenanceGate.classify(...)`` call. The
+    ``provenance_kind`` field is the lower-case ``Provenance.kind``
+    discriminator value the gate's classifier returned. ``adapter_error``
+    is populated only on the fold path — a classifier raised
+    ``ProvenanceError`` (including ``AdapterError``) and the gate
+    projected the result to ``Unknown(reason="adapter_error")`` per
+    Phase-4 ADR-0012.
+
+    Workflow-internal: this event describes one workflow's decision point
+    and replays with that workflow. The seven discriminator values mirror
+    the production ADR-0038 ``Provenance`` taxonomy verbatim — widening
+    requires both the primitive's variant set and this ``Literal`` to
+    move in lockstep.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["provenance_classified"] = "provenance_classified"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    provenance_kind: Literal[
+        "app_direct",
+        "app_transitive",
+        "app_vendored",
+        "base_image",
+        "runtime_bundled",
+        "both",
+        "unknown",
+    ]
+    adapter_error: str | None = None
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -489,7 +524,8 @@ WorkflowInternalEvent = Annotated[
     | AdapterDegraded
     | StageOutcome
     | FilesystemRaceDetected
-    | GitHooksDisabledForRun,
+    | GitHooksDisabledForRun
+    | ProvenanceClassified,
     Field(discriminator="event_type"),
 ]
 
@@ -526,6 +562,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     StageOutcome,
     FilesystemRaceDetected,
     GitHooksDisabledForRun,
+    ProvenanceClassified,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -890,6 +927,7 @@ __all__ = [
     "PluginRegistryCorrupted",
     "PluginResolved",
     "PluginsLoaded",
+    "ProvenanceClassified",
     "RecipeApplied",
     "RecipeFailed",
     "RecipeMatched",

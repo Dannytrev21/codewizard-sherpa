@@ -38,6 +38,12 @@ from codegenie.fallback.plan_proposal import (
     SandboxedRelativePath,
     UnifiedDiff,
 )
+from codegenie.fallback.provenance_gate import (
+    _APP_LAYER_PROVENANCE_KINDS,
+    ProvenanceClassifier,
+    ProvenanceGate,
+    is_app_layer,
+)
 
 __all__ = (
     "AppliedFromLlm",
@@ -50,8 +56,12 @@ __all__ = (
     "PlanProposalDepBump",
     "PlanProposalOverride",
     "PlanProposalRefuse",
+    "ProvenanceClassifier",
+    "ProvenanceGate",
     "RagOnlyApplicable",
     "Refused",
     "SandboxedRelativePath",
     "UnifiedDiff",
+    "_APP_LAYER_PROVENANCE_KINDS",
+    "is_app_layer",
 )
