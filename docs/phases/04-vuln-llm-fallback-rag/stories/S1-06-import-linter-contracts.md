@@ -1,7 +1,7 @@
 # Story S1-06 — import-linter contracts mirroring the fence
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-24 (phase-story-executor; see [`_attempts/S1-06.md`](_attempts/S1-06.md) for the per-AC evidence table + gate log — four Phase-4 `forbidden` import-linter contracts landed in `pyproject.toml` under an ADR-0003 comment header (all `as_packages = true`, all `ignore_imports` omitted), shape-pin test at `tests/fence/test_phase4_importlinter_contracts_shape.py` (18 cases) imports the source-of-truth constants from `tests/fence/test_pyproject_fence_phase4.py` so the lint-time fence and the test-time fence stay coupled. Gates green: `make lint-imports` 10 kept / 0 broken, `make lint`, `make typecheck` (213 files), `make fence` (417 passed), `pre-commit` on touched files. The C4 cross-story hazard (S1-05 narrowing → Phase-3/7 contract drift) was already closed before this story ran — Phase-3/7 contracts and their shape tests use the post-S1-05 six-member LLM-SDK list and pass clean. AC-7 (optional live-fire negative test) deferred per the story's own allowance — AC-6's shape test is the always-on mutation guard.)
 **Effort:** S
 **Depends on:** S1-05
 **ADRs honored:** ADR-0003 (path-scoped fence — `import-linter` is the *lint-time* belt-and-suspenders alongside the *test-time* pytest fence)

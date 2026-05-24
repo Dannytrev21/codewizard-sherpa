@@ -488,3 +488,63 @@ include_external_packages = true
 # absent — path-scoped to the leaf adapter, enforced separately by
 # `tests/fence/test_pyproject_fence_phase4.py`.
 forbidden_modules = ["openai", "langchain", "langgraph", "transformers", "sentence_transformers", "torch"]
+
+# ---------------------------------------------------------------------------
+# Phase 4 (ADR-0003) path-scoped admissions — the lint-time belt-and-suspenders
+# alongside the pytest fence tests/fence/test_pyproject_fence_phase4.py (S1-05).
+# `ignore_imports` is intentionally absent: the admitted edges
+# (anthropic_adapter -> anthropic, rag.store -> chromadb, rag.embedder ->
+# fastembed/onnxruntime) do not exist yet. import-linter's `forbidden` contract
+# defaults `unmatched_ignore_imports_alerting = ERROR`, so whitelisting a
+# not-yet-existent edge would break `make lint-imports`. Each downstream story
+# (S3-02, S4-01, S4-03) appends its own `ignore_imports` line when it lands the
+# real import — extension by addition, audit trail stays honest.
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "ADR-0003: gather pipeline must not import phase-4 admitted or forbidden packages"
+type = "forbidden"
+as_packages = true
+source_modules = [
+  "codegenie.probes",
+  "codegenie.coordinator",
+  "codegenie.cache",
+  "codegenie.output",
+  "codegenie.schema",
+]
+forbidden_modules = [
+  "anthropic",
+  "chromadb",
+  "fastembed",
+  "onnxruntime",
+  "langgraph",
+  "openai",
+  "langchain",
+  "transformers",
+  "sentence_transformers",
+  "torch",
+]
+
+[[tool.importlinter.contracts]]
+name = "ADR-0003: anthropic may be imported only by the leaf adapter"
+type = "forbidden"
+as_packages = true
+source_modules = ["codegenie"]
+forbidden_modules = ["anthropic"]
+# ignore_imports omitted — S3-02 appends `codegenie.fallback.leaf.anthropic_adapter -> anthropic`.
+
+[[tool.importlinter.contracts]]
+name = "ADR-0003: chromadb may be imported only under codegenie.rag"
+type = "forbidden"
+as_packages = true
+source_modules = ["codegenie"]
+forbidden_modules = ["chromadb"]
+# ignore_imports omitted — S4-03 appends `codegenie.rag.store -> chromadb`.
+
+[[tool.importlinter.contracts]]
+name = "ADR-0003: fastembed and onnxruntime may be imported only under codegenie.rag"
+type = "forbidden"
+as_packages = true
+source_modules = ["codegenie"]
+forbidden_modules = ["fastembed", "onnxruntime"]
+# ignore_imports omitted — S4-01 appends `codegenie.rag.embedder -> fastembed` / `-> onnxruntime`.
