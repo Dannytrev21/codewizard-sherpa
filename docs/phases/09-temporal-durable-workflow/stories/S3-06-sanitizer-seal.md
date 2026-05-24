@@ -50,7 +50,7 @@ Ship `class RedactedActivityResult(BaseModel)` + `seal(model: T) -> RedactedActi
     - `AWS_PATTERN = re.compile(r"AKIA[0-9A-Z]{16}")` (AWS Access Key ID).
     - `GITHUB_PAT_PATTERN = re.compile(r"ghp_[A-Za-z0-9]{36}")` (GitHub Personal Access Token).
     - `JWT_PATTERN = re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")` (JWT).
-    
+
     A match (a) emits a `RedactionFired(field_path=field_name, redaction_kind="value_shape_aws"|"value_shape_github_pat"|"value_shape_jwt")` event through `EventLog.append_batch` (batched — `RedactionFired` is NOT `@critical_event`); (b) raises `SealError(reason="value_shape", field=field_name, pattern=...)`.
 - [ ] **AC-6 — `seal()` is idempotent.** `seal(seal(x)) == seal(x)` — calling `seal` on an already-sealed instance returns a structurally-equal `RedactedActivityResult` (and does NOT re-emit `RedactionFired`). Property test asserts the property over Hypothesis-generated sealed instances.
 - [ ] **AC-7 — `SealError` carries typed forensic info.** `codegenie.durable.sanitizer.SealError(Exception)` carries `.reason: Literal["extra_field", "typed_credential", "value_shape"]`, `.field: str`, and one of `.type_name: str | None` (for typed_credential) or `.pattern: str | None` (for value_shape). Tests assert all three reason paths populate the right attributes.
@@ -113,9 +113,9 @@ Ship `class RedactedActivityResult(BaseModel)` + `seal(model: T) -> RedactedActi
 6. **`_emit_redaction_fired`** — module-level helper that posts a `RedactionFired` event to a module-singleton `EventLog` reference. **Design decision**: `seal` needs an `EventLog` to emit. Two paths:
     - **(a) Thread an `EventLog` argument** through every call site. Pure but invasive.
     - **(b) Module-level singleton `_REDACTION_LOG: EventLog | None = None`** with an init function `init_sanitizer(log: EventLog) -> None` called once at worker startup (S6-01).
-    
+
     Choose **(b)** for ergonomics — the alternative makes every activity's return annotation pass an event log alongside the model. The init function is the seam; tests use a fake `EventLog` via the init.
-    
+
     The init function and module singleton are documented in the module docstring as the only legal init mechanism; a fence test in S4-06 / S6-01 can assert init happens before any activity dispatch. If init has not happened (singleton is `None`), `_emit_redaction_fired` raises `RuntimeError` — fail loud.
 7. **`_PATTERNS`** — module-level `Final` tuple of `(pattern, kind)` pairs per AC-5.
 8. **Idempotence shortcut (AC-6, AC-9).** The `if isinstance(model, RedactedActivityResult)` check at the top of `seal` short-circuits. Confirm: if a contributor passes an unsealed `BaseModel` that happens to have `_sanitized=True` (e.g., crafted via subclass), the `isinstance` check fails and full sanitization runs. Defensive.

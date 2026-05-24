@@ -87,7 +87,7 @@ Ship the `EventBatchWriter.enqueue` dispatch that routes `@critical_event` varia
 6. **Double-write contract (AC-7).** Choose one of two paths:
     - **Path A — surface raw `psycopg.errors.UniqueViolation`.** Simplest. The activity's `RetryPolicy.non_retryable` lists `UniqueViolation`. Document in module docstring.
     - **Path B — wrap in `EventAlreadyAppended(EventId)` typed exception.** More auditable. Activity's `RetryPolicy.non_retryable` lists this. Path A is sufficient for Phase 9; Path B can be a follow-up.
-    
+
     Recommend Path A for this story (one fewer error type to maintain). The test asserts `psycopg.errors.UniqueViolation` (or its async-driver equivalent) surfaces.
 
 ## TDD plan — red / green / refactor
