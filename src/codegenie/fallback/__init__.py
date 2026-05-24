@@ -21,6 +21,7 @@ See:
 
 from __future__ import annotations
 
+from codegenie.fallback.budget import BudgetSnapshot, BudgetToken
 from codegenie.fallback.plan_outcome import (
     AppliedFromLlm,
     AppliedFromRecipe,
@@ -41,6 +42,8 @@ from codegenie.fallback.plan_proposal import (
 __all__ = (
     "AppliedFromLlm",
     "AppliedFromRecipe",
+    "BudgetSnapshot",
+    "BudgetToken",
     "PlanOutcome",
     "PlanProposal",
     "PlanProposalCallsiteRewrite",

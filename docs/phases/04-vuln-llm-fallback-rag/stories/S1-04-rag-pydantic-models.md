@@ -1,7 +1,7 @@
 # Story S1-04 — RAG-side Pydantic models
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** HARDENED
+**Status:** Done — 2026-05-24 (phase-story-executor; see [`_attempts/S1-04.md`](_attempts/S1-04.md) for the per-AC evidence table + gate log — seven Phase-4 RAG-side Pydantic v2 frozen-extra-forbid models landed across `src/codegenie/rag/models.py`, `src/codegenie/fallback/budget.py`, plus the kernel-tier `TzAwareDatetime` alias at `src/codegenie/types/datetime.py` (homed there to break a `rag.models` ↔ `fallback.budget` cycle the first green-run surfaced). 74 story-scoped tests pass — 42 in `tests/unit/rag/test_models.py`, 17 in `tests/unit/fallback/test_budget_models.py`, 2 Hypothesis properties in `tests/property/test_query_digest_determinism.py`, 1 concrete JSON round-trip in `tests/property/test_solved_example_yaml_roundtrip.py`. Story-scoped gates green: 383 fence tests, `mypy --strict src/` (213 files), `ruff check`, `ruff format --check`, `make lint-imports` (6 contracts kept). `_marker` is a Pydantic v2 `PrivateAttr` per ADR-0010 §Decision; AC-18's three checks (default, non-serialization, forged-marker rejection) pin the capability-discipline contract.)
 **Effort:** S
 **Depends on:** S1-01, S1-02
 **ADRs honored:** ADR-0010 (`BudgetToken` is the capability; this story lands the Pydantic frozen-extra-forbid model with the ADR-0010 four-field shape + the private `_marker` discriminator), ADR-0016 (canonical YAML SolvedExample with chain-verified `RecordProvenance`), ADR-0008 (`RetrievalOutcome` is a closed three-way union — `RagHit | RagMiss | RagDegraded` — feeding the two-threshold band)
@@ -68,8 +68,8 @@ Ship seven RAG-side Pydantic v2 frozen-extra-forbid models at `src/codegenie/rag
 
 ### Models landed
 
-- [ ] AC-1 — `src/codegenie/rag/__init__.py` and `src/codegenie/rag/models.py` exist.
-- [ ] AC-2 — `SolvedExample` model in `rag/models.py` with `frozen=True, extra="forbid"` and these fields exactly:
+- [x] AC-1 — `src/codegenie/rag/__init__.py` and `src/codegenie/rag/models.py` exist.
+- [x] AC-2 — `SolvedExample` model in `rag/models.py` with `frozen=True, extra="forbid"` and these fields exactly:
   - `id: SolvedExampleId`
   - `task_class: TaskClassId` (validator: was "(or `TaskClassName`)" — resolved; `identifiers.py` ships `TaskClassId` and no `TaskClassName`)
   - `language: Language` (validator: was "(or `LanguageName`)" — resolved; `identifiers.py` ships `Language` and no `LanguageName`)
@@ -84,7 +84,7 @@ Ship seven RAG-side Pydantic v2 frozen-extra-forbid models at `src/codegenie/rag
   - `origin: Literal["llm_solved", "operator_curated", "phase11_merge_webhook"]`
   - `embedding_model: ModelId`
   - `created_at: datetime` (tz-aware; UTC; validator rejects naive datetimes).
-- [ ] AC-3 — `Query` model with `frozen=True, extra="forbid"`:
+- [x] AC-3 — `Query` model with `frozen=True, extra="forbid"`:
   - `task_class: TaskClassId`
   - `language: Language`
   - `build_system: PackageManager`
@@ -92,41 +92,41 @@ Ship seven RAG-side Pydantic v2 frozen-extra-forbid models at `src/codegenie/rag
   - `affected_package: PackageId`
   - `failure_mode: FailureModeTag` — **typed `Literal`**, not free-text. The literal set lives at module level: `FailureModeTag = Literal["build_break", "test_fail", "typecheck_fail", "lockfile_resolution_fail", "callsite_signature_drift", "policy_block"]`. Six values cover Phase-4 fixture portfolio per arch §Fixture portfolio + §Edge cases.
   - `def digest(self) -> BlobDigest:` — returns BLAKE3 hex (64 lowercase hex chars) over the model's canonical JSON serialization. Pydantic v2 `model_dump_json` emits fields in **definition order** — stable across runs for a frozen model — so the dump is deterministic without an explicit key sort. Determinism (same fields ⇒ same digest) and field-sensitivity (any field change ⇒ different digest) are the load-bearing properties; AC-11 is the guard.
-- [ ] AC-4 — `RetrievalOutcome` closed three-way union, each variant `frozen=True, extra="forbid"`. **Field shapes conform to ADR-0008 §Decision + arch §Component 9 verbatim** (validator: was `RagHit(kind, record, similarity)` / `RagMiss(kind, reason)` / `RagDegraded(kind, record, similarity)` — corrected):
+- [x] AC-4 — `RetrievalOutcome` closed three-way union, each variant `frozen=True, extra="forbid"`. **Field shapes conform to ADR-0008 §Decision + arch §Component 9 verbatim** (validator: was `RagHit(kind, record, similarity)` / `RagMiss(kind, reason)` / `RagDegraded(kind, record, similarity)` — corrected):
   - `RagHit` (`kind: Literal["hit"] = "hit"`, `few_shot: SolvedExample`, `score: Similarity`) — confident hit; `score ≥ high_floor`.
   - `RagMiss` (`kind: Literal["miss"] = "miss"`) — **bare** (no payload beyond the discriminator). ADR-0008 §Decision + §Pattern-fit specify `RagMiss` carries nothing. The chain-orphan / model-mismatch observability (arch edge cases #14, #19) lives in the emitted `RagRecordChainOrphan` / `RagRecordModelMismatch` events, **not** in a `RagMiss.reason` field. Adding a `reason` field is an ADR-0008 widening amendment, out of scope for this story.
   - `RagDegraded` (`kind: Literal["degraded"] = "degraded"`, `near_match: SolvedExample`, `score: Similarity`) — near-match returned but below `high_floor` and at-or-above `degraded_floor`; fed to the LLM with a low-confidence tag.
   - `RetrievalOutcome = Annotated[RagHit | RagMiss | RagDegraded, Field(discriminator="kind")]`. (validator: `Field(discriminator="kind")`, not `Discriminator("kind")` — the implemented repo convention in `transforms/outcomes.py`; S1-02/S1-03 corrected the same arch-doc drift.)
-- [ ] AC-5 — `RecordProvenance` model with `frozen=True, extra="forbid"`:
+- [x] AC-5 — `RecordProvenance` model with `frozen=True, extra="forbid"`:
   - `workflow_id: WorkflowId`
   - `event_chain_head: ChainHead` (BLAKE3 — the spanning-log head this record was witnessed at)
   - `created_at: datetime` (tz-aware UTC)
   - `signing_method: Literal["hmac_sha256_chain", "operator_attestation"]`.
-- [ ] AC-6 — `BudgetSnapshot` model in `src/codegenie/fallback/budget.py` with `frozen=True, extra="forbid"`:
+- [x] AC-6 — `BudgetSnapshot` model in `src/codegenie/fallback/budget.py` with `frozen=True, extra="forbid"`:
   - `consumed_tokens: TokenCount`
   - `consumed_dollars: Decimal`
   - `outstanding_tokens: TokenCount`
   - `cap_tokens: TokenCount`
   - `cap_dollars: Decimal`.
   - **Invariants enforced via `@model_validator(mode="after")`:** `consumed_tokens + outstanding_tokens <= cap_tokens` (refused otherwise); `consumed_dollars <= cap_dollars`; `consumed_dollars >= 0`. (`TokenCount` ≥ 0 is enforced by the `parse_token_count` smart constructor at the boundary; here we re-assert the relation via Pydantic validation.)
-- [ ] AC-7 — `BudgetToken` model with `frozen=True, extra="forbid"`. **Field shape conforms to ADR-0010 §Decision + arch §Component 5 verbatim** (validator: was `id: BudgetTokenId` / `precharge_tokens` — corrected; ADR-0010's `BudgetToken` carries no `id`, and the field is `precharged_tokens`):
+- [x] AC-7 — `BudgetToken` model with `frozen=True, extra="forbid"`. **Field shape conforms to ADR-0010 §Decision + arch §Component 5 verbatim** (validator: was `id: BudgetTokenId` / `precharge_tokens` — corrected; ADR-0010's `BudgetToken` carries no `id`, and the field is `precharged_tokens`):
   - `precharged_tokens: TokenCount` — see AC-17 for the `≥ 0` range constraint.
   - `precharged_dollars: Decimal`
   - `issued_at: datetime` (tz-aware; UTC; the same naive-datetime validator AC-13 applies to `SolvedExample`/`RecordProvenance` covers this field).
   - `_marker: Literal["budget_token"] = "budget_token"` — the capability discriminator. ADR-0010 §Decision explicitly calls this a **private** marker; the leading underscore makes it a Pydantic v2 **`PrivateAttr`** (see AC-18). It is the identity tag S2-05's import-linter contract + AST-walk use to recognize a capability flow.
   - **No `id` field.** ADR-0010 + arch §Component 5 keep `BudgetToken` id-less; `LlmInvocationGuard` keys its `outstanding_tokens: dict[BudgetTokenId, TokenCount]` by `BudgetTokenId` externally (arch §Component 5 State). If S2-05 finds the token genuinely needs to carry its own id, that is an ADR-0010 amendment surfaced in S2-05 — not this story.
   - **No issuer logic here** — `LlmInvocationGuard.precharge` (S2-05) is where issuance happens. This story ships the shape only.
-- [ ] AC-8 — `TypecheckNodeSignal` model (named per arch §Data model; mirrors Phase-3 `TrustSignal` shape):
+- [x] AC-8 — `TypecheckNodeSignal` model (named per arch §Data model; mirrors Phase-3 `TrustSignal` shape):
   - `kind: Literal["typecheck.typescript"] = "typecheck.typescript"`
   - `passed: bool`
   - `details: dict[str, str | int | bool]` (carries forward Phase 3 convention; no Phase-4 widening)
   - `confidence: Literal["high", "medium", "low"]`
   - **No `@register_signal_kind` call here** — S6-05 wires it; this story ships the model alone.
-- [ ] AC-9 — All seven models export from their package `__init__.py` and through `codegenie.rag`/`codegenie.fallback` boundary modules.
+- [x] AC-9 — All seven models export from their package `__init__.py` and through `codegenie.rag`/`codegenie.fallback` boundary modules.
 
 ### Verification
 
-- [ ] AC-10 — Two test files together cover every model: `tests/unit/rag/test_models.py` (the five RAG-side models) and `tests/unit/fallback/test_budget_models.py` (`BudgetSnapshot`, `BudgetToken`). Coverage required:
+- [x] AC-10 — Two test files together cover every model: `tests/unit/rag/test_models.py` (the five RAG-side models) and `tests/unit/fallback/test_budget_models.py` (`BudgetSnapshot`, `BudgetToken`). Coverage required:
   - Happy: each of the seven models constructs from a valid dict.
   - Sad — `extra="forbid"` rejects an unknown key. **Parametrized over all seven model classes** (`SolvedExample`, `Query`, `RecordProvenance`, `RagHit`, `RagMiss`, `RagDegraded`, `TypecheckNodeSignal`, plus `BudgetSnapshot`, `BudgetToken` in the fallback file) — not `SolvedExample` alone. (validator: hardened — the original TDD plan only tested `SolvedExample`; removing `extra="forbid"` from any other model left every test green.)
   - Sad — `frozen=True` rejects post-construction attribute assignment. **Parametrized over all seven model classes** (same set). For `BudgetToken`, assert on a public field — `precharged_tokens` — not `_marker` (see AC-18).
@@ -140,17 +140,17 @@ Ship seven RAG-side Pydantic v2 frozen-extra-forbid models at `src/codegenie/rag
   - Sad — `BudgetSnapshot` with `consumed_dollars < 0` rejected.
   - Sad — `RagHit`/`RagDegraded` constructed without their required payload (`few_shot` / `near_match`) rejected. (validator: added — the story's Notes call a payload-less near-match "a model bug"; nothing tested it.)
   - Each model's full field keyset is pinned: `set(instance.model_dump().keys()) == {…}` — a silent field rename/drop is caught. (validator: added — mirrors the `test_json_shape_keysets_pinned` idiom in the adjacent `tests/unit/transforms/test_outcomes.py`.)
-- [ ] AC-11 — **`Query.digest()` determinism property** (`tests/property/test_query_digest_determinism.py`):
+- [x] AC-11 — **`Query.digest()` determinism property** (`tests/property/test_query_digest_determinism.py`):
   - Hypothesis-generate `Query` field values (drawn from valid strategies). For any drawn `q`, `q.digest() == q.digest()` (purity) and `q.digest()` is 64 lowercase hex.
   - Field-perturbation: changing any single field changes the digest (parametrized over each field).
-- [ ] AC-12 — **`SolvedExample` JSON round-trip** (`tests/property/test_solved_example_yaml_roundtrip.py`; the full `from_yaml(to_yaml(x)) == x` Hypothesis property lands in S4-04 — this story proves the Pydantic shape is JSON-serialisable):
+- [x] AC-12 — **`SolvedExample` JSON round-trip** (`tests/property/test_solved_example_yaml_roundtrip.py`; the full `from_yaml(to_yaml(x)) == x` Hypothesis property lands in S4-04 — this story proves the Pydantic shape is JSON-serialisable):
   - A concrete, representative valid `SolvedExample` satisfies `SolvedExample.model_validate_json(s.model_dump_json()) == s` (deep equal). (validator: was "Hypothesis-generated" — made example-based; a `st.builds(SolvedExample, …)` strategy needs a generator for the nested `PlanProposal` discriminated union, which is S1-02/S4-04 territory. A concrete round-trip still fails loudly if the shape is not serialisable. The test must have a real body — not a contentless skeleton.)
-- [ ] AC-13 — **`tz-aware datetime` enforcement** — parametrized test: a naive `datetime(2026, 1, 1)` → `ValidationError`; a tz-aware `datetime(2026, 1, 1, tzinfo=UTC)` → `Ok`. Applies to **all three** tz-aware datetime fields: `SolvedExample.created_at`, `RecordProvenance.created_at`, and `BudgetToken.issued_at`. (validator: hardened — `BudgetToken.issued_at` added; the original TDD plan only tested `SolvedExample`, so dropping the validator from `RecordProvenance` or `BudgetToken` left every test green.)
-- [ ] AC-14 — `mypy --strict src/codegenie/rag/` and `mypy --strict src/codegenie/fallback/` clean. `ruff check`, `ruff format --check` clean.
-- [ ] AC-15 — The TDD plan's red tests exist, are committed, and are green.
-- [ ] AC-16 — **Every `Literal`-typed field rejects an out-of-set value** (`pytest.raises(ValidationError)`), parametrized: `SolvedExample.plan_kind`, `SolvedExample.origin`, `RecordProvenance.signing_method`, `TypecheckNodeSignal.confidence`. (`Query.failure_mode` is already covered by AC-10; `RetrievalOutcome.kind` by the AC-10 discriminator test.) (validator: added — the original TDD plan tested only `failure_mode`; typing any of these fields as bare `str` would otherwise pass every test.)
-- [ ] AC-17 — **Range-bounded fields reject out-of-range values.** The float `score` on `RagHit`/`RagDegraded` is typed `Annotated[Similarity, Field(ge=-1.0, le=1.0)]` and the `TokenCount` fields on `BudgetToken` (`precharged_tokens`) and `BudgetSnapshot` (`consumed_tokens`, `outstanding_tokens`, `cap_tokens`) are typed `Annotated[TokenCount, Field(ge=0)]`. Tests: `RagHit(..., score=1.5)` → `ValidationError`; `RagHit(..., score=0.85)` (in-band) → `Ok`; `BudgetToken(..., precharged_tokens=-1)` → `ValidationError`. (validator: added — `Similarity` and `TokenCount` are `NewType`s; Pydantic v2 sees only the base `float`/`int` and does NOT re-validate the smart-constructor range. `RetrievalOutcome` is built *internally* by `SolvedExampleRetriever` from a raw ChromaDB score that never passes `parse_similarity`, so an out-of-range `RagHit` is a representable illegal state on a hot path. `Annotated[..., Field(ge=…, le=…)]` is the established repo idiom — `scip_slice.py`, `sandbox_jail.py`, `redacted_slice.py`.)
-- [ ] AC-18 — **`BudgetToken._marker` is a Pydantic v2 `PrivateAttr`.** A leading-underscore annotation in a Pydantic v2 model is a private attribute, not a validated field — ADR-0010 §Decision deliberately specifies a "private" marker. Declare it explicitly: `_marker: Literal["budget_token"] = PrivateAttr(default="budget_token")`. Tests pin the understood behavior: (a) `BudgetToken(precharged_tokens=…, precharged_dollars=…, issued_at=…)._marker == "budget_token"` (default present); (b) `"_marker" not in BudgetToken(...).model_dump()` (private ⇒ not serialized); (c) `BudgetToken(..., _marker="forged")` raises `ValidationError` (a forged marker cannot be injected via the constructor — `extra="forbid"` rejects the unknown `_marker` kwarg). (validator: added — the original `test_budget_token_marker` only asserted the default and would pass even if the marker provided zero capability discipline.)
+- [x] AC-13 — **`tz-aware datetime` enforcement** — parametrized test: a naive `datetime(2026, 1, 1)` → `ValidationError`; a tz-aware `datetime(2026, 1, 1, tzinfo=UTC)` → `Ok`. Applies to **all three** tz-aware datetime fields: `SolvedExample.created_at`, `RecordProvenance.created_at`, and `BudgetToken.issued_at`. (validator: hardened — `BudgetToken.issued_at` added; the original TDD plan only tested `SolvedExample`, so dropping the validator from `RecordProvenance` or `BudgetToken` left every test green.)
+- [x] AC-14 — `mypy --strict src/codegenie/rag/` and `mypy --strict src/codegenie/fallback/` clean. `ruff check`, `ruff format --check` clean.
+- [x] AC-15 — The TDD plan's red tests exist, are committed, and are green.
+- [x] AC-16 — **Every `Literal`-typed field rejects an out-of-set value** (`pytest.raises(ValidationError)`), parametrized: `SolvedExample.plan_kind`, `SolvedExample.origin`, `RecordProvenance.signing_method`, `TypecheckNodeSignal.confidence`. (`Query.failure_mode` is already covered by AC-10; `RetrievalOutcome.kind` by the AC-10 discriminator test.) (validator: added — the original TDD plan tested only `failure_mode`; typing any of these fields as bare `str` would otherwise pass every test.)
+- [x] AC-17 — **Range-bounded fields reject out-of-range values.** The float `score` on `RagHit`/`RagDegraded` is typed `Annotated[Similarity, Field(ge=-1.0, le=1.0)]` and the `TokenCount` fields on `BudgetToken` (`precharged_tokens`) and `BudgetSnapshot` (`consumed_tokens`, `outstanding_tokens`, `cap_tokens`) are typed `Annotated[TokenCount, Field(ge=0)]`. Tests: `RagHit(..., score=1.5)` → `ValidationError`; `RagHit(..., score=0.85)` (in-band) → `Ok`; `BudgetToken(..., precharged_tokens=-1)` → `ValidationError`. (validator: added — `Similarity` and `TokenCount` are `NewType`s; Pydantic v2 sees only the base `float`/`int` and does NOT re-validate the smart-constructor range. `RetrievalOutcome` is built *internally* by `SolvedExampleRetriever` from a raw ChromaDB score that never passes `parse_similarity`, so an out-of-range `RagHit` is a representable illegal state on a hot path. `Annotated[..., Field(ge=…, le=…)]` is the established repo idiom — `scip_slice.py`, `sandbox_jail.py`, `redacted_slice.py`.)
+- [x] AC-18 — **`BudgetToken._marker` is a Pydantic v2 `PrivateAttr`.** A leading-underscore annotation in a Pydantic v2 model is a private attribute, not a validated field — ADR-0010 §Decision deliberately specifies a "private" marker. Declare it explicitly: `_marker: Literal["budget_token"] = PrivateAttr(default="budget_token")`. Tests pin the understood behavior: (a) `BudgetToken(precharged_tokens=…, precharged_dollars=…, issued_at=…)._marker == "budget_token"` (default present); (b) `"_marker" not in BudgetToken(...).model_dump()` (private ⇒ not serialized); (c) `BudgetToken(..., _marker="forged")` raises `ValidationError` (a forged marker cannot be injected via the constructor — `extra="forbid"` rejects the unknown `_marker` kwarg). (validator: added — the original `test_budget_token_marker` only asserted the default and would pass even if the marker provided zero capability discipline.)
 
 ## Implementation outline
 

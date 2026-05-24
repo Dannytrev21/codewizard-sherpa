@@ -34,6 +34,18 @@ arm. Future stories generating code under indented blocks via `dedent`
 should sanity-print the rendered source once before asserting on mypy
 output.
 
+## L-5 — Shared utilities used by two leaf packages must live in the kernel (S1-04)
+
+A reusable validator / type alias shared between `codegenie.rag.models` and
+`codegenie.fallback.budget` cannot live in either leaf package — the
+`fallback/__init__.py` re-export side-effect creates a transient cycle
+(`rag.models` → `fallback.plan_proposal` → `fallback/__init__.py` →
+`fallback.budget` → `rag.models`) that mypy does NOT catch but pytest
+collection breaks on at runtime. The canonical home is
+`codegenie.types/<tiny module>.py` — same precedent as `PackageManager`
+moving to `codegenie.types.identifiers` (ADR-0013 Amendment 2026-05-20).
+The reverse direction (kernel imports leaf) is forbidden by `import-linter`.
+
 ## L-4 — Local `lint-imports` console script is not on the system PATH by default (Phase 4)
 
 `tests/unit/test_lint_imports_canary.py` resolves the `lint-imports` binary
