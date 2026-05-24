@@ -470,6 +470,52 @@ class CanaryCollisionEvent(BaseModel):
     pattern_id: str
 
 
+# --- Phase-4 S2-04 — ``PromptBuilder`` audit events -------------------------
+
+
+class PromptAssembled(BaseModel):
+    """Phase-4 S2-04 — ``PromptBuilder.build`` produced one
+    ``(TrustedPrompt, FencedPromptBody)`` pair.
+
+    Emitted exactly once per successful :meth:`PromptBuilder.build` call.
+    The payload is **shape-only**: prompt content and any digest of it
+    belong to :class:`LeafInvoked` in S6-01 (per phase-arch §Component 4),
+    not here. Keeping content out of this event preserves the
+    invocation-time digest as the single source of truth for "what bytes
+    actually reached the leaf."
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["prompt_assembled"] = "prompt_assembled"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    segment_count: int
+    source_kinds_used: tuple[_FENCE_SOURCE_KIND, ...]
+    system_prompt_byte_length: int
+    fenced_body_byte_length: int
+
+
+class SegmentCountTruncated(BaseModel):
+    """Phase-4 S2-04 — ``PromptBuilder`` truncated an over-cap segment list.
+
+    Currently emitted only for ``transitive_dep_meta`` (capped at 16 items
+    per ADR-0013's multiplicity table; ``rag_few_shots`` over 3 raises a
+    ``ValueError`` instead — see :meth:`PromptBuilder.build`). The
+    ``source_kind`` field is the seven-valued ``SourceKind`` literal so a
+    future cap-bearing source kind can land here additively.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["segment_count_truncated"] = "segment_count_truncated"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    source_kind: _FENCE_SOURCE_KIND
+    requested: int
+    kept: int
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -600,7 +646,9 @@ WorkflowInternalEvent = Annotated[
     | GitHooksDisabledForRun
     | ProvenanceClassified
     | FenceApplied
-    | CanaryCollisionEvent,
+    | CanaryCollisionEvent
+    | PromptAssembled
+    | SegmentCountTruncated,
     Field(discriminator="event_type"),
 ]
 
@@ -640,6 +688,8 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     ProvenanceClassified,
     FenceApplied,
     CanaryCollisionEvent,
+    PromptAssembled,
+    SegmentCountTruncated,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1006,12 +1056,14 @@ __all__ = [
     "PluginRegistryCorrupted",
     "PluginResolved",
     "PluginsLoaded",
+    "PromptAssembled",
     "ProvenanceClassified",
     "RecipeApplied",
     "RecipeFailed",
     "RecipeMatched",
     "RecipeSkipped",
     "RequiresHumanReview",
+    "SegmentCountTruncated",
     "StageOutcome",
     "StaleVulnIndex",
     "TestStageOutcome",

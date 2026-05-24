@@ -186,6 +186,9 @@ _INTERNAL_VARIANTS = frozenset(
         # Phase-4 S2-02 — ``FenceWrapper`` audit events.
         "FenceApplied",
         "CanaryCollisionEvent",
+        # Phase-4 S2-04 — ``PromptBuilder`` audit events.
+        "PromptAssembled",
+        "SegmentCountTruncated",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -203,13 +206,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_19_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01 + Phase-4 S2-02: every named internal variant is exported."""
+def test_all_21_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01 + S2-02 + S2-04: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 19
+    assert len(_INTERNAL_VARIANTS) == 21
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -845,3 +848,133 @@ def test_fence_events_round_trip_through_event_log(tmp_path: Path) -> None:
     assert applied[0].original_byte_length == 5000
     assert len(collisions) == 1
     assert collisions[0].pattern_id == "ignore_previous_instructions"
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S2-04 — ``PromptAssembled`` + ``SegmentCountTruncated`` variants
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_assembled_is_internal_event_variant() -> None:
+    """S2-04 AC-11: ``prompt_assembled`` discriminator registered + typed payload."""
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import PromptAssembled, WorkflowInternalEvent
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "prompt_assembled" in mapping
+
+    event = PromptAssembled(
+        event_id=EventId("01HPRBASM0000000000000000"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        segment_count=3,
+        source_kinds_used=("cve_description", "repo_readme", "transitive_dep_meta"),
+        system_prompt_byte_length=120,
+        fenced_body_byte_length=400,
+    )
+    assert event.event_type == "prompt_assembled"
+    assert event.segment_count == 3
+    assert event.source_kinds_used == (
+        "cve_description",
+        "repo_readme",
+        "transitive_dep_meta",
+    )
+    assert event.system_prompt_byte_length == 120
+    assert event.fenced_body_byte_length == 400
+
+
+def test_prompt_assembled_rejects_unknown_source_kind() -> None:
+    """S2-04 AC-11: ``source_kinds_used`` is a tuple of the seven SourceKind literals."""
+    from codegenie.plugins.events import PromptAssembled
+
+    with pytest.raises(ValidationError):
+        PromptAssembled(
+            event_id=EventId("01HPRBASM0000000000000099"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            segment_count=1,
+            source_kinds_used=("unknown_kind",),  # type: ignore[arg-type]
+            system_prompt_byte_length=1,
+            fenced_body_byte_length=1,
+        )
+
+
+def test_segment_count_truncated_is_internal_event_variant() -> None:
+    """S2-04 AC-11: ``segment_count_truncated`` discriminator registered + typed payload."""
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import SegmentCountTruncated, WorkflowInternalEvent
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "segment_count_truncated" in mapping
+
+    event = SegmentCountTruncated(
+        event_id=EventId("01HPRBTRUNC0000000000000000"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        source_kind="transitive_dep_meta",
+        requested=20,
+        kept=16,
+    )
+    assert event.event_type == "segment_count_truncated"
+    assert event.requested == 20
+    assert event.kept == 16
+
+
+def test_segment_count_truncated_rejects_unknown_source_kind() -> None:
+    """S2-04 AC-11: ``source_kind`` is one of the seven SourceKind literals."""
+    from codegenie.plugins.events import SegmentCountTruncated
+
+    with pytest.raises(ValidationError):
+        SegmentCountTruncated(
+            event_id=EventId("01HPRBTRUNC0000000000000099"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            source_kind="unknown_kind",  # type: ignore[arg-type]
+            requested=20,
+            kept=16,
+        )
+
+
+def test_prompt_builder_events_round_trip_through_event_log(tmp_path: Path) -> None:
+    """S2-04 AC-11: both new events emit + replay through the workflow-internal stream."""
+    from codegenie.plugins.events import PromptAssembled, SegmentCountTruncated
+
+    log = EventLog(root=tmp_path, workflow_id=_wf())
+    log.emit_internal(
+        SegmentCountTruncated(
+            event_id=EventId("01HPRBTRUNC0000000000000010"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            source_kind="transitive_dep_meta",
+            requested=42,
+            kept=16,
+        )
+    )
+    log.emit_internal(
+        PromptAssembled(
+            event_id=EventId("01HPRBASM0000000000000011"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            segment_count=4,
+            source_kinds_used=(
+                "cve_description",
+                "repo_readme",
+                "transitive_dep_meta",
+                "source_snippet",
+            ),
+            system_prompt_byte_length=10,
+            fenced_body_byte_length=20,
+        )
+    )
+    log.flush()
+
+    replayed = list(log.replay())
+    assembled = [e for e in replayed if isinstance(e, PromptAssembled)]
+    truncations = [e for e in replayed if isinstance(e, SegmentCountTruncated)]
+    assert len(assembled) == 1
+    assert assembled[0].segment_count == 4
+    assert len(truncations) == 1
+    assert truncations[0].requested == 42
+    assert truncations[0].kept == 16
