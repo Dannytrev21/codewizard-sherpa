@@ -77,6 +77,16 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("src/codegenie/py.typed"),
         # S1-05 — this story's walker
         Path("src/codegenie/_phase3_fence.py"),
+        # Phase 4 S1-05 / ADR-0003 — path-scoped fence amendment. The Phase-0
+        # closure-scoped fence (``FORBIDDEN_LLM_SDKS``) narrows honestly —
+        # ``anthropic`` moves to a path-scoped admission at the leaf adapter
+        # (enforced by ``tests/fence/test_pyproject_fence_phase4.py``);
+        # ``sentence-transformers`` + ``torch`` join the deny-set. Six denied
+        # SDKs now, not five — the closure-scoped fence is *stricter*, not
+        # relaxed. ``_name_of`` gains ``packaging.utils.canonicalize_name``
+        # (PEP 503) so underscore vs hyphen spellings both resolve. adr:
+        # docs/phases/04-vuln-llm-fallback-rag/ADRs/0003-path-scoped-fence-amendment.md
+        Path("src/codegenie/_fence.py"),
         # S4-05 — Phase 3 capability-construction AST fence.
         # `find_violations()` reports any `*Capability(...)` construction
         # outside the chokepoint at `codegenie.plugins.capabilities`. Mirrors
