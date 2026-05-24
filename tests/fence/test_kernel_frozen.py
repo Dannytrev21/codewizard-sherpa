@@ -132,6 +132,18 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         # ``VulnIndexMigrationNotApplied``) extending the typed-exception
         # taxonomy. adr: same as ``cli.py`` above.
         Path("src/codegenie/errors.py"),
+        # Capability-shakedown 2026-05-24 — additive
+        # ``EVENT_PROBE_RAW_ARTIFACT_MISSING_ON_CACHE_HIT`` event constant
+        # (mirrors the established ``probe.raw_artifact.truncated`` pattern;
+        # exported via ``__all__``). Fail-loud surface for cache hits whose
+        # probe-staged raw artifact no longer exists on disk — the silent
+        # partial-materialization mode the shakedown surfaced. Allowed-if-
+        # touched: an event-constant addition cannot be ADR'd individually
+        # without burying every Phase-0 event-name extension; ``cli.py`` is
+        # already on this allowlist for the consumer side of the same fix.
+        # adr: docs/_shakedowns/codegenie-gather-2026-05-24T213722Z.md
+        # §F-raw-artifact-missing-on-cache-hit.
+        Path("src/codegenie/logging.py"),
         # Fix BudgetingContext missing output_dir (spawned task name) —
         # close the ProbeContext / BudgetingContext structural drift
         # surfaced 2026-05-19: ``scip_index``, ``tree_sitter_import_graph``
