@@ -8,18 +8,34 @@ mutation-resistant: both the live test and the planted-SDK tests invoke the
 *same* extraction function, so any regression in the production parser kills
 the canary AND the live check.
 
+Phase-4 amendment (ADR-0003): the original five-member ``FORBIDDEN_LLM_SDKS``
+set *narrows honestly* — ``anthropic`` moves out (it is a runtime dep at the
+single callsite ``src/codegenie/fallback/leaf/anthropic_adapter.py``, fenced
+by path-scope at ``tests/fence/test_pyproject_fence_phase4.py``) and
+``sentence-transformers`` + ``torch`` are added (so the deny-set does not
+leave a hole for an alternative embeddings backend after ``fastembed`` becomes
+a runtime dep). Net: the closure-scoped fence is *stricter* (six denied
+SDKs, not five), not relaxed. See ``phase-arch-design.md §Gap 5`` for the
+authoritative correction of the (stale) "the set is not edited" claim in
+ADR-0003 §Decision and ``final-design.md §2.1``.
+
 Tarball of guarantees:
 
-* ``FORBIDDEN_LLM_SDKS`` is the exact set encoded by ADR-0002. Adding an SDK
-  is a one-line PR with mandatory review.
+* ``FORBIDDEN_LLM_SDKS`` is the exact six-member set encoded by Phase-0
+  ADR-0002 (narrowed) + Phase-4 ADR-0003 (path-scope amendment). Adding an
+  SDK or further narrowing is a one-line PR with mandatory review.
 * ``parse_runtime_dep_names_from_toml`` reads *only* ``[project].dependencies``
   — never ``[project.optional-dependencies]``. This is the scope-narrowing
   invariant from phase-arch-design.md §Edge cases #15.
 * Version specifiers (``>=0.1``), extras (``[all]``), and environment markers
   (``; python_version >= "3.11"``) are normalised away via
   ``packaging.Requirement`` so the comparison is on bare distribution names.
+* ``_name_of`` canonicalises via :func:`packaging.utils.canonicalize_name`
+  (PEP 503) so ``sentence-transformers`` / ``sentence_transformers`` /
+  ``Sentence.Transformers`` all resolve to the one canonical form.
 
 See ``docs/phases/00-bullet-tracer-foundations/ADRs/0002-fence-ci-job-no-llm-in-gather.md``
+and ``docs/phases/04-vuln-llm-fallback-rag/ADRs/0003-path-scoped-fence-amendment.md``
 for the why.
 """
 
@@ -29,15 +45,36 @@ import tomllib
 from importlib.metadata import distribution
 
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 FORBIDDEN_LLM_SDKS: frozenset[str] = frozenset(
-    {"anthropic", "langgraph", "openai", "langchain", "transformers"}
+    {
+        "langgraph",
+        "openai",
+        "langchain",
+        "transformers",
+        "sentence-transformers",
+        "torch",
+    }
 )
-"""The exact ADR-0002 closure. Adding an SDK requires an ADR amendment."""
+"""The exact ADR-0002 (narrowed) + ADR-0003 (admitted-via-path-scope) closure.
+
+Six PyPI distribution names. ``anthropic`` is intentionally absent — it is a
+runtime dep under the path-scoped fence at
+``tests/fence/test_pyproject_fence_phase4.py`` (single callsite:
+``src/codegenie/fallback/leaf/anthropic_adapter.py``). ``sentence-transformers``
+and ``torch`` are added so we do not leave a hole for an alternative
+embeddings backend after ``fastembed`` becomes a runtime dep.
+"""
 
 
 def _name_of(spec: str) -> str | None:
-    """Return the lowercased distribution name from a PEP 508 requirement string.
+    """Return the canonical PyPI distribution name from a PEP 508 requirement string.
+
+    Canonicalises via :func:`packaging.utils.canonicalize_name` (PEP 503) so a
+    contributor writing ``sentence_transformers`` (underscore) or
+    ``Sentence-Transformers`` in ``[project.dependencies]`` is still caught by
+    a deny-set keyed on the canonical ``sentence-transformers``.
 
     Tolerates malformed specs (returns ``None`` instead of raising) so a single
     bad row in someone else's metadata cannot cause the fence to vanish.
@@ -46,11 +83,11 @@ def _name_of(spec: str) -> str | None:
         name: str = Requirement(spec).name
     except InvalidRequirement:
         return None
-    return name.lower()
+    return canonicalize_name(name)
 
 
 def parse_runtime_dep_names_from_toml(toml_text: str) -> set[str]:
-    """Return the bare names of ``[project].dependencies`` from ``toml_text``.
+    """Return the canonical names of ``[project].dependencies`` from ``toml_text``.
 
     Scope is *strictly* ``[project].dependencies`` — extras under
     ``[project.optional-dependencies]`` are intentionally ignored. The fence
@@ -64,7 +101,7 @@ def parse_runtime_dep_names_from_toml(toml_text: str) -> set[str]:
 
 
 def requires_names_from_distribution(name: str = "codewizard-sherpa") -> set[str]:
-    """Return the runtime ``requires`` names of an installed distribution.
+    """Return the canonical runtime ``requires`` names of an installed distribution.
 
     Entries whose environment marker contains ``extra ==`` are filtered out —
     those are optional-dependency members surfaced by ``importlib.metadata``

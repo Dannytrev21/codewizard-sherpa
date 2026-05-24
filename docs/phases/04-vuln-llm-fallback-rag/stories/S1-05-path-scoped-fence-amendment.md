@@ -1,7 +1,7 @@
 # Story S1-05 — Path-scoped pyproject fence amendment
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** HARDENED
+**Status:** Done — 2026-05-24 (phase-story-executor; see [`_attempts/S1-05.md`](_attempts/S1-05.md) for the per-AC evidence table + gate log — `FORBIDDEN_LLM_SDKS` narrowed honestly to six members (anthropic moved to path-scope; sentence-transformers + torch added), `_fence.py::_name_of` canonicalizes via PEP 503, the path-scoped `tests/fence/test_pyproject_fence_phase4.py` ships the four AC-8 assertions over the shared `walk_imports` AST scanner, five fixtures (four violators + one benign-mention) ride the same scanner via paired negatives, and the CI `fence` job runs in two phases — Phase A bare-install closure measurement, Phase B post-`[dev]` `tests/fence/` — with a new ordering-invariant CI workflow assertion enforcing the discipline. Story-scoped gates green: `make fence` 399 passed, `mypy --strict src/` 213 files no issues, `ruff check` + `ruff format --check`, `make lint-imports` 6 contracts kept, `uv lock` re-locked and uv-vs-pyproject parity test passes.)
 **Effort:** M
 **Depends on:** S1-04
 **ADRs honored:** ADR-0003 (path-scoped fence amendment — admit `anthropic`/`chromadb`/`fastembed`/`onnxruntime` only outside the gather pipeline), Phase-0 ADR-0002 (production fence preserved; `FORBIDDEN_LLM_SDKS` *narrows* honestly)

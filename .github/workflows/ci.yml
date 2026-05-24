@@ -225,16 +225,31 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 5: fence — the load-bearing ADR-0002 gate.
   #
-  # The install is two-step on purpose: a bare `pip install -e .` measures
-  # the actual gather-pipeline closure (ADR-0006 §Consequences); pytest is
-  # then installed STANDALONE as the harness so the closure measurement is
-  # uncontaminated by `[dev]`. Do NOT install `[dev]`, `[agents]`, or
-  # `[service]` here — asserted by tests/unit/test_ci_workflow.py.
+  # Two phases on purpose:
+  #
+  #   Phase A (closure measurement, STANDALONE — Phase-0 ADR-0002 / ADR-0006):
+  #     bare ``pip install -e .`` + standalone ``pytest`` + run only
+  #     ``tests/unit/test_pyproject_fence.py``. The closure measurement
+  #     (``scan_installed_distribution``) MUST observe an uncontaminated
+  #     ``[project].dependencies`` closure. ``[dev]`` / ``[agents]`` /
+  #     ``[service]`` extras are forbidden here — asserted by
+  #     ``tests/unit/test_ci_workflow.py::test_fence_job_phase_a_closure_measurement_is_standalone``.
+  #
+  #   Phase B (path-scoped + audit-lint, FULL DEV — Phase-4 ADR-0003 / S1-05):
+  #     after the closure measurement is done, install ``[dev]`` extras and
+  #     run all of ``tests/fence/``. This covers the Phase-4 path-scoped
+  #     fence (no LLM SDK in gather-pipeline paths; ``anthropic`` single-
+  #     callsite; ``chromadb``/``fastembed``/``onnxruntime`` rag-scoped),
+  #     the planted-violation negative tests, and the import-linter
+  #     audit+lint contracts (``test_lint_imports_catches_planted_leak.py``
+  #     needs the ``import-linter`` console script). Mirrors
+  #     ``make fence`` so the dedicated CI gate matches the local target
+  #     (S1-05 AC-22 — no local/CI divergence on path-scope regressions).
   # ---------------------------------------------------------------------------
   fence:
     name: fence
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -244,12 +259,22 @@ jobs:
         run: pip install -e .
       - name: Install pytest (harness, STANDALONE)
         run: pip install pytest
-      - name: Run fence test
+      - name: Phase A — closure-measurement fence (STANDALONE)
         # ``-o "addopts="`` overrides pyproject's ``--cov=...`` switches
-        # which require ``pytest-cov`` — the fence job deliberately
+        # which require ``pytest-cov`` — the closure-measurement phase
         # installs ``pytest`` STANDALONE (no [dev]) per ADR-0006 so the
         # gather-pipeline closure measurement stays uncontaminated.
         run: pytest -q -o "addopts=" tests/unit/test_pyproject_fence.py
+      - name: Install dev extras (Phase B harness — closure measurement done)
+        # MUST come after Phase A. Installing [dev] before would contaminate
+        # the closure measurement (Phase-0 ADR-0002 + ADR-0006). The
+        # closure-measurement step has already recorded its observation by
+        # the time this runs.
+        run: python -m pip install -e ".[dev]"
+      - name: Phase B — path-scoped + audit-lint fence (S1-05 AC-22)
+        # Mirrors ``make fence``. ``--no-cov`` because the fence job has no
+        # coverage gate of its own — the ``test`` job owns coverage.
+        run: pytest -q -o "addopts=" --no-cov tests/fence/
 
   # ---------------------------------------------------------------------------
   # Phase-2 named CI lanes (S8-03). The eight names from

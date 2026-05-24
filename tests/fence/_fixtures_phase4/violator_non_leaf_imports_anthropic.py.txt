@@ -1,0 +1,6 @@
+"""DELIBERATE VIOLATION FIXTURE — `anthropic` imported outside `fallback/leaf/`.
+
+Mutation guard for the single-callsite rule: only
+``src/codegenie/fallback/leaf/anthropic_adapter.py`` may import ``anthropic``.
+"""
+import anthropic  # type: ignore[import-untyped]

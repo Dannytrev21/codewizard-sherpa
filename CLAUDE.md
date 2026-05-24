@@ -61,7 +61,7 @@ CI runs across Python 3.11 / 3.12 × `ubuntu-24.04` and reproduces `make check`.
 
 ## Architecture — the big picture
 
-The whole thing is a **deterministic pipeline**: there is no LLM anywhere in `codegenie/`. The runtime closure is locked by `tests/unit/test_pyproject_fence.py` (`FORBIDDEN_LLM_SDKS` = `{anthropic, langgraph, openai, langchain, transformers}`) and structurally enforced by `import-linter` in `make lint-imports`. Editing this without an ADR amendment is a build break.
+The whole thing is a **deterministic pipeline**: there is no LLM anywhere in the gather pipeline. The runtime closure is locked by `tests/unit/test_pyproject_fence.py` (`FORBIDDEN_LLM_SDKS`) and structurally enforced by `import-linter` in `make lint-imports`. The set narrowed honestly in Phase-4 S1-05 (ADR-0003) — `anthropic` moved from closure-wide deny to **path-scoped admission** at the single callsite `src/codegenie/fallback/leaf/anthropic_adapter.py` (enforced by `tests/fence/test_pyproject_fence_phase4.py`); `sentence-transformers` + `torch` joined the deny-set so the closure-scoped fence is *stricter*, not relaxed. Current set: `{langgraph, openai, langchain, transformers, sentence-transformers, torch}` (six canonical PyPI distribution names). `chromadb`/`fastembed`/`onnxruntime` are admitted closure-wide but **path-scoped** to `src/codegenie/rag/`. Editing this without an ADR amendment is a build break.
 
 ### Probe contract — the load-bearing abstraction
 

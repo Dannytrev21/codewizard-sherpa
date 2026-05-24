@@ -12,6 +12,13 @@ Drift between this list and ``codegenie._fence.FORBIDDEN_LLM_SDKS`` is the
 worst-case quiet failure — pinning the set verbatim against the canonical
 constant couples the contract and the runtime scanner to one source of
 truth.
+
+Phase-4 S1-05 / ADR-0003: comparison is via :func:`packaging.utils.canonicalize_name`
+on both sides. ``forbidden_modules`` uses **import** names (`sentence_transformers`,
+underscore); ``FORBIDDEN_LLM_SDKS`` uses **distribution** names
+(`sentence-transformers`, hyphen). PEP 503 canonicalises both to the same
+value, so set-equality across canonical forms is the source-of-truth identity
+check.
 """
 
 from __future__ import annotations
@@ -19,6 +26,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 from typing import Final
+
+from packaging.utils import canonicalize_name
 
 from codegenie._fence import FORBIDDEN_LLM_SDKS
 
@@ -69,10 +78,12 @@ def test_phase7_contract_forbids_exactly_the_llm_sdk_closure() -> None:
     contract = _load_phase7_contract()
     forbidden_raw = contract.get("forbidden_modules")
     assert isinstance(forbidden_raw, list)
-    assert set(forbidden_raw) == FORBIDDEN_LLM_SDKS, (
-        f"`{_CONTRACT_NAME}` forbidden_modules drift from FORBIDDEN_LLM_SDKS: "
-        f"pyproject has {set(forbidden_raw)}, source-of-truth is "
-        f"{FORBIDDEN_LLM_SDKS}."
+    canonical_pyproject = {canonicalize_name(n) for n in forbidden_raw}
+    canonical_fence = {canonicalize_name(n) for n in FORBIDDEN_LLM_SDKS}
+    assert canonical_pyproject == canonical_fence, (
+        f"`{_CONTRACT_NAME}` forbidden_modules drift from FORBIDDEN_LLM_SDKS "
+        f"(canonical comparison): pyproject has {canonical_pyproject}, "
+        f"source-of-truth is {canonical_fence}."
     )
 
 

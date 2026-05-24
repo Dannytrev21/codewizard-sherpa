@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Final
 
 import pytest
+from packaging.utils import canonicalize_name
 
 from codegenie._fence import FORBIDDEN_LLM_SDKS
 
@@ -64,9 +65,21 @@ def _scan_primitive_runtime_closure() -> frozenset[str]:
     after walking ``codegenie.primitives.vuln_provenance``.
 
     Both the live check and the planted-positive tests call THIS function —
-    a regression in the walker kills both (mutation-resistance)."""
+    a regression in the walker kills both (mutation-resistance).
+
+    Phase-4 S1-05 / ADR-0003: ``FORBIDDEN_LLM_SDKS`` holds canonical PyPI
+    *distribution* names (PEP 503 — ``sentence-transformers`` with a hyphen);
+    ``sys.modules`` keys are Python *import* names. Canonicalize both for the
+    intersection, then return canonical (distribution-name) leaked entries
+    matching ``FORBIDDEN_LLM_SDKS`` shape so callers can compare directly."""
     _walk_primitive_packages(_PRIMITIVE_PACKAGES)
-    return frozenset(sys.modules.keys() & FORBIDDEN_LLM_SDKS)
+    canonical_forbidden = {canonicalize_name(n): n for n in FORBIDDEN_LLM_SDKS}
+    leaked: set[str] = set()
+    for mod in sys.modules:
+        canonical = canonicalize_name(mod)
+        if canonical in canonical_forbidden:
+            leaked.add(canonical_forbidden[canonical])
+    return frozenset(leaked)
 
 
 # ---------------------------------------------------------------------------
@@ -78,10 +91,15 @@ def test_no_llm_sdk_imported_by_primitive_packages() -> None:
     """AC-3.a: a clean primitive closure imports zero LLM SDKs."""
     # Pre-clean: remove any LLM SDK that another test (or a prior run) may
     # have pre-populated so we measure ONLY what the primitive walk imports.
+    # Phase-4 S1-05 / ADR-0003: pop by *canonical* match — ``sys.modules`` keys
+    # are import names (``sentence_transformers``) while ``FORBIDDEN_LLM_SDKS``
+    # holds distribution names (``sentence-transformers``); a literal-key pop
+    # would silently miss the hyphenated entries.
+    canonical_forbidden = {canonicalize_name(n) for n in FORBIDDEN_LLM_SDKS}
     saved: dict[str, object] = {}
-    for sdk in FORBIDDEN_LLM_SDKS:
-        if sdk in sys.modules:
-            saved[sdk] = sys.modules.pop(sdk)
+    for mod_name in list(sys.modules.keys()):
+        if canonicalize_name(mod_name) in canonical_forbidden:
+            saved[mod_name] = sys.modules.pop(mod_name)
     try:
         leaked = _scan_primitive_runtime_closure()
         # AC-3.d: import-success guard — the walk must actually have run.
@@ -101,7 +119,7 @@ def test_no_llm_sdk_imported_by_primitive_packages() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-3.b per-SDK planted-positive (5 cases = 5 mutation guards)
+# AC-3.b per-SDK planted-positive (6 cases = 6 mutation guards)
 # ---------------------------------------------------------------------------
 
 
@@ -111,22 +129,32 @@ def test_scanner_catches_each_planted_sdk_under_primitive(
 ) -> None:
     """AC-3.b: plant ONE forbidden SDK at a time as a fake stdlib-resolvable
     module then have a primitive submodule import it. The SAME scanner the
-    live check uses MUST catch the leak."""
+    live check uses MUST catch the leak.
+
+    Phase-4 S1-05 / ADR-0003: ``FORBIDDEN_LLM_SDKS`` holds canonical PyPI
+    *distribution* names (``sentence-transformers``); ``import`` statements
+    use *import* names (``sentence_transformers``). Translate hyphens to
+    underscores when synthesizing the planted module / import line."""
+    # PEP 503: distribution name → import name (`-` → `_`). `import
+    # sentence-transformers` is a SyntaxError.
+    import_name = sdk.replace("-", "_")
+
     # 1. Create a temp directory hosting both the fake SDK and a temp primitive
     #    submodule that imports it.
     fake_sdk_dir = tmp_path / "fake_sdk_root"
     fake_sdk_dir.mkdir()
-    fake_sdk_file = fake_sdk_dir / f"{sdk}.py"
+    fake_sdk_file = fake_sdk_dir / f"{import_name}.py"
     fake_sdk_file.write_text(
-        f'"""Fake `{sdk}` for AC-3.b planted-positive test."""\n', encoding="utf-8"
+        f'"""Fake `{import_name}` for AC-3.b planted-positive test."""\n',
+        encoding="utf-8",
     )
     monkeypatch.syspath_prepend(str(fake_sdk_dir))
 
     # 2. Plant a temp submodule inside the primitive that imports the SDK.
     primitive_dir = Path("src/codegenie/primitives/vuln_provenance")
-    planted_path = primitive_dir / f"_test_planted_{sdk}.py"
+    planted_path = primitive_dir / f"_test_planted_{import_name}.py"
     planted_path.write_text(
-        f"# Planted-positive AC-3.b fixture for {sdk!r}.\nimport {sdk}  # noqa: F401\n",
+        f"# Planted-positive AC-3.b fixture for {sdk!r}.\nimport {import_name}  # noqa: F401\n",
         encoding="utf-8",
     )
 
@@ -138,18 +166,19 @@ def test_scanner_catches_each_planted_sdk_under_primitive(
             "codegenie.primitives.vuln_provenance."
         ):
             snapshot[mod_name] = sys.modules.pop(mod_name)
-    sys.modules.pop(sdk, None)
+    sys.modules.pop(import_name, None)
 
     try:
         leaked = _scan_primitive_runtime_closure()
         assert sdk in leaked, (
-            f"Scanner failed to catch planted `{sdk}` import. "
+            f"Scanner failed to catch planted `{sdk}` import "
+            f"(imported via `{import_name}`). "
             f"sys.modules ∩ FORBIDDEN_LLM_SDKS = {leaked}"
         )
     finally:
         if planted_path.exists():
             planted_path.unlink()
-        sys.modules.pop(sdk, None)
+        sys.modules.pop(import_name, None)
         # Drop the freshly-imported (post-scan) primitive modules and restore
         # the snapshot — subsequent tests see the SAME class identities they
         # had at collection time.

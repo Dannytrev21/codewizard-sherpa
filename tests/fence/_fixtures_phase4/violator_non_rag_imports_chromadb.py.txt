@@ -1,0 +1,6 @@
+"""DELIBERATE VIOLATION FIXTURE — `chromadb` imported outside `rag/`.
+
+Mutation guard for the rag-scoped admission: ``chromadb``/``fastembed``/
+``onnxruntime`` are admitted only under ``src/codegenie/rag/``.
+"""
+import chromadb  # type: ignore[import-untyped]

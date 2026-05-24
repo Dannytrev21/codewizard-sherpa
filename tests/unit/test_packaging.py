@@ -6,8 +6,18 @@ from importlib.metadata import PackageNotFoundError, distribution
 
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
+from packaging.utils import canonicalize_name
 
-LLM_SDKS = frozenset({"anthropic", "langgraph", "openai", "langchain", "transformers"})
+from codegenie._fence import FORBIDDEN_LLM_SDKS
+
+# Source-of-truth for the closure-wide LLM-SDK deny-set. Imported from
+# ``codegenie._fence`` so a future narrowing/widening of the set lands in
+# exactly one place (Rule 7). Phase-4 S1-05 / ADR-0003: ``anthropic`` moved
+# out (path-scoped at the leaf adapter); ``sentence-transformers`` + ``torch``
+# moved in. Canonicalize for the intersection so distribution-name
+# (``sentence-transformers``) vs import-name (``sentence_transformers``)
+# variants both register.
+LLM_SDKS = frozenset(canonicalize_name(n) for n in FORBIDDEN_LLM_SDKS)
 RUNTIME_DEPS = frozenset(
     {
         "click",
@@ -47,6 +57,19 @@ RUNTIME_DEPS = frozenset(
         # the events module at runtime. ADR-0002 fence still excludes LLM
         # SDKs; `zstandard` is not an LLM SDK.
         "zstandard",
+        # Phase-4 S1-05 / ADR-0003 admits the LLM-fallback + RAG SDKs into the
+        # runtime closure but **path-scopes** each one in
+        # `tests/fence/test_pyproject_fence_phase4.py`. The Phase-0 closure
+        # fence (this test) widens by exactly five members; the path-scoped
+        # fence then narrows by file path so only the leaf adapter or
+        # `src/codegenie/rag/` may import them.
+        "anthropic",
+        "chromadb",
+        "fastembed",
+        "onnxruntime",
+        # `keyring` is admitted closure-wide *without* path-scope — it is not
+        # LLM-shaped (any module that needs to load a secret may do so).
+        "keyring",
     }
 )
 EMPTY_EXTRAS = frozenset({"gather", "service", "agents"})

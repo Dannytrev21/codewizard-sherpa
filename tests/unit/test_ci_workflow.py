@@ -161,24 +161,70 @@ def test_no_job_widens_contents_permission_beyond_read() -> None:
 
 
 def test_fence_job_install_is_two_step_and_excludes_dev_extras() -> None:
+    """AC-3 (Phase A closure-measurement invariant — ADR-0002 / ADR-0006).
+
+    The fence job runs the closure-measurement test
+    (``tests/unit/test_pyproject_fence.py``) BEFORE any ``[dev]`` /
+    ``[agents]`` / ``[service]`` extras are installed. After the
+    measurement, the Phase-4 S1-05 path-scoped fence (`tests/fence/`)
+    runs against the full ``[dev]`` toolchain (`import-linter` etc.).
+    Test ordering invariant: ``pip install -e .[dev]`` MUST NOT appear in
+    any step before the closure-measurement ``pytest`` invocation.
+    """
     fence = _wf()["jobs"]["fence"]
+    steps = fence.get("steps", [])
     runs = _flatten_run(fence)
     assert "pip install -e ." in runs, "AC-3: fence job must install bare `pip install -e .`"
     assert "pip install pytest" in runs, (
         "AC-3: fence must install pytest STANDALONE after bare `pip install -e .` "
         "so the closure measurement is uncontaminated (ADR-0006 §Consequences)"
     )
-    for forbidden in ("[dev]", "[agents]", "[service]", "-e .[dev]"):
-        assert forbidden not in runs, (
-            f"AC-3: fence job MUST NOT install {forbidden} — contaminates closure scope"
-        )
-    # The fence step invokes pytest with an empty ``addopts`` override
-    # so pyproject's ``--cov=...`` switches (which require ``pytest-cov``,
-    # not installed in the standalone harness — ADR-0006) are ignored.
-    assert "tests/unit/test_pyproject_fence.py" in runs, (
+
+    # Ordering invariant: the closure-measurement pytest invocation must come
+    # before any [dev] install. Compute the index of the test invocation
+    # against the index of the first step whose `run` mentions a forbidden
+    # extras install.
+    test_step_idx: int | None = None
+    forbidden_install_idx: int | None = None
+    for idx, step in enumerate(steps):
+        run = step.get("run", "")
+        if "tests/unit/test_pyproject_fence.py" in run and test_step_idx is None:
+            test_step_idx = idx
+        if any(token in run for token in ("[dev]", "[agents]", "[service]", "-e .[dev]")):
+            if forbidden_install_idx is None:
+                forbidden_install_idx = idx
+    assert test_step_idx is not None, (
         "AC-3: fence job must invoke `pytest ... tests/unit/test_pyproject_fence.py`"
     )
+    if forbidden_install_idx is not None:
+        # If [dev] is installed in this job, it MUST be after the closure-
+        # measurement test runs (Phase-4 S1-05 AC-22 — Phase B may install
+        # [dev] for the path-scoped + audit-lint fence).
+        assert forbidden_install_idx > test_step_idx, (
+            "AC-3: [dev]/[agents]/[service] extras install must come AFTER the "
+            f"closure-measurement step (test_step_idx={test_step_idx}, "
+            f"forbidden_install_idx={forbidden_install_idx}). Installing extras "
+            "before the closure measurement contaminates "
+            "`scan_installed_distribution` (ADR-0002 / ADR-0006)."
+        )
     assert "pytest -q" in runs, "AC-3: fence pytest invocation must use `-q`"
+
+
+def test_fence_job_phase_b_runs_tests_fence_tree() -> None:
+    """Phase-4 S1-05 AC-22 — the dedicated CI fence gate mirrors ``make fence``.
+
+    The fence job's second phase runs ``tests/fence/`` so a path-scope
+    regression (Phase-4 ADR-0003) fails the dedicated CI gate, not just the
+    ``test`` job. Without this, ``make fence`` locally and the CI ``test``
+    job both fail but the dedicated CI ``fence`` gate stays green — a
+    confusing local/CI divergence the AC explicitly forbids.
+    """
+    fence = _wf()["jobs"]["fence"]
+    runs = _flatten_run(fence)
+    assert "tests/fence/" in runs, (
+        "S1-05 AC-22: fence job must invoke `pytest ... tests/fence/` "
+        "(mirrors `make fence` so the dedicated CI gate matches the local target)."
+    )
 
 
 # ---------------------------------------------------------------------------

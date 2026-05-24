@@ -1,0 +1,6 @@
+"""DELIBERATE VIOLATION FIXTURE — paired with test_pyproject_fence_phase4_negatives.py.
+
+Mutation guard: removing `anthropic` from the scanner's forbidden set kills the
+paired negative test.
+"""
+import anthropic  # type: ignore[import-untyped]

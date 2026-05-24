@@ -1,0 +1,8 @@
+"""NOT A VIOLATION — anthropic appears only in a comment and a string literal
+(S1-05 AC-21).
+
+Mutation guard for the AST-not-regex guarantee: a regex-based regression of the
+scanner would false-positive here and the paired negative test would fire.
+"""
+# import anthropic
+s = "import anthropic"

@@ -73,6 +73,36 @@ dependencies = [
   # frames on replay. Not an LLM SDK — the ``fence`` (ADR-0002) and the
   # import-linter LLM contracts are unaffected.
   "zstandard>=0.22",
+  # Phase 4 S1-05 / ADR-0003: the Anthropic Python SDK is the *single
+  # gather-pipeline-external* leaf LLM client. Admitted closure-wide but
+  # **path-scoped** — `tests/fence/test_pyproject_fence_phase4.py` enforces that
+  # only `src/codegenie/fallback/leaf/anthropic_adapter.py` may import it; every
+  # path under `GATHER_PIPELINE_PATHS` (`probes/`, `coordinator/`, `cache/`,
+  # `output/`, `schema/`) stays LLM-free. Not in `FORBIDDEN_LLM_SDKS` — the
+  # set narrowed (`anthropic` moved out) when this admission landed; six other
+  # SDKs (including `sentence-transformers` + `torch`) remain denied
+  # closure-wide.
+  "anthropic>=0.40.0,<1.0.0",
+  # Phase 4 S1-05 / ADR-0003: persistent embedded vector store backing the RAG
+  # retriever. Admitted closure-wide but **path-scoped** — only modules under
+  # `src/codegenie/rag/` may import it (enforced by
+  # `tests/fence/test_pyproject_fence_phase4.py`). Not in `FORBIDDEN_LLM_SDKS`.
+  "chromadb>=0.5,<1.0",
+  # Phase 4 S1-05 / ADR-0003: ONNX-runtime embeddings backend used by the RAG
+  # ingest path. Admitted closure-wide but **path-scoped** — only modules under
+  # `src/codegenie/rag/` may import it. Not in `FORBIDDEN_LLM_SDKS`; the
+  # `sentence-transformers` / `torch` alternative stack stays denied
+  # closure-wide so we don't leave a hole for a future swap-in.
+  "fastembed>=0.3,<1.0",
+  # Phase 4 S1-05 / ADR-0003: ONNX inference session the fastembed runtime
+  # depends on directly. Path-scoped to `src/codegenie/rag/` alongside fastembed.
+  "onnxruntime>=1.18,<2.0",
+  # Phase 4 S1-05 / ADR-0003: OS keychain loader used by
+  # `AnthropicLeafAdapter.__init__` to source the Anthropic API key. Admitted
+  # closure-wide *without* path-scope — `keyring` is not LLM-shaped (any module
+  # that needs to load a secret may do so). Phase-0 ADR-0002 unaffected:
+  # `keyring` was never in the LLM-SDK deny-list.
+  "keyring>=24,<26",
 ]
 
 [project.optional-dependencies]
@@ -119,9 +149,13 @@ dev = [
 # Phase 9+ slot — Temporal, Postgres clients land here.
 service = []
 
-# Phase 4+ slot — LLM SDKs (anthropic, langgraph, ...) land here, NOT in
-# `[project.dependencies]`. This is the load-bearing structural separation
-# the fence (ADR-0002) enforces.
+# Phase-0 ADR-0006 reserved this slot for "Phase 4+ LLM SDKs" via extras;
+# superseded by Phase-4 ADR-0003 (S1-05), which admits anthropic / chromadb /
+# fastembed / onnxruntime into `[project.dependencies]` under a **path-scoped
+# fence** (`tests/fence/test_pyproject_fence_phase4.py`). Phase 6's expected
+# `langgraph` admission is anticipated to path-scope likewise — see ADR-0003
+# §Consequences. The slot stays declared (empty) as a semantic marker so the
+# supersedure is visible in-place; do not delete it.
 agents = []
 
 [project.scripts]
@@ -404,9 +438,17 @@ forbidden_modules = ["codegenie.probes"]
 # and the gather-pipeline ADR-0002 closure already excludes these SDKs from
 # the runtime distribution. These contracts use `as_packages = true` so every
 # submodule under the package is scanned (NOT just the `__init__.py`), since
-# the threat is a future module importing anthropic / openai / etc. The five
-# names mirror `codegenie._fence.FORBIDDEN_LLM_SDKS`; drift between the two
-# is asserted by `tests/fence/test_phase3_importlinter_contracts_shape.py`.
+# the threat is a future module importing anthropic / openai / etc.
+#
+# The names mirror `codegenie._fence.FORBIDDEN_LLM_SDKS` after canonicalization
+# (PEP 503) — drift is asserted by
+# `tests/fence/test_phase3_importlinter_contracts_shape.py`. `sentence_transformers`
+# is the **import** form (underscore) because import-linter scans actual
+# `import …` statements; `_fence.FORBIDDEN_LLM_SDKS` uses the canonical
+# **distribution** form (`sentence-transformers`, hyphen). Both spellings
+# canonicalize to the same name — see Phase-4 S1-05 / ADR-0003. `anthropic`
+# is intentionally absent: it is a path-scoped runtime dep at the leaf adapter
+# (single callsite enforced by `tests/fence/test_pyproject_fence_phase4.py`).
 # ---------------------------------------------------------------------------
 
 [[tool.importlinter.contracts]]
@@ -414,14 +456,14 @@ name = "codegenie.plugins must not import LLM SDKs"
 type = "forbidden"
 source_modules = ["codegenie.plugins"]
 as_packages = true
-forbidden_modules = ["anthropic", "langgraph", "openai", "langchain", "transformers"]
+forbidden_modules = ["langgraph", "openai", "langchain", "transformers", "sentence_transformers", "torch"]
 
 [[tool.importlinter.contracts]]
 name = "codegenie.transforms must not import LLM SDKs"
 type = "forbidden"
 source_modules = ["codegenie.transforms"]
 as_packages = true
-forbidden_modules = ["anthropic", "langgraph", "openai", "langchain", "transformers"]
+forbidden_modules = ["langgraph", "openai", "langchain", "transformers", "sentence_transformers", "torch"]
 
 # ---------------------------------------------------------------------------
 # Phase 7 LLM-SDK contract (S1-06). The `codegenie.primitives.vuln_provenance`
@@ -440,4 +482,9 @@ type = "forbidden"
 source_modules = ["codegenie.primitives.vuln_provenance"]
 as_packages = true
 include_external_packages = true
-forbidden_modules = ["anthropic", "openai", "langchain", "langgraph", "transformers"]
+# Mirrors `_fence.FORBIDDEN_LLM_SDKS` after PEP-503 canonicalization (S1-05 / ADR-0003).
+# `sentence_transformers` (underscore = import name) here; `sentence-transformers`
+# (hyphen = distribution name) in `FORBIDDEN_LLM_SDKS`. `anthropic` is intentionally
+# absent — path-scoped to the leaf adapter, enforced separately by
+# `tests/fence/test_pyproject_fence_phase4.py`.
+forbidden_modules = ["openai", "langchain", "langgraph", "transformers", "sentence_transformers", "torch"]

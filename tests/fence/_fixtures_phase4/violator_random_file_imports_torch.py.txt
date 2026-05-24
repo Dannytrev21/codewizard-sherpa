@@ -1,0 +1,8 @@
+"""DELIBERATE VIOLATION FIXTURE — exercises the ast.ImportFrom branch of the
+Phase-4 scanner (S1-05 AC-10/AC-21).
+
+Mutation guard: deleting the ImportFrom branch from ``_top_level_packages``
+silently kills closure-wide ``from X import Y`` detection — this fixture's
+paired negative test fails.
+"""
+from torch import nn  # type: ignore[import-untyped]
