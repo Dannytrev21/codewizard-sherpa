@@ -61,6 +61,18 @@ _KERNEL_ALLOWLIST: Final[frozenset[Path]] = frozenset(
         Path("src/codegenie/types/errors.py"),
         # S1-01 — smart-constructor parsers
         Path("src/codegenie/types/parsers.py"),
+        # Phase 4 S1-04 — kernel-tier `TzAwareDatetime` alias shared by
+        # `codegenie.rag.models` and `codegenie.fallback.budget`. Homed in
+        # the kernel `types/` package to break the `rag.models` ↔
+        # `fallback.budget` cycle the first green-run surfaced (same
+        # precedent as `PackageManager` moving to `types.identifiers` per
+        # ADR-0013 Amendment 2026-05-20). Pure stdlib + Pydantic
+        # `AfterValidator`; no leaf-package imports. adr: docs/phases/
+        # 04-vuln-llm-fallback-rag/ADRs/
+        # 0016-chromadb-embedded-yaml-canonical-store.md (tz-aware
+        # datetimes mandatory for chain-verify across timezone-shifted
+        # CI runners).
+        Path("src/codegenie/types/datetime.py"),
         # S1-01 — PEP 561 marker
         Path("src/codegenie/py.typed"),
         # S1-05 — this story's walker
@@ -290,6 +302,15 @@ _TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset(
         # Future Phase-4 modules (prompt builder, leaf-LLM port, fallback
         # tier) land under `fallback/` by precedent.
         "fallback",
+        # Phase 4 S1-04 — `rag/` is the additive home for the RAG-side
+        # contract surface (Phase-4 ADR-0008 closed `RetrievalOutcome`
+        # three-way union; Phase-4 ADR-0016 canonical YAML `SolvedExample`
+        # with chain-verified `RecordProvenance`). Established as a new
+        # top-level package by S1-04 with `models.py`; future Phase-4 RAG
+        # modules (S4-01 embedder, S4-03 chroma store, S4-04 canonical
+        # YAML writer, S4-05 chain-verify, S5-01 retriever) land here
+        # by precedent.
+        "rag",
     }
 )
 
