@@ -63,6 +63,7 @@ from codegenie.types.identifiers import (
     BranchName,
     CveId,
     EventId,
+    HexNonce,
     PluginId,
     PrimitiveName,
     RecipeId,
@@ -397,6 +398,78 @@ class ProvenanceClassified(BaseModel):
     adapter_error: str | None = None
 
 
+# --- Phase-4 S2-02 — ``FenceWrapper`` audit events --------------------------
+
+# The fence-source-kind ``Literal`` mirrors
+# :data:`codegenie.fallback.fence.wrapper.SourceKind` verbatim. The duplication
+# is intentional: keeping the event payload free of an inbound import from
+# ``codegenie.fallback.fence`` preserves :mod:`codegenie.plugins.events` as a
+# leaf module that everything else imports *from*. AC-3's import-time
+# ``get_args(SourceKind) == set(_TRUNCATION_CAPS)`` check in the fence module
+# is the loud guard against the two ``Literal`` definitions drifting apart;
+# :mod:`tests.unit.plugins.test_events` re-asserts the seven names so any
+# silent edit on this side also fails loudly.
+_FENCE_SOURCE_KIND = Literal[
+    "cve_description",
+    "repo_readme",
+    "transitive_dep_meta",
+    "source_snippet",
+    "sandbox_stderr",
+    "rag_retrieved",
+    "prior_attempt_summary",
+]
+
+
+class FenceApplied(BaseModel):
+    """Phase-4 S2-02 — :class:`~codegenie.fallback.fence.FenceWrapper` fenced
+    one untrusted-input segment.
+
+    Emitted on **every** call to :meth:`FenceWrapper.fence` (even when the
+    body fit under the per-source cap with no truncation). The
+    ``original_byte_length`` is the UTF-8 byte length of the input
+    ``payload`` *before* any redaction or truncation — the audit trail
+    needs the suppressed payload's true size, not the 30-byte redaction
+    string's length.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["fence_applied"] = "fence_applied"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    source_kind: _FENCE_SOURCE_KIND
+    nonce: HexNonce
+    truncated: bool
+    original_byte_length: int
+
+
+class CanaryCollisionEvent(BaseModel):
+    """Phase-4 S2-02 — a canary pattern fired inside one fenced segment.
+
+    Emitted from the collision branch of :meth:`FenceWrapper.fence` *in
+    addition to* the always-emitted :class:`FenceApplied` event. The
+    ``pattern_id`` is read structurally off the
+    :class:`~codegenie.fallback.fence.CanaryCollision` variant of
+    :data:`~codegenie.fallback.fence.CanaryResult` — there is no separate
+    ``_pattern_id`` thread.
+
+    The class name is ``CanaryCollisionEvent`` (not ``CanaryCollision``) to
+    avoid a namespace collision with the
+    :class:`~codegenie.fallback.fence.CanaryCollision` variant of
+    :data:`~codegenie.fallback.fence.CanaryResult`. The on-the-wire
+    discriminator value is ``"canary_collision"`` per S2-02 AC-12.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["canary_collision"] = "canary_collision"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    source_kind: _FENCE_SOURCE_KIND
+    nonce: HexNonce
+    pattern_id: str
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -525,7 +598,9 @@ WorkflowInternalEvent = Annotated[
     | StageOutcome
     | FilesystemRaceDetected
     | GitHooksDisabledForRun
-    | ProvenanceClassified,
+    | ProvenanceClassified
+    | FenceApplied
+    | CanaryCollisionEvent,
     Field(discriminator="event_type"),
 ]
 
@@ -563,6 +638,8 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     FilesystemRaceDetected,
     GitHooksDisabledForRun,
     ProvenanceClassified,
+    FenceApplied,
+    CanaryCollisionEvent,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -911,6 +988,7 @@ __all__ = [
     "BundleEntryPromoted",
     "CacheGcCompleted",
     "CacheGcCompletedEvent",
+    "CanaryCollisionEvent",
     "CapabilityMinted",
     "CapabilityUsed",
     "ChainTamperDetected",
@@ -919,6 +997,7 @@ __all__ = [
     "EventLogCorrupted",
     "EventLogError",
     "EventStreamSink",
+    "FenceApplied",
     "FilesystemRaceDetected",
     "GitHooksDisabledForRun",
     "InMemorySink",

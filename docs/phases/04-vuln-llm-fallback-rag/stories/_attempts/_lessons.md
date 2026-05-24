@@ -56,3 +56,28 @@ because the GitHub Actions runner sources the venv. To reproduce CI locally,
 run `PATH="$PWD/.venv/bin:$PATH" pytest …` — or `source .venv/bin/activate`.
 This is the same root cause as the macOS-runner-vs-CI drift in L-2: treat
 PATH-resolution failures as environment hygiene, not regressions.
+
+## L-5 — Two same-named classes in two import spaces is a smell — pick distinct names early (Phase 4)
+
+S2-02 names both the `CanaryResult` sum-variant *and* the event class
+`CanaryCollision`. The validator hardened both ACs without flagging the
+collision. At Stage-2 implementation time, importing both classes into a
+single test module is structurally impossible. The fix is small but
+load-bearing: rename the event to `CanaryCollisionEvent`, keep the
+on-the-wire discriminator value (`canary_collision`) intact so the story's
+AC-12 wire contract still holds. When two layers naturally want the same
+name, prefer suffixing the *outer* (event/wrapper) class and leaving the
+*inner* (model/variant) class with the bare name — keeps the rename
+reversible if the story author wants the bare name on the event later.
+
+## L-6 — A Hypothesis property that depends on an unguessable secret must construct that secret in the strategy (Phase 4)
+
+S2-02 AC-8 says "the close-delimiter never appears in fenced content." A
+bare `@given(payload=st.text())` strategy *passes vacuously* against an
+implementation that does no in-body delimiter check at all — the 32-hex
+nonce is unguessable at 2⁻¹²⁸. The validator caught this. The lesson
+generalises: any property of the form "`SECRET not in output`" where
+`SECRET` is a per-call random value needs the strategy to draw `SECRET`
+itself and embed it in the input — otherwise the strategy is structurally
+unable to reach the violation. Same applies to capability tokens,
+session IDs, BLAKE3 hashes, anything keyed on a per-call random.

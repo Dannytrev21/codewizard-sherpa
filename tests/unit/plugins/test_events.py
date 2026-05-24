@@ -183,6 +183,9 @@ _INTERNAL_VARIANTS = frozenset(
         "GitHooksDisabledForRun",
         # Phase-4 S2-01 — ``ProvenanceGate`` tier-0 emission.
         "ProvenanceClassified",
+        # Phase-4 S2-02 — ``FenceWrapper`` audit events.
+        "FenceApplied",
+        "CanaryCollisionEvent",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -200,13 +203,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_17_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01: every named internal variant is exported."""
+def test_all_19_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01 + Phase-4 S2-02: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 17
+    assert len(_INTERNAL_VARIANTS) == 19
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -726,3 +729,119 @@ def test_provenance_classified_round_trips_through_event_log(tmp_path: Path) -> 
     assert len(replayed) == 1
     assert replayed[0].provenance_kind == "unknown"
     assert replayed[0].adapter_error == "npm registry timeout"
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S2-02 — ``FenceApplied`` + ``CanaryCollisionEvent`` variants
+# ---------------------------------------------------------------------------
+
+
+def _hex_nonce() -> str:
+    from codegenie.types.identifiers import HexNonce
+
+    return HexNonce("00112233445566778899aabbccddeeff")
+
+
+def test_fence_applied_is_internal_event_variant() -> None:
+    """S2-02 AC-12: ``fence_applied`` discriminator is registered."""
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import FenceApplied, WorkflowInternalEvent
+    from codegenie.types.identifiers import HexNonce
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "fence_applied" in mapping
+
+    event = FenceApplied(
+        event_id=EventId("01HFNC0000000000000000"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        source_kind="repo_readme",
+        nonce=HexNonce(_hex_nonce()),
+        truncated=False,
+        original_byte_length=42,
+    )
+    assert event.event_type == "fence_applied"
+    assert event.source_kind == "repo_readme"
+    assert event.truncated is False
+    assert event.original_byte_length == 42
+
+
+def test_canary_collision_event_is_internal_event_variant() -> None:
+    """S2-02 AC-12: ``canary_collision`` discriminator is registered."""
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import CanaryCollisionEvent, WorkflowInternalEvent
+    from codegenie.types.identifiers import HexNonce
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "canary_collision" in mapping
+
+    event = CanaryCollisionEvent(
+        event_id=EventId("01HFNC0000000000000001"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        source_kind="source_snippet",
+        nonce=HexNonce(_hex_nonce()),
+        pattern_id="ignore_previous_instructions",
+    )
+    assert event.event_type == "canary_collision"
+    assert event.pattern_id == "ignore_previous_instructions"
+
+
+def test_fence_applied_rejects_unknown_source_kind() -> None:
+    from codegenie.plugins.events import FenceApplied
+    from codegenie.types.identifiers import HexNonce
+
+    with pytest.raises(ValidationError):
+        FenceApplied(
+            event_id=EventId("01HFNC"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            source_kind="unknown_kind",  # type: ignore[arg-type]
+            nonce=HexNonce(_hex_nonce()),
+            truncated=False,
+            original_byte_length=0,
+        )
+
+
+def test_fence_events_round_trip_through_event_log(tmp_path: Path) -> None:
+    """Emit both events into the workflow-internal stream and replay them."""
+    from codegenie.plugins.events import (
+        CanaryCollisionEvent,
+        FenceApplied,
+    )
+    from codegenie.types.identifiers import HexNonce
+
+    log = EventLog(root=tmp_path, workflow_id=_wf())
+    log.emit_internal(
+        FenceApplied(
+            event_id=EventId("01HFNC0000000000000010"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            source_kind="cve_description",
+            nonce=HexNonce(_hex_nonce()),
+            truncated=True,
+            original_byte_length=5000,
+        )
+    )
+    log.emit_internal(
+        CanaryCollisionEvent(
+            event_id=EventId("01HFNC0000000000000011"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            source_kind="cve_description",
+            nonce=HexNonce(_hex_nonce()),
+            pattern_id="ignore_previous_instructions",
+        )
+    )
+    log.flush()
+
+    replayed = list(log.replay())
+    applied = [e for e in replayed if isinstance(e, FenceApplied)]
+    collisions = [e for e in replayed if isinstance(e, CanaryCollisionEvent)]
+    assert len(applied) == 1
+    assert applied[0].truncated is True
+    assert applied[0].original_byte_length == 5000
+    assert len(collisions) == 1
+    assert collisions[0].pattern_id == "ignore_previous_instructions"
