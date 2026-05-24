@@ -1,7 +1,7 @@
 # Story S1-03 — `PlanOutcome` wraps `RecipeOutcome`
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** HARDENED
+**Status:** Done — 2026-05-24 (phase-story-executor; see [`_attempts/S1-03.md`](_attempts/S1-03.md) for the per-AC evidence table + gate log — Phase-4 `PlanOutcome` closed Pydantic-v2 discriminated union landed with four variants (`AppliedFromRecipe`, `AppliedFromLlm`, `RagOnlyApplicable`, `Refused`), the load-bearing widening fence (`test_plan_outcome_no_recipe_outcome_widening.py`) asserting the Phase-3 `RecipeOutcome` variant set is byte-identical to the four-line snapshot, the F6 attribute-read mypy-negative test, and the F5 exhaustiveness meta-test. Story-scoped gates green: 25 story tests + 67 sibling fences + `mypy --strict src/codegenie/fallback/` + `make typecheck` (209 files) + `make fence` (379 tests) + `make lint-imports` (6 kept).)
 **Effort:** S
 **Depends on:** S1-01
 **ADRs honored:** ADR-0004 (`PlanOutcome` is Phase-4-LOCAL; Phase-3 `RecipeOutcome` is NOT widened), ADR-0001 (`AppliedFromLlm` references `LeafResponseId` + `SolvedExampleId` from the newtype catalog)
