@@ -38,6 +38,7 @@ _SOLVED = {
     },
     "origin": "llm_solved",
     "embedding_model": "bge-small-en-v1.5",
+    "embedding_vector": [0.0] * 384,  # ADR-0016: records carry the vector
     "created_at": datetime(2026, 1, 1, tzinfo=UTC),
 }
 

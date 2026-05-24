@@ -6,6 +6,12 @@
 **Depends on:** S1-01, S1-02
 **ADRs honored:** ADR-0010 (`BudgetToken` is the capability; this story lands the Pydantic frozen-extra-forbid model with the ADR-0010 four-field shape + the private `_marker` discriminator), ADR-0016 (canonical YAML SolvedExample with chain-verified `RecordProvenance`), ADR-0008 (`RetrievalOutcome` is a closed three-way union — `RagHit | RagMiss | RagDegraded` — feeding the two-threshold band)
 
+## Post-Done amendment — 2026-05-24
+
+`SolvedExample` gained one field: `embedding_vector: EmbeddingVector`, sequenced between `embedding_model` and `created_at`. **Why:** ADR-0016 §Consequences mandates that canonical records carry "embedding model digest **+ vector**" so `codegenie rag rebuild` re-inserts into chromadb *without re-embedding*; S4-03's validator (2026-05-22) surfaced that AC-4 reads `example.embedding_vector` and the original AC-2 field list omitted it. This is **extension by addition** (a new struct field is a sanctioned enforcement mechanism per CLAUDE.md — not a silent edit). Code landed in `src/codegenie/rag/models.py`; test fixtures updated in `tests/unit/rag/test_models.py` and `tests/property/test_solved_example_yaml_roundtrip.py` (`embedding_vector: [0.0] * 384`); the 384-element / L2-normalized invariant continues to be enforced at the embedder boundary (S4-01 AC-3), not by the Pydantic field. 55 rag-model + roundtrip tests green; `mypy --strict src/codegenie/rag/` clean.
+
+AC-2 below carries the amended field list.
+
 ## Validation notes
 
 Validated: 2026-05-21
@@ -83,6 +89,7 @@ Ship seven RAG-side Pydantic v2 frozen-extra-forbid models at `src/codegenie/rag
   - `provenance: RecordProvenance`
   - `origin: Literal["llm_solved", "operator_curated", "phase11_merge_webhook"]`
   - `embedding_model: ModelId`
+  - `embedding_vector: EmbeddingVector` (post-Done amendment 2026-05-24 — ADR-0016 mandate; the bare `EmbeddingVector` tuple newtype from `codegenie.types.identifiers`; the 384-element / L2-normalized invariant is enforced at the embedder boundary, not by this Pydantic field).
   - `created_at: datetime` (tz-aware; UTC; validator rejects naive datetimes).
 - [x] AC-3 — `Query` model with `frozen=True, extra="forbid"`:
   - `task_class: TaskClassId`

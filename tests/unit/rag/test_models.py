@@ -38,6 +38,10 @@ _PLAN_DEPBUMP = {
     "target_version": "4.17.21",
     "rationale": "x",
 }
+# 384-element zero vector — BGE-small embedding dim. The 384 / L2-normalized
+# invariant is enforced at the embedder boundary (S4-01 AC-3), not by the
+# Pydantic field; the field type is the bare EmbeddingVector tuple newtype.
+_EMBED_384 = [0.0] * 384
 _SOLVED = {
     "id": _HEX64,
     "task_class": "vuln_remediation",
@@ -52,6 +56,7 @@ _SOLVED = {
     "provenance": _PROV,
     "origin": "llm_solved",
     "embedding_model": "bge-small-en-v1.5",
+    "embedding_vector": _EMBED_384,
     "created_at": _UTC_NOW,
 }
 _QUERY = {
@@ -95,6 +100,7 @@ _EXPECTED_KEYS = {
         "provenance",
         "origin",
         "embedding_model",
+        "embedding_vector",
         "created_at",
     },
     Query: {

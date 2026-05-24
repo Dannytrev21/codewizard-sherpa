@@ -37,6 +37,7 @@ from codegenie.types.identifiers import (
     BlobDigest,
     ChainHead,
     CveId,
+    EmbeddingVector,
     Language,
     ModelId,
     PackageId,
@@ -128,7 +129,11 @@ class SolvedExample(BaseModel):
     CONTRACT — persisted in ChromaDB; Phase 5 reads ``embedding_model``
     against the embedder's ``model_digest()`` (S5-03 model-mismatch
     exclusion); ``provenance.event_chain_head`` is the chain anchor S4-05
-    verifies. ADR-0016.
+    verifies. ADR-0016 mandates that records carry the embedding *vector*
+    alongside the model digest so ``codegenie rag rebuild`` can re-insert
+    into chromadb without re-embedding — ``embedding_vector`` is that
+    vector (a 384-element tuple of Python floats per the BGE-small
+    contract; tuple-shape enforced at the embedder boundary in S4-01).
     """
 
     model_config = _FROZEN_FORBID
@@ -145,6 +150,7 @@ class SolvedExample(BaseModel):
     provenance: RecordProvenance
     origin: Literal["llm_solved", "operator_curated", "phase11_merge_webhook"]
     embedding_model: ModelId
+    embedding_vector: EmbeddingVector
     created_at: TzAwareDatetime
 
 
