@@ -144,6 +144,13 @@ dev = [
   # and the `[gather]` runtime closure does not import it.
   "psutil",
   "types-psutil",
+  # S3-04 (Phase 4 cassette-discipline): pytest-recording is the vcrpy-on-pytest
+  # wrapper whose ``vcr_config`` fixture this story's ``tests/conftest.py``
+  # populates with ``before_record_request`` / ``before_record_response`` hooks
+  # (ADR-0014). **Dev-only** — runtime closure unchanged; the Phase-0 LLM-SDK
+  # fence (`FORBIDDEN_LLM_SDKS`) is unaffected because pytest-recording / vcrpy
+  # are not in the denied set and ``[gather]`` does not import them.
+  "pytest-recording",
 ]
 
 # Phase 9+ slot — Temporal, Postgres clients land here.
@@ -600,6 +607,7 @@ source_modules = [
   "codegenie.depgraph",
   "codegenie.exec",
   "codegenie.fallback.budget",
+  "codegenie.fallback.cassette",
   "codegenie.fallback.fence",
   "codegenie.fallback.leaf",
   "codegenie.fallback.plan_outcome",

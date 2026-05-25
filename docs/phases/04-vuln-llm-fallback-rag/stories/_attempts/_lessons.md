@@ -115,6 +115,23 @@ structural pin of the residual asyncio surface, so a future closure
 updates the assertion deliberately rather than letting the gap widen
 silently.
 
+## L-10 — `isinstance(x, dict)` fails on third-party `MutableMapping`-only subclasses; use `Mapping` (S3-04)
+
+vcrpy's `HeadersDict` is a `CaseInsensitiveDict` (`MutableMapping`)
+subclass but **not** a `dict` subclass. My first-pass
+`_normalize_headers` used `isinstance(headers, dict)` and fell through
+to the stringify fallback for real `vcr.request.Request` objects —
+mangling the whole headers object into one `(repr_string, "")` row.
+The unit-shim tests (plain `dict`) passed; only the integration test
+against the real type caught the bug. Lesson: when accepting "container
+of headers" from a third-party library, type-check against `Mapping`
+(or `Iterable[tuple[K, V]]` for the pair-list shape) — `dict` is the
+wrong contract because container-type subclassing is library-author's
+choice, not the protocol. Same applies to bytes-or-bytearray vs
+`bytes`, `Sequence` vs `list`, etc. The integration test that uses the
+real third-party type is load-bearing — a dict shim cannot expose this
+class of bug.
+
 ## L-8 — Reconcile cross-story module-name drafts before the gate flips (S3-01)
 
 S2-05 named the gated-on module `codegenie.fallback.leaf.protocol`;
