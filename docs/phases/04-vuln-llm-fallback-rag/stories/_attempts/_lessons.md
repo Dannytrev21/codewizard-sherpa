@@ -97,6 +97,24 @@ the diagnostic-under-test surfaced. Reviewer heuristic: any
 `# type: ignore[<code>]` on the call line a fence test asserts on is a
 red flag — the suppression turns the gate into a tautology.
 
+## L-9 — Async httpx bypasses `socket.create_connection` — wrapper is a sync-path defense only (S3-03)
+
+S3-03 AC-18 prose claims `httpx` "ultimately funnels through
+`socket.create_connection`". That is only true for **sync** httpx (and
+for stdlib `urllib`/`urllib3`). Async httpx delegates to
+`asyncio.BaseEventLoop.create_connection` → `loop.sock_connect` on a
+raw socket — the `EgressGuard` wrapper does not see it. The Phase-4
+adapter's async SDK call inside `AnthropicLeafAdapter` is defended by
+the explicit `egress_guard.pinned_to(...)` envelope (the suspenders),
+not by the socket wrapper (the belt). Future stories that need to
+close the asyncio gap should hook either `asyncio.BaseEventLoop._sock_connect`
+or the underlying `socket.socket.connect` (with an IP-allowlist cache
+populated by a wrapped `getaddrinfo`). For now, split any "SDK does
+not bypass" AC into a sync-client test (genuine wrapper proof) plus a
+structural pin of the residual asyncio surface, so a future closure
+updates the assertion deliberately rather than letting the gap widen
+silently.
+
 ## L-8 — Reconcile cross-story module-name drafts before the gate flips (S3-01)
 
 S2-05 named the gated-on module `codegenie.fallback.leaf.protocol`;

@@ -301,6 +301,43 @@ staged files. SHA-pinned for reproducibility. Run `pre-commit install`
 once after `make bootstrap`; CI re-runs the same checks via `make check`
 so the hook is convenience, not gate.
 
+### `egress_test_loopback` fixture (Phase-4 S3-03)
+
+The repo-root [`sitecustomize.py`](../sitecustomize.py) installs
+`EgressGuard` (`src/codegenie/fallback/leaf/egress_guard.py`) at every
+interpreter start — including every `pytest` run. The guard wraps
+`socket.create_connection` and rejects any host other than
+`api.anthropic.com:443`, **including** loopback (`127.0.0.1`, `::1`,
+`localhost`). Per ADR-0006 §Decision: there is no env-var, no boolean
+parameter, and no module constant that widens the allowlist.
+
+A test that genuinely needs to dial a loopback listener (binds a
+throwaway socket on an ephemeral port and connects to it) must request
+the **`egress_test_loopback`** fixture, defined in
+[`tests/conftest.py`](../tests/conftest.py):
+
+```python
+def test_my_local_listener(egress_test_loopback):
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    # socket.create_connection(("127.0.0.1", listener.getsockname()[1])) admitted
+```
+
+The fixture sets a thread-scoped `contextvars.ContextVar` to `True` and
+resets it on teardown. A `threading.Thread` spawned during the test runs
+in an empty `Context`, so the flag is invisible to it — concurrent
+workers stay blocked (the AC-8 isolation guarantee, for free). Do **not**
+request the fixture for tests that monkeypatch the socket layer or use
+mocks; those tests never reach the wrapper.
+
+### Phase-4 adversarial suite (`phase04_adv` marker)
+
+Adversarial tests for Phase 4 (egress guard, prompt-fence, cassette
+discipline) live under [`tests/adv/phase04/`](../tests/adv/phase04/) and
+carry the `phase04_adv` pytest marker — mirroring the `phase02_adv`
+precedent. Both markers are CI-gating; `make test` runs them by default.
+
 ### CI matrix
 
 The six required jobs (all must pass on Python 3.11 AND 3.12 before merge):

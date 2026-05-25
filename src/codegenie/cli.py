@@ -915,6 +915,43 @@ def gather(ctx: click.Context, path: Path) -> None:
     sys.exit(exit_code)
 
 
+@cli.group(name="self-check")
+def self_check() -> None:
+    """Operator self-check subcommands (Phase-4 S3-03).
+
+    Reports posture without escalating any privilege; never opens a socket
+    and never invokes ``iptables`` / ``nftables`` as a subprocess.
+    """
+
+
+@self_check.command(name="egress")
+def self_check_egress() -> None:
+    """Report the active egress allowlist and OS-level posture.
+
+    Always exits ``0`` (reporting command, not a gate). Reads
+    :data:`codegenie.fallback.leaf.egress_guard._installed` directly; does
+    NOT call :meth:`EgressGuard.install` (production tooling has no
+    escape that mutates global state).
+    """
+    egress_mod = importlib.import_module("codegenie.fallback.leaf.egress_guard")
+    shutil_mod = importlib.import_module("shutil")
+    platform_mod = importlib.import_module("platform")
+
+    click.echo("codegenie self-check egress")
+    click.echo("  allowlist: api.anthropic.com:443")
+    click.echo(f"  installed={egress_mod._installed!r}")
+    system = platform_mod.system()
+    if system == "Linux":
+        iptables = shutil_mod.which("iptables") is not None
+        nftables = shutil_mod.which("nft") is not None
+        click.echo(f"  os_posture (linux): iptables_on_path={iptables} nftables_on_path={nftables}")
+        click.echo("    (presence only — reporting rule status would require root)")
+    elif system == "Darwin":
+        click.echo("  os_posture (darwin): macOS dev — OS filter not configured by default")
+    else:
+        click.echo(f"  os_posture ({system.lower()}): not reported")
+
+
 @cli.group(name="audit")
 def audit() -> None:
     """Audit-record write/verify subcommands."""

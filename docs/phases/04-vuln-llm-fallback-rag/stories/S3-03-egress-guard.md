@@ -1,7 +1,8 @@
 # Story S3-03 — `EgressGuard` via `sitecustomize` (no production loopback carve-out)
 
 **Step:** Step 3 — Ship LeafLlm Port + AnthropicLeafAdapter + EgressGuard + cassette discipline
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S3-03.md`](_attempts/S3-03.md) for the per-AC evidence table + gate log)
+**Pre-validation Status:** HARDENED
 **Effort:** M
 **Depends on:** S3-02 — the concrete `EgressGuard` must satisfy the `EgressGuardPort` Protocol that hardened S3-02 introduced (`pinned_to(host: str) -> AsyncContextManager[None]`; the adapter injects it and wraps every physical SDK attempt).
 **ADRs honored:** ADR-0005 (Phase 4 — no SPKI pin; `EgressGuard` is layer 1 of 4 defense-in-depth), ADR-0006 (Phase 4 — loopback rejected in production; pytest-fixture-set thread-local opt-in only)

@@ -316,6 +316,7 @@ markers = [
   "bench: advisory performance canaries — not run under the default suite",
   "adv: adversarial-fixture corpus tests (Phase 1 §S5-01/02/03)",
   "phase02_adv: Phase 2 adversarial tests (CI-gating; see tests/adv/phase02/)",
+  "phase04_adv: Phase 4 adversarial tests (CI-gating; see tests/adv/phase04/)",
   "serial: tests that MUST run serially (ADR-0009 — pytest-xdist veto)",
   "nightly_macos: macOS-substrate live tests run only on the nightly darwin runner (S4-03 AC-12)",
   "phase_7_preview: Phase 7 preview tests; skipped in Phase 3 CI by default — collected only with -m phase_7_preview",
