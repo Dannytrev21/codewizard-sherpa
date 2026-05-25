@@ -200,6 +200,8 @@ _INTERNAL_VARIANTS = frozenset(
         "LeafInvoked",
         "LeafReturned",
         "LeafProtocolViolationEvent",
+        # Phase-4 S4-05 — ``RecordProvenance.verify`` chain-orphan emission.
+        "RagRecordChainOrphan",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -217,13 +219,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_30_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01/02/04/05/S3-02: every named internal variant is exported."""
+def test_all_31_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01/02/04/05/S3-02/S4-05: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 30
+    assert len(_INTERNAL_VARIANTS) == 31
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -1241,3 +1243,89 @@ def test_leaf_events_round_trip_through_event_log(tmp_path: Path) -> None:
     assert isinstance(vio, LeafProtocolViolationEvent)
     assert vio.first_error == "invalid_json"
     assert vio.second_error == "missing_kind"
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S4-05 — ``RagRecordChainOrphan`` (chain-orphan exclusion event)
+# ---------------------------------------------------------------------------
+
+
+def test_rag_record_chain_orphan_is_registered_internal_variant() -> None:
+    """S4-05 AC-11 — class is in ``_INTERNAL_CLASSES`` and the discriminator
+    mapping carries the ``"rag_record_chain_orphan"`` row.
+
+    A typo such as ``"ragRecordChainOrphan"`` or forgetting the
+    ``_INTERNAL_CLASSES`` row must fail this test.
+    """
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import (
+        _INTERNAL_CLASSES,
+        RagRecordChainOrphan,
+        WorkflowInternalEvent,
+    )
+
+    assert RagRecordChainOrphan in _INTERNAL_CLASSES
+
+    schema = TypeAdapter(WorkflowInternalEvent).json_schema()
+    mapping = schema["discriminator"]["mapping"]
+    assert "rag_record_chain_orphan" in mapping, mapping
+
+    fields = RagRecordChainOrphan.model_fields
+    assert fields["event_type"].annotation.__args__ == ("rag_record_chain_orphan",)  # type: ignore[attr-defined]
+    for name in (
+        "event_id",
+        "workflow_id",
+        "timestamp",
+        "record_id",
+        "record_event_chain_head",
+        "spanning_log_head",
+    ):
+        assert name in fields, f"RagRecordChainOrphan missing field {name!r}"
+
+
+def test_rag_record_chain_orphan_round_trips_through_event_log(tmp_path: Path) -> None:
+    """S4-05 AC-11 — emit_internal accepts a RagRecordChainOrphan and replay
+    returns the typed instance with field-for-field equality."""
+    from codegenie.plugins.events import RagRecordChainOrphan
+    from codegenie.types.identifiers import ChainHead, SolvedExampleId
+
+    log = EventLog(root=tmp_path, workflow_id=_wf(), clock=_now)
+
+    record_head = ChainHead("a" * 64)
+    span_head = ChainHead("b" * 64)
+    emitted = RagRecordChainOrphan(
+        event_id=EventId("01HRAGORPHAN001"),
+        workflow_id=_wf(),
+        timestamp=_now(),
+        record_id=SolvedExampleId("ex-orphan-1"),
+        record_event_chain_head=record_head,
+        spanning_log_head=span_head,
+    )
+    log.emit_internal(emitted)
+    log.flush()
+
+    replayed = list(log.replay())
+    assert len(replayed) == 1
+    got = replayed[0]
+    assert isinstance(got, RagRecordChainOrphan)
+    assert got.event_type == "rag_record_chain_orphan"
+    assert got.record_id == "ex-orphan-1"
+    assert got.record_event_chain_head == record_head
+    assert got.spanning_log_head == span_head
+
+
+def test_rag_record_chain_orphan_is_frozen_and_extra_forbid() -> None:
+    """S4-05 AC-3 — model carries the project-wide audit-event config."""
+    from codegenie.plugins.events import RagRecordChainOrphan
+
+    cfg = RagRecordChainOrphan.model_config
+    assert cfg.get("frozen") is True
+    assert cfg.get("extra") == "forbid"
+
+
+def test_rag_record_chain_orphan_has_no_prev_hash_field() -> None:
+    """S4-05 AC-3 — workflow-internal, not spanning; no chain anchor."""
+    from codegenie.plugins.events import RagRecordChainOrphan
+
+    assert "prev_hash" not in RagRecordChainOrphan.model_fields

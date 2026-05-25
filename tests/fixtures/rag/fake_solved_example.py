@@ -52,6 +52,7 @@ def make_solved_example(
     cve_id: str = "CVE-2026-1234",
     embedding_vector: EmbeddingVector | None = None,
     origin: Literal["llm_solved", "operator_curated", "phase11_merge_webhook"] = "llm_solved",
+    event_chain_head: str = "c" * 64,
 ) -> SolvedExample:
     """Build a valid :class:`SolvedExample` with sensible defaults.
 
@@ -79,7 +80,7 @@ def make_solved_example(
         trust_outcome_digest=BlobDigest(_ZERO_DIGEST_64),
         provenance=RecordProvenance(
             workflow_id=WorkflowId("wf-fixture"),
-            event_chain_head=ChainHead("c" * 64),
+            event_chain_head=ChainHead(event_chain_head),
             created_at=datetime(2026, 5, 25, tzinfo=UTC),
             signing_method="hmac_sha256_chain",
         ),

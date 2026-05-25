@@ -301,3 +301,33 @@ dict's `schema_version` BEFORE `model_validate(...)`. The full Open/
 Closed dispatch table only earns its keep when v2 actually exists (Rule
 2 — no premature abstraction). First hit: phase-4 S4-04 `_Manifest`
 parse path.
+
+## L-S405-1 — internal-variant count test follows the variant (S4-05)
+
+`tests/unit/plugins/test_events.py::test_all_30_internal_variants_exist`
+hardcodes the variant count and is named `test_all_<N>_internal_variants_exist`.
+Every new `WorkflowInternalEvent` row needs three coupled edits the
+discriminated-union itself does not enforce: (1) add to the
+`_INTERNAL_VARIANTS` frozenset at the top of the file, (2) bump the
+literal in the assertion, (3) rename the test function (`30` → `31` for
+S4-05). Skip any of the three and the union still type-checks; the count
+test catches drift between the registry and the test's checklist.
+Promote to per-story checklist for any future internal-variant story.
+
+## L-S405-2 — `RecordProvenance.verify` is module-level, NOT a staticmethod (S4-05)
+
+Arch §Component 7 prose names the contract as
+`RecordProvenance.verify(record, spanning_log) -> bool`. Implementing it
+as a staticmethod on the Pydantic model would import
+`codegenie.rag.provenance` (the policy) from `codegenie.rag.models` (the
+data shape) and create a `models.py → provenance.py → models.py` cycle
+that mypy does NOT catch but pytest collection breaks on. The S4-05
+validator preempted this with a "RESCUE" verdict that rewrote AC-1 to
+explicitly forbid the staticmethod alias; the executor pinned
+the absence with `test_recordprovenance_has_no_verify_staticmethod`.
+General rule: when the arch prose names a behaviour as
+`Model.method(...)` but `Model` is a frozen data Pydantic model, prefer
+a module-level function in a sibling policy module and pin
+`assert not hasattr(Model, "method")` so a future drive-by edit can't
+silently reintroduce the cycle.
+

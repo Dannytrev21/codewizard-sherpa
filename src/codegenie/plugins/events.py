@@ -63,6 +63,7 @@ from codegenie.types.identifiers import (
     BlobDigest,
     BranchName,
     BudgetTokenId,
+    ChainHead,
     CveId,
     EventId,
     HexNonce,
@@ -71,6 +72,7 @@ from codegenie.types.identifiers import (
     PrimitiveName,
     RecipeId,
     SignalKind,
+    SolvedExampleId,
     TokenCount,
     TransformId,
     WorkflowId,
@@ -726,6 +728,40 @@ class LeafProtocolViolationEvent(BaseModel):
     second_error: str
 
 
+# --- Phase-4 S4-05 — ``RagRecordChainOrphan`` (chain-orphan exclusion) ------
+
+
+class RagRecordChainOrphan(BaseModel):
+    """Phase-4 S4-05 — a retrieval candidate's
+    :attr:`~codegenie.rag.models.RecordProvenance.event_chain_head` was
+    not found in the current spanning event log.
+
+    Emitted by the retriever (S5-01) when
+    :func:`codegenie.rag.provenance.verify` returns ``False`` for a
+    candidate :class:`~codegenie.rag.models.SolvedExample`. The record
+    is excluded from the result set; the workflow **continues** — a
+    chain-orphan is suspect data, not a stop condition (arch edge case
+    #14, final-design §Component 11).
+
+    Workflow-internal (no ``prev_hash``): this event describes one
+    retrieval query's filter decision and is not part of the spanning
+    BLAKE3 chain.
+
+    ``record_event_chain_head`` is the absent head the record claimed;
+    ``spanning_log_head`` is the caller-supplied current head used for
+    triage (which deployment / window the query was running against).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_record_chain_orphan"] = "rag_record_chain_orphan"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    record_id: SolvedExampleId
+    record_event_chain_head: ChainHead
+    spanning_log_head: ChainHead
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -867,7 +903,8 @@ WorkflowInternalEvent = Annotated[
     | LeafKeyLoaded
     | LeafInvoked
     | LeafReturned
-    | LeafProtocolViolationEvent,
+    | LeafProtocolViolationEvent
+    | RagRecordChainOrphan,
     Field(discriminator="event_type"),
 ]
 
@@ -918,6 +955,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     LeafInvoked,
     LeafReturned,
     LeafProtocolViolationEvent,
+    RagRecordChainOrphan,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1295,6 +1333,7 @@ __all__ = [
     "PluginsLoaded",
     "PromptAssembled",
     "ProvenanceClassified",
+    "RagRecordChainOrphan",
     "RecipeApplied",
     "RecipeFailed",
     "RecipeMatched",

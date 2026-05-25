@@ -1,7 +1,7 @@
 # Story S4-05 - `RecordProvenance.verify(record, spanning_log) -> bool` + `RagRecordChainOrphan` emission
 
 **Step:** Step 4 - Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S4-05.md`](_attempts/S4-05.md) for the per-AC evidence table + gate log — module-level pure `verify(record, spanning_log) -> bool` + one-method `@runtime_checkable` `SpanningChainLog` Protocol land at `src/codegenie/rag/provenance.py`; `RagRecordChainOrphan` joins `WorkflowInternalEvent` as variant #31 with `record_id` / `record_event_chain_head` / `spanning_log_head` triple. 75 story-scoped tests + 50-example Hypothesis membership property + caller-shim integration smoke through real `EventLog.emit_internal`. Gates green: 473 fence, 484 ADR-0003 path-scoped fence, `make typecheck` 232 files, `make lint-imports` 11 kept / 0 broken, ruff clean.)
 **Effort:** S
 **Depends on:** S1-01 (`ChainHead`, `SolvedExampleId`, `BlobDigest`, `EventId`, `WorkflowId` newtypes), S1-04 (`SolvedExample` / `RecordProvenance` models), S4-04 (canonical YAML + manifest in place - the manifest's `chain_head` is the store's content head; per-record provenance is a separate chain anchor in the spanning event log)
 **ADRs honored:** ADR-0016 (chain verification is part of read-side discipline), final-design §Component 11 - "the record's chain head must appear somewhere in the spanning chain log", Phase-3 ADR-0005 / S6-01 event-log surface (`codegenie.plugins.events.EventLog`)
