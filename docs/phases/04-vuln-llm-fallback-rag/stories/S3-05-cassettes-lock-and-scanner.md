@@ -1,7 +1,7 @@
 # Story S3-05 — `cassettes.lock` BLAKE3 manifest + `tests/security/test_cassettes_clean.py` CI scanner
 
 **Step:** Step 3 — Ship LeafLlm Port + AnthropicLeafAdapter + EgressGuard + cassette discipline
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S3-05.md`](_attempts/S3-05.md) for the per-AC evidence table + gate log)
 **Effort:** M
 **Depends on:** S3-04 (`verify_cassette` walker + sanitizer), S3-02 (cassette scenario markers only; real cassette bytes are still deferred until S3-06)
 **ADRs honored:** ADR-0014 (Phase 4 — cassette discipline; layered control: sanitize + scanner + manifest + nightly), production-style content-addressed manifest convention (`embeddings_model.lock`, `tools/grammars.lock` precedent)

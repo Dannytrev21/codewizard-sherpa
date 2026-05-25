@@ -18,6 +18,13 @@ file. Depth-of-defense ordering matters.
 
 from __future__ import annotations
 
+from codegenie.fallback.cassette.manifest import (
+    LockfileMalformed,
+    LockfileMalformedDetail,
+    compute_cassette_digest,
+    load_lockfile,
+    rebuild_lockfile,
+)
 from codegenie.fallback.cassette.sanitizer import (
     CassetteVerification,
     Violation,
@@ -28,7 +35,12 @@ from codegenie.fallback.cassette.sanitizer import (
 
 __all__ = (
     "CassetteVerification",
+    "LockfileMalformed",
+    "LockfileMalformedDetail",
     "Violation",
+    "compute_cassette_digest",
+    "load_lockfile",
+    "rebuild_lockfile",
     "sanitize_request",
     "sanitize_response",
     "verify_cassette",

@@ -1,0 +1,13 @@
+interactions:
+- request:
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+    headers: {}
+    body: 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5QUJDREVGRw=='
+  response:
+    status:
+      code: 200
+      message: OK
+    headers: {}
+    body:
+      string: '{}'

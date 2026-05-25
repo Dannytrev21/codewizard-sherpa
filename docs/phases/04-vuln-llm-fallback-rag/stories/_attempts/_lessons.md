@@ -147,3 +147,30 @@ tests must pin the module path to the *next story's canonical
 surface*, not a draft name; the next-story executor's first job is
 to re-grep the gating-test for its module path and reconcile it
 before declaring GREEN.
+
+## L-11 — The Phase-4 raw-`str` fence treats function-name substrings as domain IDs (S3-05)
+
+`tests/fence/test_phase4_no_raw_str_for_domain_ids.py` walks
+`src/codegenie/fallback/` + `src/codegenie/rag/` and flags any
+**function** whose name contains a domain keyword (`cassette`,
+`cve_id`, `budget_token`, `chain_head`, `nonce`, …) and whose return
+annotation is a raw primitive. So `def compute_cassette_digest(...) ->
+str` is a fence break — the name carries the domain identity.
+Use the existing newtype from
+`codegenie.types.identifiers` (here: `BlobDigest`, the
+algorithm-agnostic 64-hex digest type the whole repo reuses) rather
+than inventing a parallel `CassetteDigest`. The fence applies to
+parameter names too — but those usually take `Path`-shaped types, so
+breaks land more often on returns.
+
+## L-12 — Local pre-commit hooks backed by a CLI need fence-aware entries (S3-05)
+
+`tests/unit/test_precommit_and_docs_config.py::test_precommit_config_declares_exactly_the_required_hooks`
+asserts every `repo: local` hook either points at a real script file
+or contains the literal `grep`. A CLI-driven hook
+(`python -m codegenie cassette rebuild-lockfile --check`) trips the
+fence even though it's plainly not a stub. Per Rule 7 the right fix is
+to widen the fence to recognize `python -m <module>` / `python
+<script>` rather than wrap the CLI in a shim under `scripts/` — the
+shim adds a code path with no semantic value. S3-05 widened the fence;
+future CLI-driven hooks need no further change.

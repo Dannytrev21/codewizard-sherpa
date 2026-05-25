@@ -121,3 +121,15 @@ repos:
         # `tools/fuzz_yarn_lock.py`; ruff's T201 still gates the per-line
         # `# noqa: T201` discipline inside such files.
         exclude: '^(tests/|scripts/|tools/)'
+
+      # Phase-4 S3-05 / ADR-0014 — pre-commit guard against pushing a stale
+      # `cassettes.lock`. Runs the same `--check` mode CI uses (exit 8 on
+      # drift; exit 9 on dirty cassette) so a contributor sees the failure
+      # before push instead of after.
+      - id: cassette-lock-check
+        name: cassette-lock-check (Phase-4 S3-05 / ADR-0014)
+        language: system
+        entry: python -m codegenie cassette rebuild-lockfile --check
+        # Re-run when any cassette body OR the lock itself changes.
+        files: '^tests/cassettes/anthropic/.*\.(yaml|lock)$'
+        pass_filenames: false

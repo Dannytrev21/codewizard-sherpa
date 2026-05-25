@@ -1047,6 +1047,130 @@ def cache_prune(cache_dir: Path | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# cassette — Phase 4 S3-05 cassettes.lock manifest CLI surface (ADR-0014).
+#
+# Exit codes:
+#   - 0 — rebuild succeeded (write mode) OR lock is consistent (--check mode).
+#   - 8 — drift detected in --check mode (lock vs. on-disk cassettes).
+#   - 9 — at least one cassette failed sanitizer verification; the CLI refuses
+#         to lock a dirty cassette. The operator must redact + re-record first.
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_CASSETTES_DIR: Final[str] = "tests/cassettes/anthropic"
+
+
+def _resolve_cassettes_dir(explicit: Path | None) -> Path:
+    """Resolve the cassette directory (default: repo-relative anthropic/)."""
+    if explicit is not None:
+        return explicit
+    return Path.cwd() / _DEFAULT_CASSETTES_DIR
+
+
+def _resolve_lock_path(cassettes_dir: Path) -> Path:
+    return cassettes_dir / "cassettes.lock"
+
+
+def _collect_sanitizer_violations(cassettes_dir: Path) -> list[str]:
+    """Return one diagnostic string per sanitizer violation across all cassettes.
+
+    Pure (no I/O writes); reads cassette bytes via S3-04's
+    :func:`verify_cassette`. Empty list = every cassette is clean.
+    """
+    sanitizer_mod = importlib.import_module("codegenie.fallback.cassette.sanitizer")
+    findings: list[str] = []
+    if not cassettes_dir.exists():
+        return findings
+    for cassette in sorted(cassettes_dir.rglob("*.yaml")):
+        if not cassette.is_file():
+            continue
+        result = sanitizer_mod.verify_cassette(cassette)
+        if result.passed:
+            continue
+        relpath = cassette.relative_to(cassettes_dir).as_posix()
+        for v in result.violations:
+            header = f" header={v.header_name!r}" if v.header_name else ""
+            pattern = f" pattern={v.pattern!r}" if v.pattern else ""
+            findings.append(
+                f"sanitizer violation: {relpath} interaction={v.interaction_index} "
+                f"kind={v.kind}{header}{pattern} snippet={v.snippet!r}"
+            )
+    return findings
+
+
+@cli.group(name="cassette")
+def cassette_group() -> None:
+    """Cassette-discipline subcommands (Phase 4 S3-05 / ADR-0014)."""
+
+
+@cassette_group.command(name="rebuild-lockfile")
+@click.option(
+    "--cassettes-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Directory containing cassette ``*.yaml`` files (default: "
+        "``tests/cassettes/anthropic`` relative to cwd)."
+    ),
+)
+@click.option(
+    "--check",
+    "check_mode",
+    is_flag=True,
+    default=False,
+    help=(
+        "Compare-only mode: do not write. Exits 8 on drift, 9 on sanitizer "
+        "violation, 0 if the on-disk lock matches the rebuilt lock byte-for-byte."
+    ),
+)
+def cassette_rebuild_lockfile(cassettes_dir: Path | None, check_mode: bool) -> None:
+    """Rebuild ``cassettes.lock`` from the cassette directory (ADR-0014).
+
+    \b
+    Exit codes:
+    - 0 — rebuild succeeded (write) OR lock is byte-identical to disk (--check).
+    - 8 — drift (--check only): rebuilt content differs from on-disk lock.
+    - 9 — at least one cassette has a sanitizer violation; refuse to lock dirty.
+    """
+    manifest_mod = importlib.import_module("codegenie.fallback.cassette.manifest")
+    resolved_dir = _resolve_cassettes_dir(cassettes_dir)
+    lock_path = _resolve_lock_path(resolved_dir)
+
+    # Refuse to ever lock-in a dirty cassette (AC-4).
+    sanitizer_findings = _collect_sanitizer_violations(resolved_dir)
+    if sanitizer_findings:
+        for line in sanitizer_findings:
+            click.echo(line, err=True)
+        click.echo(
+            "refusing to rebuild cassettes.lock while sanitizer violations exist; "
+            "redact + re-record the affected cassettes first.",
+            err=True,
+        )
+        sys.exit(9)
+
+    rebuilt = manifest_mod.rebuild_lockfile(resolved_dir)
+
+    if check_mode:
+        on_disk = lock_path.read_text(encoding="utf-8") if lock_path.exists() else ""
+        if rebuilt != on_disk:
+            click.echo(
+                "cassette body changed without lock update — run "
+                "`python -m codegenie cassette rebuild-lockfile` and commit the "
+                "result, then resubmit with cassette-review CODEOWNERS approval",
+                err=True,
+            )
+            sys.exit(8)
+        sys.exit(0)
+
+    # Write mode: idempotent on already-consistent state.
+    if lock_path.exists() and lock_path.read_text(encoding="utf-8") == rebuilt:
+        sys.exit(0)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(rebuilt, encoding="utf-8")
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
 # vuln-index — Phase 3 S3-03 NVD/GHSA/OSV refresh CLI surface.
 #
 # Exit codes (threaded through ``_EXIT_CODE_DISPATCH``):

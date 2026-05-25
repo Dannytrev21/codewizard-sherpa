@@ -199,10 +199,25 @@ def test_precommit_config_declares_exactly_the_required_hooks() -> None:
                 first_token = entry.split()[0]
                 script = PROJECT_ROOT / first_token
                 if not script.is_file():
-                    # Inline form is allowed; must at least mention grep.
-                    assert "grep" in entry, (
-                        f"local hook `{h['id']}` entry neither references a script "
-                        f"nor uses grep: `{entry}`"
+                    # Inline form is allowed; must reference a real executor —
+                    # `grep …` (the AC-2 forbidden-patterns precedent),
+                    # `python -m <module>` (S3-05 cassette-lock check), or
+                    # `python <path>` (any future script-shaped invocation).
+                    tokens = entry.split()
+                    is_grep = "grep" in tokens
+                    is_python_m = (
+                        len(tokens) >= 3
+                        and tokens[0] in {"python", "python3", ".venv/bin/python"}
+                        and tokens[1] == "-m"
+                    )
+                    is_python_script = (
+                        len(tokens) >= 2
+                        and tokens[0] in {"python", "python3", ".venv/bin/python"}
+                        and not tokens[1].startswith("-")
+                    )
+                    assert is_grep or is_python_m or is_python_script, (
+                        f"local hook `{h['id']}` entry neither references a "
+                        f"script, uses grep, nor invokes python: `{entry}`"
                     )
 
 

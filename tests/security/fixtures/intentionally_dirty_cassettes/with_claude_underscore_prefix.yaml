@@ -1,0 +1,13 @@
+interactions:
+- request:
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+    headers: {}
+    body: '{"token": "claude_secret_token_abcdef_FIXTURE_NOT_REAL_xxxx"}'
+  response:
+    status:
+      code: 200
+      message: OK
+    headers: {}
+    body:
+      string: '{}'

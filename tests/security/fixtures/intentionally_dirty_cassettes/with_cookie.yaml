@@ -1,0 +1,14 @@
+interactions:
+- request:
+    method: GET
+    uri: https://api.anthropic.com/v1/health
+    headers:
+      Cookie: session=FIXTURE_NOT_REAL_COOKIE_VALUE_aaaaaaaaaa
+    body: ''
+  response:
+    status:
+      code: 200
+      message: OK
+    headers: {}
+    body:
+      string: ok

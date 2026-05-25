@@ -1,0 +1,16 @@
+interactions:
+- request:
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+    headers:
+      Authorization: Bearer sk-ant-FIXTURE-NOT-REAL-1234567890abcdef
+    body: '{"model": "claude-3-5-sonnet"}'
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      content-type:
+      - application/json
+    body:
+      string: '{"id": "msg_FIXTURE", "type": "message"}'
