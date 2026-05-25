@@ -56,6 +56,30 @@
     "title": "VulnRemediationCase",
     "type": "object"
   },
+  "checkpoint_sqlite_schema": "CREATE TABLE IF NOT EXISTS checkpoint_chain (\n    sequence       INTEGER PRIMARY KEY AUTOINCREMENT,\n    transition_id  TEXT    NOT NULL UNIQUE,\n    prior_head     TEXT    NOT NULL,\n    next_head      TEXT    NOT NULL,\n    event_bytes    BLOB    NOT NULL,\n    written_at     TEXT    NOT NULL\n);\nCREATE UNIQUE INDEX IF NOT EXISTS ix_chain_next_head ON checkpoint_chain(next_head);\n",
+  "checkpoint_store_is_runtime_protocol": true,
+  "checkpoint_store_protocol": {
+    "append": {
+      "is_coroutine_function": false,
+      "signature": "(self, event: 'TransitionEvent') -> 'ChainHead'"
+    },
+    "close": {
+      "is_coroutine_function": false,
+      "signature": "(self) -> 'None'"
+    },
+    "lock": {
+      "is_coroutine_function": false,
+      "signature": "(self, workflow_id: 'WorkflowId') -> 'AbstractContextManager[None]'"
+    },
+    "read_all_for_workflow": {
+      "is_coroutine_function": false,
+      "signature": "(self, workflow_id: 'WorkflowId') -> 'Iterator[TransitionEvent]'"
+    },
+    "tail_chain_head": {
+      "is_coroutine_function": false,
+      "signature": "(self, workflow_id: 'WorkflowId') -> 'ChainHead'"
+    }
+  },
   "is_runtime_protocol": true,
   "ledger_state_schema": {
     "$defs": {
@@ -349,6 +373,7 @@
     "plan_ready->failed_unrecoverable",
     "plan_ready->patch_applied"
   ],
+  "max_event_bytes": 65536,
   "protocol": {
     "digest": {
       "annotations": {
@@ -500,6 +525,14 @@
     "title": "VulnRemediationResult",
     "type": "object"
   },
+  "semantic_boundary_kinds": [
+    "awaiting_human_review",
+    "completed",
+    "failed_unrecoverable",
+    "gate_failed_retryable",
+    "patch_applied",
+    "plan_ready"
+  ],
   "transition_event_schema": {
     "$defs": {
       "JsonValue": {}

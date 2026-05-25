@@ -103,6 +103,7 @@ __all__ = [
     "SecretFinding",
     "redact_raw_artifact_bytes",
     "redact_secrets",
+    "sanitize_for_persistence",
 ]
 
 _log = structlog.get_logger(__name__)
@@ -492,3 +493,27 @@ def redact_raw_artifact_bytes(
 
         out = pattern.sub(_repl_bytes, out)
     return out, findings
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 S2-01 AC-12 — checkpoint-write sanitizer entrypoint.
+#
+# Thin wrapper around :func:`redact_raw_artifact_bytes` so the
+# checkpoint store does NOT fork the canonical regex set. The findings
+# list is dropped on the floor (the checkpoint store is not the CLI
+# summary audit trail — the forensic ``EventLog`` plays that role).
+# ---------------------------------------------------------------------------
+
+
+def sanitize_for_persistence(payload: bytes) -> bytes:
+    """Redact secret-shaped substrings before persisting checkpoint bytes.
+
+    The Phase-6 checkpoint store calls this on every canonical-JSON
+    payload it writes (AC-12). Single canonical regex declaration site
+    — see ADR-0010 + Phase 2 02-ADR-0010 / 02-ADR-0012; an executor
+    that imports ``re.compile`` inside the workflows package would
+    violate the "no fork" principle and be caught by
+    ``tests/fence/test_checkpoint_sanitizer_imports.py``.
+    """
+    out, _findings = redact_raw_artifact_bytes(payload, ProbeId("workflows.checkpoint"))
+    return out

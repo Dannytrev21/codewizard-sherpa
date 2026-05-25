@@ -43,6 +43,12 @@ from codegenie.workflows import (
     VulnRemediationResult,
     VulnRemediationSut,
 )
+from codegenie.workflows.checkpoints import (
+    _MAX_EVENT_BYTES,
+    _SEMANTIC_BOUNDARY_KINDS,
+    CheckpointStore,
+)
+from codegenie.workflows.sqlite_checkpoints import _CHECKPOINT_SCHEMA_SQL
 from codegenie.workflows.vuln_ledger import _LEGAL_TRANSITIONS
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -69,6 +75,19 @@ def _serialize_protocol_signature() -> dict[str, Any]:
     return methods
 
 
+def _serialize_checkpoint_store_signature() -> dict[str, Any]:
+    """Phase 6 S2-01 AC-15 — structural snapshot for the CheckpointStore Protocol."""
+    methods: dict[str, Any] = {}
+    for name in sorted(("append", "read_all_for_workflow", "tail_chain_head", "lock", "close")):
+        attr = getattr(CheckpointStore, name)
+        sig = inspect.signature(attr)
+        methods[name] = {
+            "signature": str(sig),
+            "is_coroutine_function": inspect.iscoroutinefunction(attr),
+        }
+    return methods
+
+
 def build_snapshot() -> dict[str, Any]:
     """Construct the canonical snapshot dict.
 
@@ -89,6 +108,14 @@ def build_snapshot() -> dict[str, Any]:
         "ledger_state_schema": ledger_adapter.json_schema(by_alias=True),
         "transition_event_schema": TransitionEvent.model_json_schema(by_alias=True),
         "legal_transitions": sorted(f"{p}->{n}" for p, n in _LEGAL_TRANSITIONS),
+        # Phase-6 S2-01 AC-15 — checkpoint substrate contract.
+        "checkpoint_store_protocol": _serialize_checkpoint_store_signature(),
+        "checkpoint_store_is_runtime_protocol": bool(
+            getattr(CheckpointStore, "_is_runtime_protocol", False)
+        ),
+        "semantic_boundary_kinds": sorted(_SEMANTIC_BOUNDARY_KINDS),
+        "max_event_bytes": _MAX_EVENT_BYTES,
+        "checkpoint_sqlite_schema": _CHECKPOINT_SCHEMA_SQL,
     }
 
 
@@ -183,6 +210,40 @@ def classify_snapshot_diff(old: dict[str, Any], new: dict[str, Any]) -> str:
     old_edges = set(old.get("legal_transitions", []) or [])
     new_edges = set(new.get("legal_transitions", []) or [])
     if old_edges - new_edges:
+        return "breaking"
+
+    # Phase-6 S2-01 AC-15 — checkpoint-substrate diff rules.
+    if old.get("checkpoint_store_is_runtime_protocol") and not new.get(
+        "checkpoint_store_is_runtime_protocol"
+    ):
+        return "breaking"
+    old_cp = old.get("checkpoint_store_protocol", {}) or {}
+    new_cp = new.get("checkpoint_store_protocol", {}) or {}
+    if set(old_cp) - set(new_cp):
+        return "breaking"
+    for name, meta in old_cp.items():
+        if name not in new_cp:
+            return "breaking"
+        if meta.get("signature") != new_cp[name].get("signature"):
+            return "breaking"
+    old_boundaries = set(old.get("semantic_boundary_kinds", []) or [])
+    new_boundaries = set(new.get("semantic_boundary_kinds", []) or [])
+    if old_boundaries - new_boundaries:
+        return "breaking"
+    # Narrowing _MAX_EVENT_BYTES downward is breaking (existing valid
+    # payloads suddenly reject). Raising is additive.
+    old_cap = old.get("max_event_bytes")
+    new_cap = new.get("max_event_bytes")
+    if isinstance(old_cap, int) and isinstance(new_cap, int) and new_cap < old_cap:
+        return "breaking"
+    # Schema string change is breaking (column rename, index removal,
+    # type change). An additive column would require a new row in the
+    # ledger AND the golden file; the executor takes that explicit step.
+    if (
+        old.get("checkpoint_sqlite_schema") is not None
+        and new.get("checkpoint_sqlite_schema") is not None
+        and old["checkpoint_sqlite_schema"] != new["checkpoint_sqlite_schema"]
+    ):
         return "breaking"
 
     return "additive"

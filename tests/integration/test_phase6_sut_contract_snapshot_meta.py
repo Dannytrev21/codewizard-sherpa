@@ -69,6 +69,45 @@ def _baseline() -> dict[str, Any]:
                 "annotations": {"return": "SutDigest"},
             },
         },
+        # S2-01 AC-15 — checkpoint substrate contract.
+        "checkpoint_store_protocol": {
+            "append": {
+                "signature": "(self, event: TransitionEvent) -> ChainHead",
+                "is_coroutine_function": False,
+            },
+            "read_all_for_workflow": {
+                "signature": ("(self, workflow_id: WorkflowId) -> Iterator[TransitionEvent]"),
+                "is_coroutine_function": False,
+            },
+            "tail_chain_head": {
+                "signature": "(self, workflow_id: WorkflowId) -> ChainHead",
+                "is_coroutine_function": False,
+            },
+            "lock": {
+                "signature": ("(self, workflow_id: WorkflowId) -> AbstractContextManager[None]"),
+                "is_coroutine_function": False,
+            },
+            "close": {
+                "signature": "(self) -> None",
+                "is_coroutine_function": False,
+            },
+        },
+        "checkpoint_store_is_runtime_protocol": True,
+        "semantic_boundary_kinds": sorted(
+            [
+                "plan_ready",
+                "patch_applied",
+                "gate_failed_retryable",
+                "awaiting_human_review",
+                "completed",
+                "failed_unrecoverable",
+            ]
+        ),
+        "max_event_bytes": 65_536,
+        "checkpoint_sqlite_schema": (
+            "CREATE TABLE IF NOT EXISTS checkpoint_chain (...);\n"
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_chain_next_head ON ...;\n"
+        ),
     }
 
 
@@ -209,4 +248,72 @@ def test_meta_breaking_transition_event_required_field_removed() -> None:
     new["transition_event_schema"]["properties"].pop("chain_head", None)
     new["transition_event_schema"]["properties"].pop("prior_state_id")
     new["transition_event_schema"]["required"].remove("prior_state_id")
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 S2-01 AC-15 — synthetic checkpoint-substrate deltas. Two cases:
+# one additive (new optional adapter method with `Protocol` ``...`` body)
+# and one breaking (removed semantic boundary kind).
+# ---------------------------------------------------------------------------
+
+
+def test_meta_additive_new_checkpoint_protocol_method() -> None:
+    """Adding a method to the CheckpointStore Protocol is additive.
+
+    Phase-9 may add an optional ``read_since_sequence()`` for forward
+    seekers; the additive classification means the existing adapters
+    keep working until the method is non-optional.
+    """
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["checkpoint_store_protocol"]["read_since_sequence"] = {
+        "signature": "(self, workflow_id: WorkflowId, sequence: int) -> Iterator[TransitionEvent]",
+        "is_coroutine_function": False,
+    }
+    assert classify_snapshot_diff(old, new) == "additive"
+
+
+def test_meta_breaking_removed_semantic_boundary_kind() -> None:
+    """Removing a kind from ``_SEMANTIC_BOUNDARY_KINDS`` is breaking.
+
+    Mutation-resistance: dropping ``failed_unrecoverable`` would let a
+    workflow crash with no terminal checkpoint; the classifier must
+    return ``breaking`` so the executor cannot rubber-stamp it.
+    """
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["semantic_boundary_kinds"] = [
+        k for k in old["semantic_boundary_kinds"] if k != "failed_unrecoverable"
+    ]
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+def test_meta_breaking_narrowed_max_event_bytes() -> None:
+    """Narrowing the per-event byte cap downward is breaking."""
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["max_event_bytes"] = 1024
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+def test_meta_additive_widened_max_event_bytes() -> None:
+    """Raising the per-event byte cap is additive."""
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["max_event_bytes"] = 131_072
+    assert classify_snapshot_diff(old, new) == "additive"
+
+
+def test_meta_breaking_checkpoint_runtime_checkable_removed() -> None:
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["checkpoint_store_is_runtime_protocol"] = False
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+def test_meta_breaking_checkpoint_method_signature_changed() -> None:
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["checkpoint_store_protocol"]["append"]["signature"] = "(self, event: dict) -> ChainHead"
     assert classify_snapshot_diff(old, new) == "breaking"

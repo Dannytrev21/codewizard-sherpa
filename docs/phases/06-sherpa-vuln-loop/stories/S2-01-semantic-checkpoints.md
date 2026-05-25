@@ -1,7 +1,8 @@
 # S2-01 — Semantic checkpoints
 
-**Status:** HARDENED
+**Status:** GREEN
 **Validated:** 2026-05-25 — see [`_validation/S2-01-semantic-checkpoints.md`](_validation/S2-01-semantic-checkpoints.md).
+**Shipped:** 2026-05-25 — see [`_attempts/S2-01-semantic-checkpoints.md`](_attempts/S2-01-semantic-checkpoints.md). 17/17 ACs satisfied with runtime evidence; 56 new tests + 7 amended tests; mypy --strict + ruff + import-linter clean.
 **Depends on:** [`S1-02-ledger-state-union.md`](S1-02-ledger-state-union.md) — imports `TransitionEvent`, `LedgerStateKind`, `_TERMINAL_LEDGER_KINDS`, `_LEGAL_TRANSITIONS`, and the `_compute_chain_head` pure helper from `codegenie.workflows`. AC-9 cross-story consistency test asserts the semantic-boundary catalog is a subset of `LedgerStateKind`. Also depends on [`S1-01-sut-contract-types.md`](S1-01-sut-contract-types.md) for `WorkflowId`, `_FROZEN_FORBID`, the `codegenie.workflows.__all__` allowlist sentinel, and the contract-snapshot meta-test the AC-15 extension inherits.
 
 **Goal:** Land the replay-safe **`CheckpointStore` port** (with at least the production `SqliteCheckpointStore` adapter and the test-only `InMemoryCheckpointStore` adapter), the closed `_SEMANTIC_BOUNDARY_KINDS: Final[frozenset[LedgerStateKind]]` catalog that ADR-0003's "persist only at semantic boundaries" rule enumerates, the bounded-payload guard (canonical-JSON byte cap) that AC-3-original gestured at, and the BLAKE3 chain-forward extension wiring that consumes S1-02's `_compute_chain_head` helper — and *only* those — so the replay verifier (S2-02), the subgraph nodes (S3-01), the HITL resume validator (S4-01), and the SUT adapter (S5-01) can target a frozen append/read contract that the Phase-6.5 bench harness and the Phase-9 Postgres-adapter swap (S5-01 in Phase 9) will later assert byte-identical across substrates.

@@ -1,0 +1,27 @@
+{
+  "chain": [
+    {
+      "next_head": "7893aece15da05844a38f25119b462486f50de5a8b528fc4d248959c494f681e",
+      "next_state_id": "plan_ready",
+      "prior_head": "0000000000000000000000000000000000000000000000000000000000000000",
+      "prior_state_id": "needs_plan",
+      "transition_id": "01HZZZZZZZZZZZZZSCN001A001"
+    },
+    {
+      "next_head": "133fd2c842882224b23fe138847ae74da12564b8257b925b93714664ce78ac3c",
+      "next_state_id": "patch_applied",
+      "prior_head": "7893aece15da05844a38f25119b462486f50de5a8b528fc4d248959c494f681e",
+      "prior_state_id": "plan_ready",
+      "transition_id": "01HZZZZZZZZZZZZZSCN001A002"
+    },
+    {
+      "next_head": "0ef5e8322954069ec62965596f8a0620a5edb064fe4b197cf69a709f3153e6ca",
+      "next_state_id": "completed",
+      "prior_head": "133fd2c842882224b23fe138847ae74da12564b8257b925b93714664ce78ac3c",
+      "prior_state_id": "patch_applied",
+      "transition_id": "01HZZZZZZZZZZZZZSCN001A003"
+    }
+  ],
+  "scenario": "clean_completion",
+  "workflow_id": "01HZZZZZZZZZZZZZZZZZZSCN001"
+}
