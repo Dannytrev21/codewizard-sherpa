@@ -239,3 +239,38 @@ representation. Use `float(i) / 256.0` (power-of-2 denominator) when the
 test wants exact tuple equality after a `np.float32` round-trip. The
 encoder is canonical in float32 — testing against values that lose
 precision tests float arithmetic, not the encoder contract.
+
+## L-S403-1 — chromadb's `to_thread(...)` types are invariant (S4-03)
+
+`collection.add(embeddings=[list(...)])` typechecks at *runtime* but
+`asyncio.to_thread` propagates the keyword-argument type into
+`mypy --strict`. chromadb's `embeddings=` parameter declares
+`list[Sequence[float] | Sequence[int]]` and that outer `list[...]` is
+invariant — `list[list[float]]` is NOT assignable. Fix: declare the
+inner vector as `Sequence[float]` and the outer list with the exact
+`list[Sequence[float] | Sequence[int]]` annotation. Same pattern recurs
+for `query_embeddings` on the read side. Don't paper over with
+`# type: ignore[arg-type]` — the explicit type annotation documents the
+contract the chromadb stubs actually require.
+
+## L-S403-2 — pre-commit mypy hook stays in lockstep with path-scoped admissions (S4-03)
+
+Every Phase-4 ADR-0003 path-scoped admission needs a mirrored entry in
+the pre-commit mypy hook's `additional_dependencies` — the isolated
+hook does not share the venv's installed packages, so `import chromadb`
+fails with `[import-not-found]` until added. S3-02 codified the pattern
+for `anthropic`+`keyring`; S4-01 for `fastembed`+`numpy`; S4-03 for
+`chromadb`. Promote this from a per-story lesson to a cross-story
+checklist: a new path-scoped admission MUST land in three places — the
+pyproject fence test, the import-linter contract `ignore_imports`, AND
+the pre-commit mypy `additional_dependencies` list.
+
+## L-S403-3 — chromadb 0.6.3 posthog telemetry warnings are inert (S4-03)
+
+`Failed to send telemetry event ...: capture() takes 1 positional
+argument but 3 were given` prints to stderr on every chromadb
+client/collection/query call under chromadb 0.6.3. They do not fail
+tests and cannot be silenced via the documented
+`Settings(anonymized_telemetry=False)` (the posthog client-signature
+mismatch is upstream). Do not paper over with a logging filter — when
+chromadb is bumped the warnings will disappear without code change.

@@ -567,7 +567,13 @@ type = "forbidden"
 as_packages = true
 source_modules = ["codegenie"]
 forbidden_modules = ["chromadb"]
-# ignore_imports omitted — S4-03 appends `codegenie.rag.store -> chromadb`.
+# S4-03 admits the single rag-substrate module authorized to import
+# chromadb: `store` (the in-tree `ChromaPersistentStore` adapter behind
+# the `SolvedExampleStore` Protocol). Any new admission requires an ADR
+# amendment.
+ignore_imports = [
+  "codegenie.rag.store -> chromadb",
+]
 
 [[tool.importlinter.contracts]]
 name = "ADR-0003: fastembed and onnxruntime may be imported only under codegenie.rag"

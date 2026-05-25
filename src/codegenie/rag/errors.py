@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
+from codegenie.types.identifiers import WorkflowId
+
 _RUNBOOK_URL: Final[str] = "docs/operations/embeddings.md"
 _BOOTSTRAP_CMD: Final[str] = "codegenie embeddings bootstrap"
 
@@ -145,8 +147,63 @@ class EmbeddingsCacheCorrupted(Exception):
         )
 
 
+class StoreWriteContention(Exception):
+    """Raised by :class:`codegenie.rag.store.ChromaPersistentStore.add` when
+    the process-local single-writer lock cannot be acquired within
+    ``_ADD_LOCK_TIMEOUT_SECONDS`` (default ``30.0``).
+
+    ADR-0016 §Decision + arch §Gap 3 — declared serialization is the
+    Phase-4 conformance bar for any future ``SolvedExampleStore`` adapter
+    (Phase-11 pgvector). Silent hangs under 24-worker harvest contention
+    are the failure mode this exception exists to make loud.
+
+    Attributes
+    ----------
+    workflow_id:
+        ULID of the harvester whose ``add()`` lost the race. Carried
+        verbatim from the ``SolvedExampleWriteCapability``; the orchestrator
+        emits ``SolvedExampleIngestFailed(reason=write_contention,
+        workflow_id=...)`` rather than failing the workflow outright.
+    """
+
+    __slots__ = ("workflow_id",)
+
+    workflow_id: WorkflowId
+
+    def __init__(self, *, workflow_id: WorkflowId) -> None:
+        super().__init__(workflow_id)
+        self.workflow_id = workflow_id
+
+    def __str__(self) -> str:
+        return f"SolvedExampleStore.add lock-contention timeout — workflow_id={self.workflow_id!r}"
+
+
+class StoreClosed(Exception):
+    """Raised when a method on :class:`ChromaPersistentStore` is invoked
+    after :meth:`close`. ``add`` / ``query`` / ``_query_with_embedding``
+    raise this; ``digest`` does **not** (it is a pure projection over the
+    in-memory record-id list which ``close`` leaves intact — see story
+    S4-03 AC-7).
+    """
+
+    __slots__ = ()
+
+
+class StoreCorrupted(Exception):
+    """Family marker for chromadb-side corruption recovery (rebuild-from-
+    YAML, later stories S4-04 / S4-07). **Declared in S4-03 for the error
+    family**, **not raised by S4-03 code paths**. A story that raises this
+    must own the recovery path that consumes it.
+    """
+
+    __slots__ = ()
+
+
 __all__ = (
     "EmbeddingModelMismatch",
     "EmbeddingsBootstrapRequired",
     "EmbeddingsCacheCorrupted",
+    "StoreClosed",
+    "StoreCorrupted",
+    "StoreWriteContention",
 )

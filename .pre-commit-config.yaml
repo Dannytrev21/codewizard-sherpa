@@ -77,6 +77,12 @@ repos:
           # missing-stub warning since the package does not ship py.typed.
           - fastembed>=0.3,<1.0
           - numpy
+          # Phase 4 S4-03: ``codegenie.rag.store`` is the sole importer of
+          # ``chromadb`` (path-scoped fence — ADR-0003) for the in-tree
+          # ``ChromaPersistentStore`` adapter. Mirror it here so the isolated
+          # mypy hook resolves the chromadb module stubs without leaking the
+          # SDK admission outside ``src/codegenie/rag/``.
+          - chromadb>=0.5,<1.0
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.
