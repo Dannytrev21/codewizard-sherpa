@@ -417,3 +417,44 @@ posture; the validator-prescribed test code in the story body used
 `async def + await store.add` and is the trap. General rule: when a
 CLI body uses `asyncio.run` internally, test functions that call it
 directly are sync. First hit: S4-07 `tests/integration/test_phase4_rag_rebuild_*.py`.
+
+## L-S408-1 — Don't `**unpack` a `dict[str, str]` into `Literal`-typed kwargs (S4-08)
+
+When a test file uses the same partition triple across every record, the
+temptation is to hoist `task_class / language / build_system` into a
+`Final[dict[str, str]]` and unpack it into `make_solved_example(...)`.
+mypy --strict correctly refuses: `build_system: PackageManager` is a
+`Literal[...]` and a `dict[str, str]` does not unify. Three options
+land safely: (a) rely on the fixture's defaults when they already match
+(this is what S4-08 chose — Rule 11 alignment with the
+`tests/integration/test_phase4_store_contention_30s.py` style); (b) pass
+the kwargs explicitly at each call site if they need to vary; (c) build
+a typed `TypedDict` with the Literal-typed fields. (a) is the smallest
+diff when the values are exactly the defaults. First hit: S4-08
+`tests/integration/test_phase4_harvest_contention.py`.
+
+## L-S408-2 — `slow_add_a` lock-hijack coroutines must use raw `acquire()`, not `asyncio.wait_for` (S4-08)
+
+For deliberate-timeout integration tests where one coroutine hijacks
+`store._add_lock` to force the second coroutine's `wait_for(...,
+timeout=...)` to fire, use raw `await store._add_lock.acquire()` (then
+`finally: release()`). `asyncio.Lock.acquire()` on a free lock returns
+*without suspending*, so the first-scheduled coroutine holds the lock
+before its first real `await` — guaranteeing the second coroutine
+observes the lock held when it tries to acquire. A `wait_for(acquire(),
+timeout=...)` wrapper introduces a yield point that race-conditions the
+ordering this test depends on. First hit: S4-08
+`test_harvest_contention_timeout_raises_typed_exception`.
+
+## L-S408-3 — `asyncio.to_thread` boundary regression guards belong in their own test (S4-08)
+
+`Mock(wraps=asyncio.to_thread)` + `monkeypatch.setattr(asyncio,
+"to_thread", mock)` is the canonical "did we call `to_thread`?" probe.
+Keep it in its own test (its own two adds) — folding it into the
+contention/correctness tests pollutes the lock-contention semantics and
+the AC-9 mutant (unwrap) becomes hard to isolate from the AC-4 mutant
+(wrong lock granularity). Also assert each call's first positional
+argument's `__name__ == "add"` so the test catches a wrong-target
+mutant (count stays, callable changes) as well as the unwrap mutant
+(count drops to 0). First hit: S4-08
+`test_to_thread_invoked_per_add`.

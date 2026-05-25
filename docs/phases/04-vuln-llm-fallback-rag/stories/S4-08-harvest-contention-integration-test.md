@@ -1,7 +1,7 @@
 # Story S4-08 — Burst-harvest contention integration test (two coroutines under `asyncio.gather`; monotonic chain head; pinned-timeout failure mode)
 
 **Step:** Step 4 — Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S4-08.md`](_attempts/S4-08.md) for the per-AC evidence table + gate log — Phase-4 burst-harvest contention pin landed with three tests in `tests/integration/test_phase4_harvest_contention.py` (happy-path, deliberate-timeout, `to_thread`-boundary), the arch §Edge-case-#5 wording amended to insertion-order, and AC-7's verbatim `SolvedExampleIngestFailed(reason="write_contention")` docstring grep handed off to S6-03. Story-scoped gates green: 3 new tests, `mypy --strict tests/integration/test_phase4_harvest_contention.py`, `ruff check`, `ruff format --check`.)
 **Effort:** M
 **Depends on:** S4-03 (single-writer `asyncio.Lock` + 30s `StoreWriteContention` contract), S4-04 (manifest with monotonic chain_head; canonical YAML write ordering)
 **ADRs honored:** ADR-0016 (single-writer constraint enforced; concurrent ingest serializes), Gap 3 (contention contract pinned for Phase 11 pgvector conformance)
@@ -60,31 +60,31 @@ Ship `tests/integration/test_phase4_harvest_contention.py` that drives two harve
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — Two-coroutine happy path under `asyncio.gather`.** Test `test_two_harvests_under_gather_both_succeed_sequenced`:
+- [x] **AC-1 — Two-coroutine happy path under `asyncio.gather`.** Test `test_two_harvests_under_gather_both_succeed_sequenced`:
     - Constructs a fresh `ChromaPersistentStore(root_dir=tmp_path)`.
     - Two `SolvedExampleWriteCapability` instances with distinct `workflow_id`s (`wf-A`, `wf-B`).
     - Two coroutines: `coro_a = store.add(make_solved_example(id_="ex-A"), cap_a)`; `coro_b = store.add(make_solved_example(id_="ex-B"), cap_b)`.
     - `results = await asyncio.gather(coro_a, coro_b)` — assert no exception; `results == (SolvedExampleId("ex-A"), SolvedExampleId("ex-B"))` (or the reverse if scheduling flips; assert set-equality of the result set).
     - Final state: `len(store._record_ids) == 2`; both IDs present.
-- [ ] **AC-2 — `manifest.chain_head` advances monotonically across the gather.** Same test extends:
+- [x] **AC-2 — `manifest.chain_head` advances monotonically across the gather.** Same test extends:
     - After both adds complete, read `manifest.yaml`; the chain_head is **one of two valid heads** — `head_ab = BLAKE3(yaml_a_bytes + yaml_b_bytes)` or `head_ba = BLAKE3(yaml_b_bytes + yaml_a_bytes)` (depending on lock-acquisition order).
     - The chain_head **is not** `BLAKE3(b"")` (empty) AND **is not** `BLAKE3(yaml_a_bytes)` alone (one record only); both records contributed.
     - Assert `manifest.chain_head in {head_ab, head_ba}` (order non-deterministic; **content is**).
-- [ ] **AC-3 — `store.digest() == manifest.chain_head` after gather.** S4-04 AC-5's byte-identity contract holds under the gather workload. Catches a "race where digest is computed mid-update" mutant; the lock ensures digest is computed only after manifest write completes.
-- [ ] **AC-4 — `_record_ids` order matches manifest.records.** `store._record_ids == manifest.records` exactly (same order). Catches a "record_ids appended but manifest written from a different order" mutant.
-- [ ] **AC-5 — Deliberate-timeout fixture raises `StoreWriteContention`.** Test `test_harvest_contention_timeout_raises_typed_exception`:
+- [x] **AC-3 — `store.digest() == manifest.chain_head` after gather.** S4-04 AC-5's byte-identity contract holds under the gather workload. Catches a "race where digest is computed mid-update" mutant; the lock ensures digest is computed only after manifest write completes.
+- [x] **AC-4 — `_record_ids` order matches manifest.records.** `store._record_ids == manifest.records` exactly (same order). Catches a "record_ids appended but manifest written from a different order" mutant.
+- [x] **AC-5 — Deliberate-timeout fixture raises `StoreWriteContention`.** Test `test_harvest_contention_timeout_raises_typed_exception`:
     - Two coroutines, but `coro_a` is wrapped to **hold the lock for >30s** (in the test, the timeout constant is `monkeypatch`ed to `0.1s` for fast tests; `coro_a` is an async function that acquires the lock and sleeps `0.5s` before releasing — exceeding the 0.1s timeout for `coro_b`).
     - `await asyncio.gather(coro_a, coro_b, return_exceptions=True)`.
     - `coro_a`'s result: success.
     - `coro_b`'s result: `StoreWriteContention` instance with `workflow_id == cap_b.workflow_id`.
     - **After both coroutines complete, the lock is released** (no leak); a subsequent third `await store.add(...)` succeeds.
-- [ ] **AC-6 — a timed-out harvest leaves NO trace anywhere.** When `coro_b` times out, *every* write is skipped — S4-04's `add()` acquires the `asyncio.Lock` **before** the first write and does YAML → chromadb → manifest entirely inside that critical section, so a timeout on `acquire()` means none of the three writes ran. The test asserts the **complete** no-trace posture:
+- [x] **AC-6 — a timed-out harvest leaves NO trace anywhere.** When `coro_b` times out, *every* write is skipped — S4-04's `add()` acquires the `asyncio.Lock` **before** the first write and does YAML → chromadb → manifest entirely inside that critical section, so a timeout on `acquire()` means none of the three writes ran. The test asserts the **complete** no-trace posture:
     - `(tmp_root / "records" / "ex-B.yaml")` does **not** exist — no orphan canonical YAML. *(Note the path root: records live under `<root_dir>/records/`, i.e. `tmp_root / "records"`, **not** `tmp_path`.)*
     - `SolvedExampleId("ex-B") not in store._record_ids`.
     - `(tmp_root / "manifest.yaml")` does **not** exist immediately after the timeout — no successful `add()` has happened (`slow_add_a` writes nothing).
     - After the recovery `ex-C` add (AC-5), `manifest.yaml` lists **exactly** `["ex-C"]` — `ex-B` never appears in `records` or in the chain head. This transitively proves `ex-B` left no trace in `_record_ids`, the manifest, the chain head, or (since chromadb writes are last in the lock-held sequence) the chromadb collection.
     - This is the load-bearing posture: a timed-out harvest is *atomic-nothing* — distinct from S4-04 AC-4's chromadb-failure-*after*-YAML-write, which leaves a recoverable orphan. Both cases are catalogued in Notes §3.
-- [ ] **AC-7 — `SolvedExampleIngestFailed(reason=write_contention)` contract is documented for S6-03.** This story does **not** wire the event emission (S6-03 does); the *raise* shape itself is already pinned by AC-5. AC-7 is the **observable hand-off**: the timeout test's docstring (`test_harvest_contention_timeout_raises_typed_exception`) carries the verbatim expected-emission block below, so S6-03's executor implements the payload correctly. Verifiable by grep — the block must appear in that docstring:
+- [x] **AC-7 — `SolvedExampleIngestFailed(reason=write_contention)` contract is documented for S6-03.** This story does **not** wire the event emission (S6-03 does); the *raise* shape itself is already pinned by AC-5. AC-7 is the **observable hand-off**: the timeout test's docstring (`test_harvest_contention_timeout_raises_typed_exception`) carries the verbatim expected-emission block below, so S6-03's executor implements the payload correctly. Verifiable by grep — the block must appear in that docstring:
     ```
     Expected emission (S6-03 responsibility — NOT wired here):
       event = SolvedExampleIngestFailed(
@@ -92,13 +92,13 @@ Ship `tests/integration/test_phase4_harvest_contention.py` that drives two harve
           workflow_id=cap_b.workflow_id,
       )
     ```
-- [ ] **AC-8 — deterministic `created_at` via the `make_solved_example` fixture default — NOT `freezegun`.** Every `SolvedExample` in this story is built through `make_solved_example(...)`, whose `created_at` kwarg **defaults to a fixed timestamp**. S4-04 Notes §3 chose option (B) — the fixture default — explicitly *over* `freezegun` ("for unit tests (no extra dep)"). `freezegun` is **not** a project dependency and **no** repo test uses it: do **not** add it, and do **not** add a `frozen_time` autouse fixture. The records are deterministic because the fixture default is deterministic; if any test ever needs a non-default `created_at`, pass it explicitly via the kwarg. (S4-04 AC-7's two-store byte-identity test already pins `make_solved_example` determinism — see Notes §6.)
-- [ ] **AC-9 — `asyncio.to_thread` boundary preserved.** A separate test, `test_to_thread_invoked_per_add` (its own two adds — not folded into the contention tests), monkeypatches `asyncio.to_thread` with `Mock(wraps=asyncio.to_thread)` via `monkeypatch.setattr(asyncio, "to_thread", mock)` (attribute-on-module form — `store.py` resolves `asyncio.to_thread` at call time, so patching the `asyncio` module attr takes effect). After two adds it asserts **both**:
+- [x] **AC-8 — deterministic `created_at` via the `make_solved_example` fixture default — NOT `freezegun`.** Every `SolvedExample` in this story is built through `make_solved_example(...)`, whose `created_at` kwarg **defaults to a fixed timestamp**. S4-04 Notes §3 chose option (B) — the fixture default — explicitly *over* `freezegun` ("for unit tests (no extra dep)"). `freezegun` is **not** a project dependency and **no** repo test uses it: do **not** add it, and do **not** add a `frozen_time` autouse fixture. The records are deterministic because the fixture default is deterministic; if any test ever needs a non-default `created_at`, pass it explicitly via the kwarg. (S4-04 AC-7's two-store byte-identity test already pins `make_solved_example` determinism — see Notes §6.)
+- [x] **AC-9 — `asyncio.to_thread` boundary preserved.** A separate test, `test_to_thread_invoked_per_add` (its own two adds — not folded into the contention tests), monkeypatches `asyncio.to_thread` with `Mock(wraps=asyncio.to_thread)` via `monkeypatch.setattr(asyncio, "to_thread", mock)` (attribute-on-module form — `store.py` resolves `asyncio.to_thread` at call time, so patching the `asyncio` module attr takes effect). After two adds it asserts **both**:
     - (a) `mock.call_count == 2` — one per chromadb add; and
     - (b) every call's first positional argument is the chromadb `collection.add` bound method (`call.args[0].__name__ == "add"`).
     Asserting (b) as well as (a) catches not only an *unwrap* (count drops to 0) but a *wrong-target* mutant that keeps a `to_thread` call but wraps something else. This pins the production non-blocking posture (arch §Concurrency) as a structural regression guard — it is **not** a contention-correctness assertion (see the TDD Red section).
-- [ ] **AC-10 — Test runs in the default CI lane; carries NO custom marker.** The file lives under `tests/integration/`, so `testpaths = ["tests"]` collects it and `make test` runs it in the default lane — no marker is needed or wanted. Do **NOT** add `@pytest.mark.integration`: it is **not** a registered marker (`pyproject.toml § [tool.pytest.ini_options].markers` lists only `bench`, `adv`, `phase02_adv`, `serial`, `nightly_macos`, `phase_7_preview`), and `--strict-markers` is enabled — an unregistered marker fails at collection. No repo test uses `pytest.mark.integration`; Phase-2's integration tests rely on directory placement alone. The test is **not** adversarial (no `adv` / `phase02_adv`) — it pins production behavior. `@pytest.mark.asyncio` on the coroutine tests is acceptable (pytest-asyncio registers that marker) though redundant under `asyncio_mode = "auto"`; keep it only to match the S4-03 / S4-04 sibling test style.
-- [ ] **AC-11 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean.
+- [x] **AC-10 — Test runs in the default CI lane; carries NO custom marker.** The file lives under `tests/integration/`, so `testpaths = ["tests"]` collects it and `make test` runs it in the default lane — no marker is needed or wanted. Do **NOT** add `@pytest.mark.integration`: it is **not** a registered marker (`pyproject.toml § [tool.pytest.ini_options].markers` lists only `bench`, `adv`, `phase02_adv`, `serial`, `nightly_macos`, `phase_7_preview`), and `--strict-markers` is enabled — an unregistered marker fails at collection. No repo test uses `pytest.mark.integration`; Phase-2's integration tests rely on directory placement alone. The test is **not** adversarial (no `adv` / `phase02_adv`) — it pins production behavior. `@pytest.mark.asyncio` on the coroutine tests is acceptable (pytest-asyncio registers that marker) though redundant under `asyncio_mode = "auto"`; keep it only to match the S4-03 / S4-04 sibling test style.
+- [x] **AC-11 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean.
 
 ## Implementation outline
 
