@@ -731,6 +731,28 @@ class LeafProtocolViolationEvent(BaseModel):
 # --- Phase-4 S4-05 — ``RagRecordChainOrphan`` (chain-orphan exclusion) ------
 
 
+class SolvedExampleHarvested(BaseModel):
+    """Phase-4 S4-06 — one solved example was ingested into the RAG store.
+
+    Registered here so S6-03's caller-side confidence gate can emit it
+    after :func:`codegenie.rag.ingest.ingest_solved_example` returns;
+    the writer itself stays silent (Notes §4). ``origin`` is a single-
+    member ``Literal`` today — a future operator-curated harvest path
+    becomes a *sibling* event variant, not a widening of this one
+    (extension by addition; production ADR-0043).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["solved_example_harvested"] = "solved_example_harvested"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    solved_example_id: SolvedExampleId
+    embedding_model: ModelId
+    event_chain_head: ChainHead
+    origin: Literal["llm_solved"] = "llm_solved"
+
+
 class RagRecordChainOrphan(BaseModel):
     """Phase-4 S4-05 — a retrieval candidate's
     :attr:`~codegenie.rag.models.RecordProvenance.event_chain_head` was
@@ -904,7 +926,8 @@ WorkflowInternalEvent = Annotated[
     | LeafInvoked
     | LeafReturned
     | LeafProtocolViolationEvent
-    | RagRecordChainOrphan,
+    | RagRecordChainOrphan
+    | SolvedExampleHarvested,
     Field(discriminator="event_type"),
 ]
 
@@ -956,6 +979,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     LeafReturned,
     LeafProtocolViolationEvent,
     RagRecordChainOrphan,
+    SolvedExampleHarvested,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1340,6 +1364,7 @@ __all__ = [
     "RecipeSkipped",
     "RequiresHumanReview",
     "SegmentCountTruncated",
+    "SolvedExampleHarvested",
     "StageOutcome",
     "StaleVulnIndex",
     "TestStageOutcome",

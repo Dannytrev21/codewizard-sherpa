@@ -660,3 +660,76 @@ ignore_imports = [
   "codegenie.fallback.leaf.port -> codegenie.fallback.budget_token",
   "codegenie.fallback.leaf.anthropic_adapter -> codegenie.fallback.budget_token",
 ]
+
+# ---------------------------------------------------------------------------
+# Phase-4 S4-06 / ADR-0016 — the interim ``_phase4_local_capability_mint``
+# lives at ``codegenie.rag._capability_mint`` and may be imported only by
+# ``codegenie.rag.ingest`` (the writer surface). Symbol-level bypasses
+# (``from codegenie.rag.ingest import _phase4_local_capability_mint``)
+# are policed by the AST sweep in
+# ``tests/fence/test_phase4_capability_mint_scope.py`` — import-linter is
+# module-level and cannot see that boundary.
+#
+# Phase 5 ``GateRunner`` lands the production
+# ``codegenie.gates._capability_mint.mint_solved_example_capability`` and
+# appends its ``ignore_imports`` edge when that module exists. We do NOT
+# pre-allow it today: import-linter 2.x treats unmatched
+# ``ignore_imports`` rows as errors (S1-06 lesson).
+# ---------------------------------------------------------------------------
+
+[[tool.importlinter.contracts]]
+name = "ADR-0016: phase4 solved-example mint module is scoped"
+type = "forbidden"
+# `source_modules` enumerates every `codegenie.*` subpackage. We cannot
+# pass the bare `codegenie` package: `import-linter`'s `forbidden`
+# contract rejects a source tree that contains the forbidden module as a
+# descendant ("Modules have shared descendants"). The ADR-0010
+# BudgetToken contract above is the precedent. `codegenie.rag` is listed
+# as a package so the contract covers every sibling of
+# `codegenie.rag._capability_mint` under that subtree — the lone
+# whitelisted edge is the `codegenie.rag.ingest -> ...` row in
+# `ignore_imports`.
+source_modules = [
+  "codegenie.adapters",
+  "codegenie.cache",
+  "codegenie.catalogs",
+  "codegenie.config",
+  "codegenie.conventions",
+  "codegenie.coordinator",
+  "codegenie.depgraph",
+  "codegenie.exec",
+  "codegenie.fallback",
+  "codegenie.grammars",
+  "codegenie.indices",
+  "codegenie.output",
+  "codegenie.parsers",
+  "codegenie.plugins",
+  "codegenie.primitives",
+  "codegenie.probes",
+  # `codegenie.rag.*` siblings of `_capability_mint` are listed
+  # individually here — listing the bare `codegenie.rag` package would
+  # trigger import-linter's "Modules have shared descendants" rejection
+  # (the forbidden module is a descendant of the source). The
+  # ADR-0010 BudgetToken contract above uses the same pattern for
+  # `codegenie.fallback.*`.
+  "codegenie.rag.cli",
+  "codegenie.rag.embedder",
+  "codegenie.rag.embedding_cache",
+  "codegenie.rag.errors",
+  "codegenie.rag.ingest",
+  "codegenie.rag.models",
+  "codegenie.rag.provenance",
+  "codegenie.rag.store",
+  "codegenie.report",
+  "codegenie.schema",
+  "codegenie.skills",
+  "codegenie.tccm",
+  "codegenie.transforms",
+  "codegenie.types",
+  "codegenie.vuln_index",
+]
+as_packages = true
+forbidden_modules = ["codegenie.rag._capability_mint"]
+ignore_imports = [
+  "codegenie.rag.ingest -> codegenie.rag._capability_mint",
+]

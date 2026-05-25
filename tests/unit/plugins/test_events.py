@@ -202,6 +202,9 @@ _INTERNAL_VARIANTS = frozenset(
         "LeafProtocolViolationEvent",
         # Phase-4 S4-05 — ``RecordProvenance.verify`` chain-orphan emission.
         "RagRecordChainOrphan",
+        # Phase-4 S4-06 — ``ingest_solved_example`` typed harvest event
+        # (registered here; emitted by S6-03's caller-side gate).
+        "SolvedExampleHarvested",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -219,13 +222,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_31_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01/02/04/05/S3-02/S4-05: every named internal variant is exported."""
+def test_all_32_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01/02/04/05/S3-02/S4-05/S4-06: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 31
+    assert len(_INTERNAL_VARIANTS) == 32
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -1329,3 +1332,102 @@ def test_rag_record_chain_orphan_has_no_prev_hash_field() -> None:
     from codegenie.plugins.events import RagRecordChainOrphan
 
     assert "prev_hash" not in RagRecordChainOrphan.model_fields
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S4-06 — ``SolvedExampleHarvested`` workflow-internal event tests.
+# Registered here so S6-03's caller-side confidence gate can emit it after
+# ``ingest_solved_example`` returns. Writer-side silence is exercised in
+# ``tests/unit/rag/test_ingest.py``.
+# ---------------------------------------------------------------------------
+
+
+def test_solved_example_harvested_discriminator_is_registered() -> None:
+    """S4-06 AC-9: ``solved_example_harvested`` appears on the union
+    discriminator mapping so ``TypeAdapter(WorkflowInternalEvent).
+    validate_python({'event_type': 'solved_example_harvested', ...})``
+    routes to ``SolvedExampleHarvested``.
+    """
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import SolvedExampleHarvested, WorkflowInternalEvent
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "solved_example_harvested" in mapping
+    # Sanity: the class exists with the expected event_type literal.
+    assert SolvedExampleHarvested.model_fields["event_type"].default == "solved_example_harvested"
+
+
+def test_solved_example_harvested_is_frozen_extra_forbid() -> None:
+    """S4-06 AC-9: like every other internal variant, it is frozen + extra-forbid."""
+    from datetime import UTC, datetime
+
+    from codegenie.plugins.events import SolvedExampleHarvested
+    from codegenie.types.identifiers import ChainHead, ModelId, SolvedExampleId
+
+    event = SolvedExampleHarvested(
+        event_id=EventId("01HSE000000000000000000HARV"),
+        workflow_id=_wf(),
+        timestamp=datetime(2026, 5, 25, 12, 0, 0, tzinfo=UTC),
+        solved_example_id=SolvedExampleId("ex-abcdef"),
+        embedding_model=ModelId("BAAI/bge-small-en-v1.5"),
+        event_chain_head=ChainHead("a" * 64),
+    )
+    with pytest.raises(ValidationError):
+        event.workflow_id = _wf()  # type: ignore[misc]
+    with pytest.raises(ValidationError):
+        SolvedExampleHarvested(
+            event_id=EventId("01HSE000000000000000000HARV"),
+            workflow_id=_wf(),
+            timestamp=datetime(2026, 5, 25, 12, 0, 0, tzinfo=UTC),
+            solved_example_id=SolvedExampleId("ex-abcdef"),
+            embedding_model=ModelId("m"),
+            event_chain_head=ChainHead("a" * 64),
+            bogus="x",  # type: ignore[call-arg]
+        )
+
+
+def test_solved_example_harvested_round_trips_through_event_log(tmp_path: Path) -> None:
+    """S4-06 AC-9: ``EventLog.emit_internal(SolvedExampleHarvested(...))``
+    persists + replays via the workflow-internal stream with byte-stable
+    Pydantic equality."""
+    from codegenie.plugins.events import SolvedExampleHarvested
+    from codegenie.types.identifiers import ChainHead, ModelId, SolvedExampleId
+
+    log = EventLog(root=tmp_path, workflow_id=_wf(), clock=_now)
+    log.emit_internal(
+        SolvedExampleHarvested(
+            event_id=EventId("01HSE000000000000000000HARV"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            solved_example_id=SolvedExampleId("ex-canonical-001"),
+            embedding_model=ModelId("BAAI/bge-small-en-v1.5"),
+            event_chain_head=ChainHead("b" * 64),
+        )
+    )
+    log.flush()
+
+    replayed = [e for e in log.replay() if isinstance(e, SolvedExampleHarvested)]
+    assert len(replayed) == 1
+    assert replayed[0].solved_example_id == SolvedExampleId("ex-canonical-001")
+    assert replayed[0].origin == "llm_solved"
+
+
+def test_solved_example_harvested_origin_default_is_llm_solved() -> None:
+    """S4-06 AC-9: the ``origin`` field defaults to ``llm_solved`` (the
+    Phase-4 writer's only origin); a future operator-curated harvest
+    becomes a sibling event, not a widening."""
+    from datetime import UTC, datetime
+
+    from codegenie.plugins.events import SolvedExampleHarvested
+    from codegenie.types.identifiers import ChainHead, ModelId, SolvedExampleId
+
+    event = SolvedExampleHarvested(
+        event_id=EventId("01HSE000000000000000000HARV"),
+        workflow_id=_wf(),
+        timestamp=datetime(2026, 5, 25, 12, 0, 0, tzinfo=UTC),
+        solved_example_id=SolvedExampleId("ex-abcdef"),
+        embedding_model=ModelId("m"),
+        event_chain_head=ChainHead("a" * 64),
+    )
+    assert event.origin == "llm_solved"

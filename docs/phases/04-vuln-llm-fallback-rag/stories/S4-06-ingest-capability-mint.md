@@ -1,7 +1,7 @@
 # Story S4-06 - `SolvedExampleWriter` + phase-4 capability mint boundary
 
 **Step:** Step 4 - Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S4-06.md`](_attempts/S4-06.md) for the per-AC evidence table + gate log — `src/codegenie/rag/_capability_mint.py` (private mint module) + `src/codegenie/rag/ingest.py` (`ValidatedPlanOutcome`, `_solved_example_id_for`, `ingest_solved_example` — keyword-only async writer that calls `embedder.model_digest()` once, `embedder.embed(query_text)` once, `store.add(example, capability)` once and stays silent — no `EventLog`, no `SolvedExampleHarvested` emission, no `confidence` read) land alongside `SolvedExampleHarvested` (the 32nd `WorkflowInternalEvent` variant; `origin: Literal["llm_solved"]` extension-by-addition seam) and a new `pyproject.toml` `[[tool.importlinter.contracts]]` row `"ADR-0016: phase4 solved-example mint module is scoped"`. Source-list shape deviates from the hardened story per the L-S406-2 lesson: enumerates `codegenie.*` siblings of `_capability_mint` instead of the bare `codegenie` package (the latter triggers import-linter's "Modules have shared descendants" rejection — same trap the ADR-0010 BudgetToken contract navigated). 86 story-scoped tests pass: 20 unit (incl. parametrised id-change × 4, id-context-exclusion × 3, AST stale-field guard, AST EventLog-import guard, forged-capability acceptance, writer-silence monkey-spy, keyword-only signature, no-`Any` escape hatch); 3 fence (contract shape, AST scope, live-fire planted violator at `src/codegenie/probes/_test_phase4_mint_scope_violation.py` — top-level `src/codegenie/<file>.py` would be silently ignored per L-S406-3); 63 plugin events (incl. 4 new `SolvedExampleHarvested` tests + variant-count bump 31 → 32). Story-scoped gates green: 1194 fence + rag + plugins tests; `mypy --strict src/codegenie/rag/ src/codegenie/plugins/events.py` (11 source files); `ruff check` + `ruff format --check`; `lint-imports --no-cache` (12 contracts kept / 0 broken); pre-commit on touched files clean. Full-suite L-2 macOS timing flake and L-4 PATH-issue canaries recur (deselected per attempt-log convention; CI Linux clean). Three new lessons captured: L-S406-1 (substring source guards false-positive on docstring prose — rewrite as `ast.keyword` / `ast.Attribute` walks), L-S406-2 (import-linter sources cannot contain the forbidden module as a descendant — enumerate siblings, not the bare package), L-S406-3 (live-fire planted violators must live inside an enumerated source module — top-level `src/codegenie/<file>.py` is invisible to the contract).
 **Effort:** M
 **Depends on:** S1-01 (`SolvedExampleId`, `WorkflowId`, `ChainHead`, `BlobDigest`, `ModelId`, `LeafResponseId` newtypes), S1-02 (`PlanProposal`), S1-03 (`PlanOutcome` lineage / validated-outcome projection), S1-04 (`SolvedExample` / `RecordProvenance` exact field shapes, including the S4-03-required `embedding_vector` amendment), S1-06 (`pyproject.toml` import-linter contract precedent), S4-01 (`Embedder` Protocol), S4-03 (`SolvedExampleStore` + `SolvedExampleWriteCapability`), S4-04 (canonical YAML / manifest chain head), S4-05 (`RecordProvenance.verify` contract)
 **ADRs honored:** ADR-0016 (write-gated `add()` and YAML-canonical solved examples), ADR-0009 (inline auto-harvest only after `TrustOutcome.passed AND confidence == "high"`; caller owns the gate), ADR-0003 (module-boundary enforcement via lint + tests), final-design Component 9 ("Module Boundary pattern with CI enforcement")
@@ -80,7 +80,7 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
 
 ## Acceptance criteria
 
-- [ ] **AC-1 - `ValidatedPlanOutcome` is typed and sufficient.** `src/codegenie/rag/ingest.py` defines a frozen, extra-forbid Pydantic model or frozen dataclass named `ValidatedPlanOutcome` with no `dict[str, Any]` fields and no untyped payload escape hatch. It carries exactly the stable inputs needed to build a `SolvedExample`:
+- [x] **AC-1 - `ValidatedPlanOutcome` is typed and sufficient.** `src/codegenie/rag/ingest.py` defines a frozen, extra-forbid Pydantic model or frozen dataclass named `ValidatedPlanOutcome` with no `dict[str, Any]` fields and no untyped payload escape hatch. It carries exactly the stable inputs needed to build a `SolvedExample`:
     ```python
     query_text: str
     plan_proposal: PlanProposal
@@ -95,7 +95,7 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
     chain_head: ChainHead
     ```
     Do not use stale names `TaskClassName`, `LanguageName`, or `BuildSystemName`. If S1-03 has already landed an equivalent validated-outcome variant, reuse or alias that type instead of duplicating it, but preserve this exact field availability through tests.
-- [ ] **AC-2 - `ingest_solved_example` signature and writer behavior.** `src/codegenie/rag/ingest.py` exports:
+- [x] **AC-2 - `ingest_solved_example` signature and writer behavior.** `src/codegenie/rag/ingest.py` exports:
     ```python
     async def ingest_solved_example(
         *,
@@ -113,7 +113,7 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
     5. calls `await store.add(example, capability)` exactly once;
     6. returns the `SolvedExampleId` returned by `store.add(...)`.
     It does **not** check `TrustOutcome.confidence`, does **not** emit `SolvedExampleHarvested`, and does **not** import or instantiate `EventLog`. S6-03 owns the gate and emission.
-- [ ] **AC-3 - deterministic solved-example id helper.** `src/codegenie/rag/ingest.py` defines pure helper:
+- [x] **AC-3 - deterministic solved-example id helper.** `src/codegenie/rag/ingest.py` defines pure helper:
     ```python
     def _solved_example_id_for(
         *,
@@ -122,8 +122,8 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
     ) -> SolvedExampleId: ...
     ```
     It BLAKE3-hashes canonical JSON bytes over exactly stable record-identity fields: `cve_id`, `advisory_digest`, `transform_digest`, `trust_outcome_digest`, and `embedding_model`. It must not include `workflow_id`, `chain_head`, `created_at`, `query_text`, or `response_id`. Tests assert the same outcome and embedding model produce the same id across two calls, while changing any one identity field changes the id.
-- [ ] **AC-4 - no stale S1-04 provenance fields.** `tests/unit/rag/test_ingest.py` contains an AST/source guard over `codegenie.rag.ingest` forbidding these attribute names and constructor kwargs: `record_chain_head`, `model_id`, `embedding_dim`, `trust_outcome_passed`, `confidence`, `harvested_at`, and `solved_example_id` inside `RecordProvenance(...)`. The only provenance field read from the outcome is `chain_head`, and the only provenance field written from it is `event_chain_head`.
-- [ ] **AC-5 - private Phase-4 mint module.** `src/codegenie/rag/_capability_mint.py` defines:
+- [x] **AC-4 - no stale S1-04 provenance fields.** `tests/unit/rag/test_ingest.py` contains an AST/source guard over `codegenie.rag.ingest` forbidding these attribute names and constructor kwargs: `record_chain_head`, `model_id`, `embedding_dim`, `trust_outcome_passed`, `confidence`, `harvested_at`, and `solved_example_id` inside `RecordProvenance(...)`. The only provenance field read from the outcome is `chain_head`, and the only provenance field written from it is `event_chain_head`.
+- [x] **AC-5 - private Phase-4 mint module.** `src/codegenie/rag/_capability_mint.py` defines:
     ```python
     def _phase4_local_capability_mint(
         *,
@@ -139,7 +139,7 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
         return SolvedExampleWriteCapability(workflow_id=workflow_id)
     ```
     `chain_head` is accepted and intentionally discarded in Phase 4 because S4-03's marker carries only `workflow_id`. The docstring says this plainly. `src/codegenie/rag/ingest.py` may import the private module by alias, but must not import or re-export the `_phase4_local_capability_mint` function symbol directly. `codegenie.rag.ingest.__all__` excludes it.
-- [ ] **AC-6 - import-linter contract pins mint module scope.** `pyproject.toml [tool.importlinter.contracts]` gains:
+- [x] **AC-6 - import-linter contract pins mint module scope.** `pyproject.toml [tool.importlinter.contracts]` gains:
     ```toml
     [[tool.importlinter.contracts]]
     name = "ADR-0016: phase4 solved-example mint module is scoped"
@@ -152,13 +152,13 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
     ]
     ```
     Do not add a future `codegenie.gates.*` ignore entry yet: import-linter 2.x treats unmatched ignores as errors. Phase 5 appends the gates edge when the real gates module exists. `make lint-imports` must pass on the production tree.
-- [ ] **AC-7 - contract shape and live-fire tests.** `tests/fence/test_phase4_capability_mint_scope.py`:
+- [x] **AC-7 - contract shape and live-fire tests.** `tests/fence/test_phase4_capability_mint_scope.py`:
     - statically reads `pyproject.toml` with `tomllib` and asserts the contract name, type, `as_packages = true`, `source_modules`, `forbidden_modules`, and exact `ignore_imports` row;
     - walks `src/codegenie/**/*.py` with `ast` and asserts no production file outside `src/codegenie/rag/ingest.py` imports `codegenie.rag._capability_mint` by any spelling (`import codegenie.rag._capability_mint`, `from codegenie.rag._capability_mint import ...`, or `from codegenie.rag import _capability_mint`);
     - asserts no production file imports `_phase4_local_capability_mint` from `codegenie.rag.ingest`;
     - plants a temporary module under `src/codegenie/_test_phase4_mint_scope_violation.py` importing `codegenie.rag._capability_mint`, runs the `lint-imports` console script with `--config pyproject.toml --no-cache`, asserts non-zero exit and the contract name in output, and deletes the planted file in `finally`.
-- [ ] **AC-8 - forged capability limitation is documented by test.** `tests/unit/rag/test_ingest.py` has a test that directly constructs `SolvedExampleWriteCapability(workflow_id=WorkflowId("hand-forged"))` and proves the writer/store path accepts it when supplied in-process. The test docstring states: "This is intentional: capability unforgeability is a lint/test enforced module boundary, not a runtime guarantee." If a future implementation adds runtime detection, surface per Rule 7 instead of silently changing the story.
-- [ ] **AC-9 - `SolvedExampleHarvested` event uses real EventLog surface.** `src/codegenie/plugins/events.py` registers a frozen Pydantic `WorkflowInternalEvent` variant:
+- [x] **AC-8 - forged capability limitation is documented by test.** `tests/unit/rag/test_ingest.py` has a test that directly constructs `SolvedExampleWriteCapability(workflow_id=WorkflowId("hand-forged"))` and proves the writer/store path accepts it when supplied in-process. The test docstring states: "This is intentional: capability unforgeability is a lint/test enforced module boundary, not a runtime guarantee." If a future implementation adds runtime detection, surface per Rule 7 instead of silently changing the story.
+- [x] **AC-9 - `SolvedExampleHarvested` event uses real EventLog surface.** `src/codegenie/plugins/events.py` registers a frozen Pydantic `WorkflowInternalEvent` variant:
     ```python
     class SolvedExampleHarvested(BaseModel):
         model_config = ConfigDict(frozen=True, extra="forbid")
@@ -172,8 +172,8 @@ Ship the Phase-4 solved-example writer and interim capability mint boundary:
         origin: Literal["llm_solved"] = "llm_solved"
     ```
     The class is wired into `WorkflowInternalEvent`, `_INTERNAL_CLASSES`, and `__all__`; `tests/unit/plugins/test_events.py` asserts the discriminator mapping contains `"solved_example_harvested"` and that `EventLog.emit_internal(...)` / `replay()` round-trips the typed event. Do not create `src/codegenie/rag/events.py`.
-- [ ] **AC-10 - writer is silent.** A unit test monkeypatches or spies on `codegenie.plugins.events.EventLog` / `emit_internal` and asserts `ingest_solved_example(...)` never reaches either. The only observable write is `store.add(example, capability)`.
-- [ ] **AC-11 - lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict src/codegenie/rag/ src/codegenie/plugins/events.py` clean. No new `Any`, no untyped functions, no untyped dict shuffling.
+- [x] **AC-10 - writer is silent.** A unit test monkeypatches or spies on `codegenie.plugins.events.EventLog` / `emit_internal` and asserts `ingest_solved_example(...)` never reaches either. The only observable write is `store.add(example, capability)`.
+- [x] **AC-11 - lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict src/codegenie/rag/ src/codegenie/plugins/events.py` clean. No new `Any`, no untyped functions, no untyped dict shuffling.
 
 ## Implementation outline
 

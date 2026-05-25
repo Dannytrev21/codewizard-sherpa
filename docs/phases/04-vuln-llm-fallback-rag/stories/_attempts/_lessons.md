@@ -330,3 +330,45 @@ General rule: when the arch prose names a behaviour as
 a module-level function in a sibling policy module and pin
 `assert not hasattr(Model, "method")` so a future drive-by edit can't
 silently reintroduce the cycle.
+
+
+## L-S406-1 — Substring source-guards false-positive on docstring prose (S4-06)
+
+`name in src` substring sweeps over a module's source text trip on
+honest docstring mentions: when `rag/ingest.py` documents "writer never
+inspects `TrustOutcome.confidence`" or "S6-03 owns `EventLog`
+emission", the substring check fires. Rewrite stale-name / forbidden-
+import guards as `ast.walk` over `ast.keyword.arg` (constructor
+kwargs), `ast.Attribute.attr` (attribute reads), and `ast.Import` /
+`ast.ImportFrom` (real imports). The runtime risk is a real kwarg /
+attribute / import — not the English word — so AST is both sound and
+complete. First hit: S4-06 AC-4 + AC-10 guards.
+
+## L-S406-2 — import-linter `forbidden` sources cannot contain a forbidden descendant (S4-06)
+
+A `[[tool.importlinter.contracts]]` row with
+`source_modules = ["codegenie"]` and
+`forbidden_modules = ["codegenie.rag._capability_mint"]` fails with
+"Modules have shared descendants" at lint time. The honest fix is the
+same one the ADR-0010 BudgetToken contract already uses: enumerate
+sibling subpackages individually (e.g. every `codegenie.*` package
+EXCEPT the forbidden subtree), with the relevant siblings of the
+forbidden module spelled out explicitly so the contract still covers
+every neighbor. Story drafts that say `source_modules = ["codegenie"]`
+are user-intent shorthand — the executor must reach for the
+sibling-enumeration shape and update both `pyproject.toml` and the
+matching shape test to pin the deviation.
+
+## L-S406-3 — Live-fire planted-violator files must live inside an enumerated source module (S4-06)
+
+The S1-06 / S2-* / S3-* planted-violator pattern (write a temporary
+`.py` that imports the forbidden module, run `lint-imports
+--config pyproject.toml --no-cache`, assert non-zero exit) only fires
+when the planted file lives **inside** one of the contract's
+`source_modules` (since `as_packages = true` walks descendants only).
+Top-level `src/codegenie/<name>.py` lives outside every enumerated
+subpackage and gets silently ignored — the contract reports "KEPT" and
+the test green-passes on a bug. Plant under an enumerated sibling
+package (e.g. `src/codegenie/probes/<name>.py`); record the choice
+inline so a future shape-test edit doesn't bring the planted file back
+up to the codegenie root.
