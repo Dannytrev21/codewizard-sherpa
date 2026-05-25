@@ -204,7 +204,7 @@ def _reset_process_wide_client_cache() -> None:
     ``chromadb`` import (the ADR-0003 path-scoped fence's ``ignore_imports``
     list stays minimal — only ``codegenie.rag.store -> chromadb``).
     """
-    from chromadb.api.client import SharedSystemClient  # type: ignore[attr-defined]  # noqa: PLC0415
+    from chromadb.api.shared_system_client import SharedSystemClient  # noqa: PLC0415
 
     SharedSystemClient.clear_system_cache()
 
