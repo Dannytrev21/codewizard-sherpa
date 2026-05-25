@@ -38,8 +38,7 @@ _LIVE_LOCK: Path = _REPO_ROOT / ".codegenie" / "rag" / "embeddings_model.lock"
 def _require_bootstrapped() -> None:
     if not _LIVE_LOCK.is_file() or not _LIVE_CACHE.is_dir():
         pytest.skip(
-            "live BGE-small cache not bootstrapped; run "
-            "`python -m codegenie embeddings bootstrap`",
+            "live BGE-small cache not bootstrapped; run `python -m codegenie embeddings bootstrap`",
         )
 
 
@@ -118,9 +117,7 @@ def test_embed_batch_within_tolerance_of_repeated_embed(
         cos = _cosine(b_vec, s_vec)
         assert cos >= 1 - 1e-6, f"cosine drift at i={i}: cos={cos}"
         for j, (bx, sx) in enumerate(zip(b_vec, s_vec, strict=True)):
-            assert abs(bx - sx) <= 1e-5, (
-                f"per-component drift at i={i} j={j}: |Δ|={abs(bx - sx)}"
-            )
+            assert abs(bx - sx) <= 1e-5, f"per-component drift at i={i} j={j}: |Δ|={abs(bx - sx)}"
 
 
 def test_embed_batch_empty_returns_empty(live_embedder: object) -> None:
