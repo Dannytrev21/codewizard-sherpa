@@ -56,6 +56,7 @@ from codegenie.types.identifiers import (
     TokenCount,
     TransformId,
     TransformKind,
+    TransitionId,
     VulnCaseId,
     WorkflowId,
 )
@@ -92,6 +93,7 @@ __all__ = [
     "parse_token_count",
     "parse_transform_id",
     "parse_transform_kind",
+    "parse_transition_id",
     "parse_vuln_case_id",
     "parse_workflow_id",
 ]
@@ -233,6 +235,10 @@ _docker_stage_name_match = _regex_parser(_RUNTIME_KEBAB_RX, max_len=64, name="Do
 _vuln_case_id_match = _regex_parser(_ULID_RX, max_len=26, name="VulnCaseId")
 _repo_fixture_ref_match = _regex_parser(_REPO_FIXTURE_REF_RX, max_len=128, name="RepoFixtureRef")
 _sut_digest_match = _regex_parser(_SUT_DIGEST_RX, max_len=_SUT_DIGEST_LEN, name="SutDigest")
+# Phase 6 S1-02 — TransitionId ULID closure (same grammar as VulnCaseId /
+# WorkflowId / EventId but the closure carries the ``TransitionId`` name so
+# ``Err.message`` distinguishes the newtype at the parse boundary).
+_transition_id_match = _regex_parser(_ULID_RX, max_len=26, name="TransitionId")
 
 
 def _is_ascii(s: str) -> bool:
@@ -608,3 +614,22 @@ def parse_sut_digest(s: str) -> Result[SutDigest, ParseError]:
     """Internal boundary: ``blake3:<64-hex>`` SUT behaviour digest. ADR-0010 + Phase-6 ADR-0001."""
     r = _sut_digest_match(s)
     return Ok(value=SutDigest(r.value)) if isinstance(r, Ok) else r
+
+
+# --- Phase 6 S1-02 — Ledger state union parsers ---------------------------
+
+
+def parse_transition_id(s: str) -> Result[TransitionId, ParseError]:
+    """External boundary: ledger transition-event ULID. ADR-0010 + Phase-6 ADR-0001 + ADR-0003.
+
+    Distinct from :func:`parse_event_id` — see :data:`TransitionId` docstring
+    for the lifecycle separation. ULID grammar is shared (Crockford base32,
+    26 chars, leading char in ``[0-7]``); the per-newtype closure carries the
+    ``TransitionId`` name so error messages name the right newtype.
+    """
+    r = _transition_id_match(s)
+    if isinstance(r, Err):
+        return Err(
+            error=ParseError(message="TransitionId: must be 26-char Crockford base32 ULID", value=s)
+        )
+    return Ok(value=TransitionId(r.value))

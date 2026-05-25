@@ -182,6 +182,18 @@ RepoFixtureRef = NewType("RepoFixtureRef", str)
 # :mod:`codegenie.workflows.vuln_sut`. Phase 6 ADR-0001 + production ADR-0010.
 SutDigest = NewType("SutDigest", str)
 
+# --- Phase-6 catalog (S1-02 — Ledger state union + transition event) ------
+
+# ULID (26-char Crockford base32) identifying a single ledger transition
+# event. Distinct from ``EventId`` (the Phase-3 two-stream forensic event
+# log id): ``TransitionId`` is chained for replay-determinism via
+# :func:`codegenie.workflows._chain._compute_chain_head` and consumed by the
+# Phase-6 S2-01 checkpoint store + S2-02 replay verifier. Conflating with
+# ``EventId`` would couple the replay path to the forensic-log path and
+# break the Phase-9 S4-05 substrate-portability story.
+# Phase 6 ADR-0001 + Phase 6 ADR-0003 + production ADR-0010.
+TransitionId = NewType("TransitionId", str)
+
 # --- Phase-7 catalog (S1-01) ----------------------------------------------
 
 # OCI image reference (``registry/name[:tag]`` or ``name[:tag]``). The smart
@@ -274,6 +286,7 @@ __all__ = [
     "TokenCount",
     "TransformId",
     "TransformKind",
+    "TransitionId",
     "VulnCaseId",
     "WorkflowId",
 ]
@@ -371,5 +384,11 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "SutDigest": (
         "Phase-6 ``blake3:<64-hex>`` SUT digest (ADR-0010 + Phase-6 ADR-0001); "
         "Phase-9 S4-05 G5 byte-equality substrate across Local/Temporal SUTs."
+    ),
+    # Phase-6 (S1-02 — Ledger state union + transition event).
+    "TransitionId": (
+        "Phase-6 ULID per ledger transition event (ADR-0010 + Phase-6 ADR-0001 + "
+        "Phase-6 ADR-0003); chained for replay-determinism via "
+        "``codegenie.workflows._chain._compute_chain_head``."
     ),
 }

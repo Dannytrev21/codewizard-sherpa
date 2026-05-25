@@ -1,0 +1,12 @@
+# Phase-6 cross-story lessons
+
+Short, reusable takeaways harvested from each story attempt. Append-only.
+
+## From S1-02 (2026-05-25)
+
+- **Story prose may name types that don't exist in the codebase yet.** S1-02 named `GateOutcome` in AC-4 (the actual type is `TrustOutcome`) and `ChainHead("blake3:<64hex>")` in the TDD-Green prose (the actual newtype is bare 64-hex without prefix). Default: Rule 11 (match existing convention). Surface every such inconsistency in the attempt log so it can be patched at the story or validation-report level.
+- **Two definitions of "terminal" coexist in Phase 6.** *Class-level terminal* (S1-01 `TerminalState` Literal — three values) is a contract declaration. *Operationally terminal* (zero outgoing edges — two values: `completed`, `failed_unrecoverable`) is a graph-level property. `awaiting_human_review` is the third class-level terminal but is operationally resumable. Tests that conflate the two trip on `awaiting_human_review → plan_ready` legal edges.
+- **`triggering_outcome` as `JsonValue`, not as a discriminated union, defers the `codegenie.plugins.subgraph` coupling.** A union including `NodeTransition` would force `Advance.model_rebuild()` to be called in `vuln_ledger.py`, dragging in `SubgraphState` (out of Phase-6 scope and a kernel cycle). The substrate only needs deterministic bytes for the chain head; the producer side keeps the typed shape.
+- **The `__all__` allowlist sentinel landed in S1-01 must be amended additively by each subsequent story.** S1-02 grew the public surface from 4 → 15 names; the fence at `tests/fence/test_workflows_public_surface.py` and the pin at `tests/unit/workflows/test_vuln_sut_shape.py::test_ac1_all_is_exact_set` both need to widen.
+- **`ChainHead` already exists from Phase-4 S4-04 — reuse, never redefine.** The same applies to `BlobDigest`, `SignalKind`, `AttemptNumber`, `HumanReviewReason`, `RemediationError`, `WorkflowId`. Greenfield-feeling Phase-6 stories that look like they want a fresh identifier almost always need to reuse one from `codegenie.types.identifiers` (drift test enforces).
+- **The Phase-6 contract snapshot meta-test is the right home for "additive vs breaking" rule extensions.** When S1-02 added `legal_transitions` to the snapshot, four new meta-test cases (additive edge add, breaking edge removal, breaking variant removal, breaking required-field removal) kept the classifier's mutation-resistance pinned.

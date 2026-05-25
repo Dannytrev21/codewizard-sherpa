@@ -272,10 +272,12 @@ PHASE4_NAMES = {
     "TokenCount",
 }
 # Phase 6 S1-01 — VulnRemediationSut contract substrate.
+# Phase 6 S1-02 additive — ledger transition event identifier.
 PHASE6_NEWTYPE_NAMES = {
     "VulnCaseId",
     "RepoFixtureRef",
     "SutDigest",
+    "TransitionId",
 }
 
 

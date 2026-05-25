@@ -34,6 +34,26 @@ def _baseline() -> dict[str, Any]:
                 },
             },
         },
+        # S1-02 AC-15 extension — ledger-shaped fields.
+        "ledger_state_schema": {
+            "$defs": {
+                "NeedsPlan": {"properties": {"kind": {"enum": ["needs_plan"]}}},
+                "PlanReady": {"properties": {"kind": {"enum": ["plan_ready"]}}},
+            },
+        },
+        "transition_event_schema": {
+            "required": ["transition_id", "prior_state_id", "next_state_id"],
+            "properties": {
+                "transition_id": {"type": "string"},
+                "prior_state_id": {"type": "string"},
+                "next_state_id": {"type": "string"},
+            },
+        },
+        "legal_transitions": [
+            "needs_plan->plan_ready",
+            "plan_ready->patch_applied",
+            "patch_applied->completed",
+        ],
         "protocol": {
             "run_case": {
                 "signature": "(self, request: VulnRemediationCase) -> VulnRemediationResult",
@@ -144,3 +164,49 @@ def test_meta_additive_name_added_to_all() -> None:
     new = copy.deepcopy(old)
     new["all"].append("NewName")
     assert classify_snapshot_diff(old, new) == "additive"
+
+
+# ---------------------------------------------------------------------------
+# AC-15 S1-02 — ledger-shaped deltas exercise the classifier on the new fields.
+# ---------------------------------------------------------------------------
+
+
+def test_meta_additive_new_transition_edge() -> None:
+    """Adding a new edge to ``legal_transitions`` is additive — the closed-
+    set transition table widens by addition, never silently."""
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["legal_transitions"].append("plan_ready->failed_unrecoverable")
+    assert classify_snapshot_diff(old, new) == "additive"
+
+
+def test_meta_breaking_removed_legal_transition_edge() -> None:
+    """Removing an edge from ``legal_transitions`` is breaking — silently
+    narrows the legal-edge inventory and would soft-lock the resumable
+    ``awaiting_human_review → plan_ready`` path the harness depends on."""
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["legal_transitions"].remove("needs_plan->plan_ready")
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+def test_meta_breaking_removed_ledger_variant_via_defs() -> None:
+    """Removing a variant from the ledger schema's ``$defs`` is breaking —
+    a removed variant silently mis-routes round-tripping payloads."""
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["ledger_state_schema"]["$defs"].pop("NeedsPlan")
+    # The diff currently flows through the `$defs`-walk inside
+    # ``_schema_diff_is_breaking``; if no $defs walker is present, this
+    # exercises the broader `properties`-removal rule as well.
+    # Either way the rejection must classify as breaking.
+    assert classify_snapshot_diff(old, new) == "breaking"
+
+
+def test_meta_breaking_transition_event_required_field_removed() -> None:
+    old = _baseline()
+    new = copy.deepcopy(old)
+    new["transition_event_schema"]["properties"].pop("chain_head", None)
+    new["transition_event_schema"]["properties"].pop("prior_state_id")
+    new["transition_event_schema"]["required"].remove("prior_state_id")
+    assert classify_snapshot_diff(old, new) == "breaking"

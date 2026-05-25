@@ -33,12 +33,17 @@ import typing
 from pathlib import Path
 from typing import Any
 
+from pydantic import TypeAdapter
+
 import codegenie.workflows as workflows_pkg
 from codegenie.workflows import (
+    TransitionEvent,
+    VulnLedgerState,
     VulnRemediationCase,
     VulnRemediationResult,
     VulnRemediationSut,
 )
+from codegenie.workflows.vuln_ledger import _LEGAL_TRANSITIONS
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _GOLDEN_PATH = _REPO_ROOT / "tests" / "golden" / "phase6-contract" / "snapshot.json"
@@ -65,27 +70,41 @@ def _serialize_protocol_signature() -> dict[str, Any]:
 
 
 def build_snapshot() -> dict[str, Any]:
-    """Construct the canonical snapshot dict."""
+    """Construct the canonical snapshot dict.
+
+    AC-15 extension: includes the Phase-6 S1-02 ledger contract — the
+    discriminated-union schema, the ``TransitionEvent`` schema, and the
+    sorted structural snapshot of ``_LEGAL_TRANSITIONS``. The
+    additive-vs-breaking classifier inherits S1-01's logic; the meta-test
+    exercises it on ledger-shaped deltas (new transition edge = additive;
+    removed variant or rename = breaking).
+    """
+    ledger_adapter = TypeAdapter(VulnLedgerState)
     return {
         "all": sorted(workflows_pkg.__all__),
         "is_runtime_protocol": bool(getattr(VulnRemediationSut, "_is_runtime_protocol", False)),
         "case_schema": VulnRemediationCase.model_json_schema(by_alias=True),
         "result_schema": VulnRemediationResult.model_json_schema(by_alias=True),
         "protocol": _serialize_protocol_signature(),
+        "ledger_state_schema": ledger_adapter.json_schema(by_alias=True),
+        "transition_event_schema": TransitionEvent.model_json_schema(by_alias=True),
+        "legal_transitions": sorted(f"{p}->{n}" for p, n in _LEGAL_TRANSITIONS),
     }
 
 
 def _directive() -> str:
     return (
-        "Phase-6 SUT contract drift. If additive (new optional field with "
-        "default / new sub-model class added without removing or renaming an "
-        "existing field), regenerate the golden under "
-        f"`{_REWRITE_FLAG}=1 pytest "
+        "Phase-6 contract drift (SUT or ledger). If additive (new optional field "
+        "with default / new sub-model class / new transition edge added without "
+        "removing or renaming an existing field/variant/edge), regenerate the "
+        f"golden under `{_REWRITE_FLAG}=1 pytest "
         "tests/integration/test_phase6_sut_contract_snapshot.py` and amend "
-        "ADR-0001 §Consequences. If breaking (rename, removal, "
-        "required-without-default, runtime_checkable removal, Literal "
-        "narrowing), this is an ADR-0001 amendment + downstream Phase-6.5 / "
-        "Phase-9 review per ADR-0001 §Consequences."
+        "ADR-0001 / ADR-0003 §Consequences (also verify the terminal partition "
+        "still matches S1-01's TerminalState — AC-6). If breaking (rename, "
+        "removal, required-without-default, runtime_checkable removal, Literal "
+        "narrowing, removed variant, removed edge), this is an ADR-0001 + "
+        "ADR-0003 amendment + downstream Phase-6.5 / Phase-9 review per "
+        "ADR-0001 §Consequences."
     )
 
 
@@ -122,6 +141,11 @@ def classify_snapshot_diff(old: dict[str, Any], new: dict[str, Any]) -> str:
       → breaking (required-without-default).
     * Any ``enum`` (Literal) membership narrowed (old member removed) →
       breaking.
+    * **AC-15 S1-02 extension** — any edge in ``old["legal_transitions"]``
+      missing from ``new["legal_transitions"]`` → breaking (removed legal
+      edge); a new edge → additive.
+    * **AC-15 S1-02 extension** — the same schema-diff rules apply to
+      ``ledger_state_schema`` and ``transition_event_schema``.
     * Anything else with a non-empty diff → additive.
     * No diff → noop.
     """
@@ -145,11 +169,21 @@ def classify_snapshot_diff(old: dict[str, Any], new: dict[str, Any]) -> str:
         if old_meta.get("signature") != new_methods[name].get("signature"):
             return "breaking"
 
-    for schema_key in ("case_schema", "result_schema"):
+    for schema_key in (
+        "case_schema",
+        "result_schema",
+        "ledger_state_schema",
+        "transition_event_schema",
+    ):
         old_schema = old.get(schema_key, {})
         new_schema = new.get(schema_key, {})
         if _schema_diff_is_breaking(old_schema, new_schema):
             return "breaking"
+
+    old_edges = set(old.get("legal_transitions", []) or [])
+    new_edges = set(new.get("legal_transitions", []) or [])
+    if old_edges - new_edges:
+        return "breaking"
 
     return "additive"
 

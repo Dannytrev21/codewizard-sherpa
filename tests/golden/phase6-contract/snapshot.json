@@ -1,6 +1,17 @@
 {
   "all": [
+    "AwaitingHumanReview",
+    "Completed",
+    "FailedUnrecoverable",
+    "GateFailedRetryable",
+    "LedgerStateKind",
+    "NeedsPlan",
+    "PatchApplied",
+    "PlanReady",
     "SutDigest",
+    "TransitionEvent",
+    "TransitionId",
+    "VulnLedgerState",
     "VulnRemediationCase",
     "VulnRemediationResult",
     "VulnRemediationSut"
@@ -46,6 +57,298 @@
     "type": "object"
   },
   "is_runtime_protocol": true,
+  "ledger_state_schema": {
+    "$defs": {
+      "AwaitingHumanReview": {
+        "additionalProperties": false,
+        "description": "Terminal: handed off to a human reviewer. ``handoff_path`` is the\nrelative path into the per-run artifact directory (``None`` if the\norchestrator could not allocate before the handoff).",
+        "properties": {
+          "handoff_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff Path"
+          },
+          "kind": {
+            "const": "awaiting_human_review",
+            "default": "awaiting_human_review",
+            "title": "Kind",
+            "type": "string"
+          },
+          "review_reason": {
+            "enum": [
+              "no_concrete_match",
+              "trust_outcome_failed",
+              "policy_violation_unrecoverable",
+              "MULTI_PACKAGE_CVE"
+            ],
+            "title": "Review Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_reason"
+        ],
+        "title": "AwaitingHumanReview",
+        "type": "object"
+      },
+      "Completed": {
+        "additionalProperties": false,
+        "description": "Terminal: remediation finished. ``report_path`` is the relative path\ninto the per-run artifact directory (``None`` when the orchestrator\nfailed to allocate the report file before completion).",
+        "properties": {
+          "kind": {
+            "const": "completed",
+            "default": "completed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "report_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Report Path"
+          }
+        },
+        "title": "Completed",
+        "type": "object"
+      },
+      "FailedUnrecoverable": {
+        "additionalProperties": false,
+        "description": "Terminal: an unrecoverable failure. ``reason`` is the closed-set\nfailure-mode key from ``phase-arch-design.md \u00a7\"Failure modes\"``.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RemediationError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "kind": {
+            "const": "failed_unrecoverable",
+            "default": "failed_unrecoverable",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "checkpoint_integrity",
+              "subgraph_aborted",
+              "manifest_rejected",
+              "policy_violation",
+              "internal_invariant_violated"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "FailedUnrecoverable",
+        "type": "object"
+      },
+      "GateFailedRetryable": {
+        "additionalProperties": false,
+        "description": "One or more gates failed but the failure mode admits retry.",
+        "properties": {
+          "attempt_number": {
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "failing_signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failing Signals",
+            "type": "array"
+          },
+          "kind": {
+            "const": "gate_failed_retryable",
+            "default": "gate_failed_retryable",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "failing_signals",
+          "attempt_number"
+        ],
+        "title": "GateFailedRetryable",
+        "type": "object"
+      },
+      "NeedsPlan": {
+        "additionalProperties": false,
+        "description": "Initial state \u2014 no plan has been proposed yet. No evidence payload.",
+        "properties": {
+          "kind": {
+            "const": "needs_plan",
+            "default": "needs_plan",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "NeedsPlan",
+        "type": "object"
+      },
+      "PatchApplied": {
+        "additionalProperties": false,
+        "description": "The proposed patch has been applied; gates are pending.",
+        "properties": {
+          "kind": {
+            "const": "patch_applied",
+            "default": "patch_applied",
+            "title": "Kind",
+            "type": "string"
+          },
+          "patch_digest": {
+            "title": "Patch Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_digest"
+        ],
+        "title": "PatchApplied",
+        "type": "object"
+      },
+      "PlanReady": {
+        "additionalProperties": false,
+        "description": "A remediation plan has been proposed and is ready for execution.",
+        "properties": {
+          "kind": {
+            "const": "plan_ready",
+            "default": "plan_ready",
+            "title": "Kind",
+            "type": "string"
+          },
+          "plan_summary": {
+            "title": "Plan Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_summary"
+        ],
+        "title": "PlanReady",
+        "type": "object"
+      },
+      "RemediationError": {
+        "additionalProperties": false,
+        "description": "Failure payload carried by :class:`RemediationFailed`. Same shape as\n:class:`RecipeError` but a distinct type \u2014 the discriminator + Pydantic\ncan't tell two structurally-identical models apart at the umbrella, but\nthe field annotation on the Failed variants is type-time enforced.",
+        "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Details"
+          },
+          "error_id": {
+            "title": "Error Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_id",
+          "message"
+        ],
+        "title": "RemediationError",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "awaiting_human_review": "#/$defs/AwaitingHumanReview",
+        "completed": "#/$defs/Completed",
+        "failed_unrecoverable": "#/$defs/FailedUnrecoverable",
+        "gate_failed_retryable": "#/$defs/GateFailedRetryable",
+        "needs_plan": "#/$defs/NeedsPlan",
+        "patch_applied": "#/$defs/PatchApplied",
+        "plan_ready": "#/$defs/PlanReady"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/NeedsPlan"
+      },
+      {
+        "$ref": "#/$defs/PlanReady"
+      },
+      {
+        "$ref": "#/$defs/PatchApplied"
+      },
+      {
+        "$ref": "#/$defs/GateFailedRetryable"
+      },
+      {
+        "$ref": "#/$defs/AwaitingHumanReview"
+      },
+      {
+        "$ref": "#/$defs/Completed"
+      },
+      {
+        "$ref": "#/$defs/FailedUnrecoverable"
+      }
+    ]
+  },
+  "legal_transitions": [
+    "awaiting_human_review->completed",
+    "awaiting_human_review->failed_unrecoverable",
+    "awaiting_human_review->plan_ready",
+    "gate_failed_retryable->awaiting_human_review",
+    "gate_failed_retryable->failed_unrecoverable",
+    "gate_failed_retryable->needs_plan",
+    "needs_plan->plan_ready",
+    "patch_applied->awaiting_human_review",
+    "patch_applied->completed",
+    "patch_applied->failed_unrecoverable",
+    "patch_applied->gate_failed_retryable",
+    "plan_ready->awaiting_human_review",
+    "plan_ready->failed_unrecoverable",
+    "plan_ready->patch_applied"
+  ],
   "protocol": {
     "digest": {
       "annotations": {
@@ -195,6 +498,71 @@
       "sut_digest"
     ],
     "title": "VulnRemediationResult",
+    "type": "object"
+  },
+  "transition_event_schema": {
+    "$defs": {
+      "JsonValue": {}
+    },
+    "additionalProperties": false,
+    "description": "A single transition record \u2014 chained for replay-determinism (ADR-0003).\n\n``triggering_outcome`` is a :data:`~pydantic.JsonValue` rather than a\ndiscriminated union of ``RecipeOutcome | NodeTransition | TrustOutcome``:\nthe substrate doesn't need to dispatch on the upstream typed shape \u2014\nonly to serialise it deterministically into the chain-head computation.\nThe producer (Phase-6 S3-01 subgraph nodes) serialises via\n``outcome.model_dump(mode='json')`` before constructing this event.\nSee module docstring for the rationale (deferred coupling to\n``codegenie.plugins.subgraph``).",
+    "properties": {
+      "chain_head": {
+        "title": "Chain Head",
+        "type": "string"
+      },
+      "evidence_digest": {
+        "title": "Evidence Digest",
+        "type": "string"
+      },
+      "next_state_id": {
+        "enum": [
+          "needs_plan",
+          "plan_ready",
+          "patch_applied",
+          "gate_failed_retryable",
+          "awaiting_human_review",
+          "completed",
+          "failed_unrecoverable"
+        ],
+        "title": "Next State Id",
+        "type": "string"
+      },
+      "prior_state_id": {
+        "enum": [
+          "needs_plan",
+          "plan_ready",
+          "patch_applied",
+          "gate_failed_retryable",
+          "awaiting_human_review",
+          "completed",
+          "failed_unrecoverable"
+        ],
+        "title": "Prior State Id",
+        "type": "string"
+      },
+      "transition_id": {
+        "title": "Transition Id",
+        "type": "string"
+      },
+      "triggering_outcome": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "workflow_id": {
+        "title": "Workflow Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "transition_id",
+      "prior_state_id",
+      "next_state_id",
+      "triggering_outcome",
+      "evidence_digest",
+      "chain_head",
+      "workflow_id"
+    ],
+    "title": "TransitionEvent",
     "type": "object"
   }
 }

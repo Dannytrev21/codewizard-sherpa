@@ -49,14 +49,44 @@ _EXPECTED_PUBLIC = {
     "VulnRemediationSut",
 }
 
+# S1-02 additive amendment — the ten ledger-substrate names extend the
+# package allowlist. Re-pinning the four S1-01 names alone would fail
+# the moment S1-02 lands additively (the AC-13 contract). The package
+# allowlist is centrally pinned by
+# ``tests/fence/test_workflows_public_surface.py``.
+_S1_02_LEDGER_NAMES = {
+    "AwaitingHumanReview",
+    "Completed",
+    "FailedUnrecoverable",
+    "GateFailedRetryable",
+    "LedgerStateKind",
+    "NeedsPlan",
+    "PatchApplied",
+    "PlanReady",
+    "TransitionEvent",
+    "TransitionId",
+    "VulnLedgerState",
+}
+
 
 # ---------------------------------------------------------------------------
 # AC-1 — canonical module + re-exports + import-identity
 # ---------------------------------------------------------------------------
 
 
-def test_ac1_all_is_exact_set() -> None:
-    assert set(workflows_pkg.__all__) == _EXPECTED_PUBLIC
+def test_ac1_all_includes_s1_01_four_names() -> None:
+    """S1-01 contract: the four ADR-0001 names are in the package ``__all__``."""
+    assert _EXPECTED_PUBLIC.issubset(set(workflows_pkg.__all__))
+
+
+def test_ac1_all_is_exact_union_of_s1_01_and_s1_02() -> None:
+    """S1-02 AC-13 additive amendment — total surface is 4 + 11 names.
+
+    The fence at ``tests/fence/test_workflows_public_surface.py`` carries
+    the single allowlist pin; this test mirrors its expectation so a drift
+    fails loud in both locations.
+    """
+    assert set(workflows_pkg.__all__) == _EXPECTED_PUBLIC | _S1_02_LEDGER_NAMES
 
 
 def test_ac1_import_identity_between_module_and_package() -> None:

@@ -1,7 +1,8 @@
 # S1-02 — Ledger state union
 
-**Status:** HARDENED
+**Status:** GREEN
 **Validated:** 2026-05-25 — see [`_validation/S1-02-ledger-state-union.md`](_validation/S1-02-ledger-state-union.md).
+**Implemented:** 2026-05-25 — see [`_attempts/S1-02-ledger-state-union.md`](_attempts/S1-02-ledger-state-union.md). Full test suite (7265 passed) + lint + mypy --strict + import-linter green.
 **Depends on:** [`S1-01-sut-contract-types.md`](S1-01-sut-contract-types.md) — imports `_FROZEN_FORBID` from the canonical site landed in S1-01; AC-6 asserts the terminal partition of this story's sum type is byte-equal to S1-01's `TerminalState` Literal.
 
 **Goal:** Land the closed seven-variant `VulnLedgerState` discriminated union, the `TransitionEvent` record carrying the five fields `final-design.md §"State model"` mandates, the closed legal-transition table enforced at construction, and the BLAKE3 chain-head substrate ADR-0003's replay-verification gate depends on — and *only* those — so every later Phase-6 story (checkpoint store S2-01, replay verification S2-02, subgraph nodes S3-01, HITL resume S4-01, SUT adapter S5-01) can target a frozen, byte-deterministic ledger contract that the Phase-6.5 bench and Phase-9 Temporal worker will later assert byte-identical across substrates.
