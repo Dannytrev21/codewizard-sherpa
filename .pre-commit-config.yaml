@@ -62,6 +62,13 @@ repos:
           # inline type hints — mirroring it here lets the isolated mypy hook
           # resolve them.
           - zstandard>=0.22
+          # Phase 4 S3-02: ``codegenie.fallback.leaf.anthropic_adapter`` is the
+          # sole importer of ``anthropic`` (path-scoped fence — ADR-0003) and
+          # ``keyring`` (OS keychain loader — ADR-0005). Mirror them here so
+          # the isolated mypy hook resolves both module stubs without leaking
+          # the SDK admission outside its single callsite.
+          - anthropic>=0.40.0,<1.0.0
+          - keyring>=24,<26
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.

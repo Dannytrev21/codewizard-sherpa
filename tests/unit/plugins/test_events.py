@@ -195,6 +195,11 @@ _INTERNAL_VARIANTS = frozenset(
         "BudgetReconciledDuplicate",
         "BudgetCapExceeded",
         "BudgetUnknownTokenReconcile",
+        # Phase-4 S3-02 — ``AnthropicLeafAdapter`` audit events.
+        "LeafKeyLoaded",
+        "LeafInvoked",
+        "LeafReturned",
+        "LeafProtocolViolationEvent",
     }
 )
 _SPANNING_VARIANTS = frozenset(
@@ -212,13 +217,13 @@ _SPANNING_VARIANTS = frozenset(
 )
 
 
-def test_all_26_internal_variants_exist() -> None:
-    """AC-6 + Phase-4 S2-01/02/04/05: every named internal variant is exported."""
+def test_all_30_internal_variants_exist() -> None:
+    """AC-6 + Phase-4 S2-01/02/04/05/S3-02: every named internal variant is exported."""
     from codegenie.plugins import events as ev
 
     for name in _INTERNAL_VARIANTS:
         assert hasattr(ev, name), f"missing internal variant: {name}"
-    assert len(_INTERNAL_VARIANTS) == 26
+    assert len(_INTERNAL_VARIANTS) == 30
 
 
 def test_all_9_spanning_variants_exist() -> None:
@@ -1108,3 +1113,131 @@ def test_emit_internal_rejects_unregistered_class(tmp_path: Path) -> None:
                 timestamp=_now(),
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# S3-02 — `AnthropicLeafAdapter` workflow-internal events
+# ---------------------------------------------------------------------------
+
+
+def test_leaf_key_loaded_is_registered_internal_variant() -> None:
+    """S3-02 AC-4 — ``leaf_key_loaded`` discriminator + typed payload registered."""
+    from codegenie.plugins.events import _INTERNAL_CLASSES, LeafKeyLoaded
+
+    assert LeafKeyLoaded in _INTERNAL_CLASSES
+    fields = LeafKeyLoaded.model_fields
+    assert fields["event_type"].annotation.__args__ == ("leaf_key_loaded",)  # type: ignore[attr-defined]
+    assert fields["present"].annotation is bool
+
+
+def test_leaf_invoked_is_registered_internal_variant() -> None:
+    """S3-02 AC-8 — ``leaf_invoked`` discriminator + typed prompt-digest payload."""
+    from codegenie.plugins.events import _INTERNAL_CLASSES, LeafInvoked
+
+    assert LeafInvoked in _INTERNAL_CLASSES
+    fields = LeafInvoked.model_fields
+    assert fields["event_type"].annotation.__args__ == ("leaf_invoked",)  # type: ignore[attr-defined]
+    # ``prompt_digest_blake3`` is a BlobDigest (un-prefixed 64-hex BLAKE3 hash).
+    assert "prompt_digest_blake3" in fields
+
+
+def test_leaf_returned_is_registered_internal_variant() -> None:
+    """S3-02 AC-8 — ``leaf_returned`` discriminator + per-call token fields."""
+    from codegenie.plugins.events import _INTERNAL_CLASSES, LeafReturned
+
+    assert LeafReturned in _INTERNAL_CLASSES
+    fields = LeafReturned.model_fields
+    assert fields["event_type"].annotation.__args__ == ("leaf_returned",)  # type: ignore[attr-defined]
+    for name in (
+        "response_digest_blake3",
+        "tokens_in",
+        "tokens_out",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+    ):
+        assert name in fields, f"LeafReturned missing field {name!r}"
+
+
+def test_leaf_protocol_violation_event_is_registered_internal_variant() -> None:
+    """S3-02 AC-14 — event class is named distinctly from the exception."""
+    from codegenie.plugins.events import _INTERNAL_CLASSES, LeafProtocolViolationEvent
+
+    assert LeafProtocolViolationEvent in _INTERNAL_CLASSES
+    fields = LeafProtocolViolationEvent.model_fields
+    assert fields["event_type"].annotation.__args__ == ("leaf_protocol_violation",)  # type: ignore[attr-defined]
+    for name in ("first_error", "second_error"):
+        assert name in fields
+
+
+def test_leaf_events_round_trip_through_event_log(tmp_path: Path) -> None:
+    """S3-02 AC-8 — every new leaf-internal event lands on disk and reads back equal."""
+    from codegenie.plugins.events import (
+        LeafInvoked,
+        LeafKeyLoaded,
+        LeafProtocolViolationEvent,
+        LeafReturned,
+    )
+    from codegenie.types.identifiers import BlobDigest, TokenCount
+
+    digest_a = BlobDigest("0" * 64)
+    digest_b = BlobDigest("1" * 64)
+    log = EventLog(root=tmp_path, workflow_id=_wf(), clock=_now)
+
+    log.emit_internal(
+        LeafKeyLoaded(
+            event_id=EventId("01HLEAFKEY1"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            present=True,
+        )
+    )
+    log.emit_internal(
+        LeafInvoked(
+            event_id=EventId("01HLEAFINV1"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            prompt_digest_blake3=digest_a,
+            model="claude-sonnet-4-5-20250929",
+        )
+    )
+    log.emit_internal(
+        LeafReturned(
+            event_id=EventId("01HLEAFRET1"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            response_digest_blake3=digest_b,
+            tokens_in=TokenCount(120),
+            tokens_out=TokenCount(80),
+            cache_read_tokens=TokenCount(0),
+            cache_creation_tokens=TokenCount(0),
+        )
+    )
+    log.emit_internal(
+        LeafProtocolViolationEvent(
+            event_id=EventId("01HLEAFVIO1"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            first_error="invalid_json",
+            second_error="missing_kind",
+        )
+    )
+    log.flush()
+
+    replayed = list(log.replay())
+    assert len(replayed) == 4
+    by_type = {type(e): e for e in replayed}
+    assert set(by_type) == {LeafKeyLoaded, LeafInvoked, LeafReturned, LeafProtocolViolationEvent}
+    key = by_type[LeafKeyLoaded]
+    assert isinstance(key, LeafKeyLoaded)
+    assert key.present is True
+    inv = by_type[LeafInvoked]
+    assert isinstance(inv, LeafInvoked)
+    assert inv.prompt_digest_blake3 == digest_a
+    ret = by_type[LeafReturned]
+    assert isinstance(ret, LeafReturned)
+    assert ret.tokens_in == 120
+    assert ret.cache_creation_tokens == 0
+    vio = by_type[LeafProtocolViolationEvent]
+    assert isinstance(vio, LeafProtocolViolationEvent)
+    assert vio.first_error == "invalid_json"
+    assert vio.second_error == "missing_kind"

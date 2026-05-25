@@ -66,6 +66,7 @@ from codegenie.types.identifiers import (
     CveId,
     EventId,
     HexNonce,
+    ModelId,
     PluginId,
     PrimitiveName,
     RecipeId,
@@ -627,6 +628,104 @@ class BudgetUnknownTokenReconcile(BaseModel):
     token_id: BudgetTokenId
 
 
+# --- Phase-4 S3-02 — ``AnthropicLeafAdapter`` audit events ------------------
+# Four workflow-internal events emitted by the sole concrete ``LeafLlm``. The
+# event class ``LeafProtocolViolationEvent`` carries a name distinct from the
+# adapter-side ``LeafProtocolViolation`` exception (S3-02 §D3) so a reader
+# never has to disambiguate "event vs exception" by import path. Per AC-10,
+# payloads carry *digests only* — no raw prompt or response bytes leak into
+# the audit stream.
+
+
+class LeafKeyLoaded(BaseModel):
+    """Phase-4 S3-02 — adapter consulted ``keyring`` for the Anthropic key.
+
+    Emitted exactly once per :class:`AnthropicLeafAdapter` construction:
+    once with ``present=True`` on the happy path before the adapter is
+    returned, once with ``present=False`` immediately before
+    :class:`AnthropicKeyMissing` is raised. The boolean is the *only* leak
+    of key state — no fingerprint, no length, no last-4 (AC-3).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["leaf_key_loaded"] = "leaf_key_loaded"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    present: bool
+
+
+class LeafInvoked(BaseModel):
+    """Phase-4 S3-02 — adapter is about to issue one physical SDK request.
+
+    Emitted *before* the first physical SDK call inside
+    :meth:`AnthropicLeafAdapter.invoke`. Transport retries and the
+    malformed-output retry are counted on the response side
+    (:class:`LeafReturned` / :class:`LeafProtocolViolationEvent`) so this
+    event remains a "one logical invocation" anchor — replay counts of
+    ``LeafInvoked`` equal user-visible LLM calls, not raw SDK hits.
+
+    ``prompt_digest_blake3`` is :func:`blake3(str(system_prompt) +
+    str(user_message))` (AC-10) — the un-prefixed 64-hex digest that ties
+    the audit trail to the exact bytes the leaf saw without exposing
+    them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["leaf_invoked"] = "leaf_invoked"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    prompt_digest_blake3: BlobDigest
+    model: ModelId
+
+
+class LeafReturned(BaseModel):
+    """Phase-4 S3-02 — adapter parsed a valid :class:`LeafResponse`.
+
+    Emitted after :meth:`pydantic.TypeAdapter.validate_json` succeeds on
+    the (possibly retried) SDK response. ``response_digest_blake3`` is
+    :func:`blake3(response_text)` (AC-10). The four token-count fields
+    mirror :class:`~codegenie.fallback.leaf.port.LeafResponse` (AC-9):
+    ``cache_read_tokens`` / ``cache_creation_tokens`` default to zero
+    when the SDK's :class:`~anthropic.types.Usage` omits them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["leaf_returned"] = "leaf_returned"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    response_digest_blake3: BlobDigest
+    tokens_in: TokenCount
+    tokens_out: TokenCount
+    cache_read_tokens: TokenCount
+    cache_creation_tokens: TokenCount
+
+
+class LeafProtocolViolationEvent(BaseModel):
+    """Phase-4 S3-02 — both physical SDK responses failed
+    :meth:`TypeAdapter.validate_json`.
+
+    Emitted exactly once before the adapter raises
+    :class:`~codegenie.fallback.leaf.anthropic_adapter.LeafProtocolViolation`.
+    The class name carries the ``Event`` suffix to disambiguate from the
+    exception of the same prefix (S3-02 §D3); the on-the-wire discriminator
+    is ``"leaf_protocol_violation"``. ``first_error`` / ``second_error``
+    are :class:`pydantic.ValidationError` summaries — string-typed so the
+    audit stream stays JSON-friendly and the SDK's parse-error shape does
+    not leak through.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["leaf_protocol_violation"] = "leaf_protocol_violation"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    first_error: str
+    second_error: str
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -764,7 +863,11 @@ WorkflowInternalEvent = Annotated[
     | BudgetReconciled
     | BudgetReconciledDuplicate
     | BudgetCapExceeded
-    | BudgetUnknownTokenReconcile,
+    | BudgetUnknownTokenReconcile
+    | LeafKeyLoaded
+    | LeafInvoked
+    | LeafReturned
+    | LeafProtocolViolationEvent,
     Field(discriminator="event_type"),
 ]
 
@@ -811,6 +914,10 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     BudgetReconciledDuplicate,
     BudgetCapExceeded,
     BudgetUnknownTokenReconcile,
+    LeafKeyLoaded,
+    LeafInvoked,
+    LeafReturned,
+    LeafProtocolViolationEvent,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1178,6 +1285,10 @@ __all__ = [
     "GitHooksDisabledForRun",
     "InMemorySink",
     "InstallStageOutcome",
+    "LeafInvoked",
+    "LeafKeyLoaded",
+    "LeafProtocolViolationEvent",
+    "LeafReturned",
     "LocalBranchWritten",
     "PluginRegistryCorrupted",
     "PluginResolved",

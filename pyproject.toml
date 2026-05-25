@@ -319,6 +319,7 @@ markers = [
   "serial: tests that MUST run serially (ADR-0009 — pytest-xdist veto)",
   "nightly_macos: macOS-substrate live tests run only on the nightly darwin runner (S4-03 AC-12)",
   "phase_7_preview: Phase 7 preview tests; skipped in Phase 3 CI by default — collected only with -m phase_7_preview",
+  "uses_anthropic_cassette: live Anthropic cassette tests (S3-02 reserves the marker; S3-04/S3-05/S3-06 land the discipline)",
 ]
 
 [tool.coverage.run]
@@ -531,7 +532,14 @@ type = "forbidden"
 as_packages = true
 source_modules = ["codegenie"]
 forbidden_modules = ["anthropic"]
-# ignore_imports omitted — S3-02 appends `codegenie.fallback.leaf.anthropic_adapter -> anthropic`.
+# S3-02 lands the one permitted edge — the adapter is the sole `import anthropic`
+# site in the codebase. The path-scoped fence
+# (`tests/fence/test_pyproject_fence_phase4.py` + dedicated
+# `tests/fence/test_only_leaf_imports_anthropic.py`) provides the AST-level
+# guard; this ignore_imports is the lint-time belt-and-suspenders.
+ignore_imports = [
+  "codegenie.fallback.leaf.anthropic_adapter -> anthropic",
+]
 
 [[tool.importlinter.contracts]]
 name = "ADR-0003: chromadb may be imported only under codegenie.rag"
@@ -616,4 +624,5 @@ forbidden_modules = ["codegenie.fallback.budget_token"]
 ignore_imports = [
   "codegenie.fallback.budget -> codegenie.fallback.budget_token",
   "codegenie.fallback.leaf.port -> codegenie.fallback.budget_token",
+  "codegenie.fallback.leaf.anthropic_adapter -> codegenie.fallback.budget_token",
 ]
