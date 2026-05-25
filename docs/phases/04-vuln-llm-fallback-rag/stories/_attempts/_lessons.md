@@ -274,3 +274,30 @@ tests and cannot be silenced via the documented
 `Settings(anonymized_telemetry=False)` (the posthog client-signature
 mismatch is upstream). Do not paper over with a logging filter — when
 chromadb is bumped the warnings will disappear without code change.
+
+
+## L-S404-1 — explicit per-field Hypothesis strategies for newtype-rich Pydantic models (S4-04)
+
+`st.builds(SomeModel, ...)` against a Pydantic model whose fields are
+`NewType`-wrapped (`SolvedExampleId`, `BlobDigest`, `ChainHead`,
+`EmbeddingVector` tuple, `Language`, `ModelId`, ...), closed `Literal`s
+(`signing_method`, `origin`), or nested submodels (`RecordProvenance`)
+will silently generate degenerate values — or fail construction on the
+first draw. Always declare a bound `st.SearchStrategy` for every field
+and assemble via an `@st.composite` builder. For mypy --strict
+compatibility on closed-Literal fields drawn from `st.sampled_from(...)`,
+cast at the construction site (`cast("Literal[..., ...]", draw(...))`)
+rather than narrowing the strategy type. First hit: phase-4 S4-04 YAML
+roundtrip property.
+
+## L-S404-2 — `schema_version` raw-dict check sequencing matters (S4-04)
+
+A Pydantic model used as a durability artefact with
+`ConfigDict(extra="forbid")` + `schema_version: Literal[N]` will reject
+a future v(N+1) manifest with a generic `ValidationError` — losing the
+intended `StoreCorrupted("unknown manifest schema_version")` diagnostic
+that names the upgrade path. The defensive parser MUST inspect the raw
+dict's `schema_version` BEFORE `model_validate(...)`. The full Open/
+Closed dispatch table only earns its keep when v2 actually exists (Rule
+2 — no premature abstraction). First hit: phase-4 S4-04 `_Manifest`
+parse path.
