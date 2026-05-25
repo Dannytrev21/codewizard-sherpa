@@ -457,7 +457,7 @@ The three load-bearing structural lines:
 
 - **Provenance:** `[S]` (performance missed it entirely — critic flagged).
 - **Purpose:** Cassettes are checked-in source; sanitize on record, verify on replay, scan in CI.
-- **Internal design:** `pytest-recording` `before_record_request` / `before_record_response` hooks strip headers (`Authorization`, `X-API-Key`, `Cookie`, `Set-Cookie`, `anthropic-version`), scan bodies for `sk-ant-*` / `claude_*` tokens and 40+-char base64-shaped header values. `tests/security/test_cassettes_clean.py` walks `tests/cassettes/` and fails CI on any leaked pattern. Cassette diffs require `cassette-review` CODEOWNERS approval.
+- **Internal design:** `pytest-recording` `before_record_request` / `before_record_response` hooks strip headers (`Authorization`, `X-API-Key`, `Cookie`, `Set-Cookie`, `anthropic-version`), scan bodies for `sk-ant-*` / `claude_*` tokens and 40+-char base64-shaped header values. `tests/security/test_cassettes_clean.py` walks `tests/cassettes/` and fails CI on any leaked pattern. Cassette diffs require `cassette-steward` CODEOWNERS approval.
 - **Cassette-discipline as test correctness (closes critic shared blind-spot #3):** a nightly CI job runs *real* Anthropic calls (with a budget-capped CI key) against a representative bench fixture and flags drift. Cassettes catch CI determinism; the nightly job catches cassette-vs-reality drift. The two are different controls.
 - **`cassettes.lock` BLAKE3 file** at `tests/cassettes/anthropic/cassettes.lock` is the Phase 6.5 hand-off (closes critic roadmap §1.3 — best-practices and security didn't ship this).
 

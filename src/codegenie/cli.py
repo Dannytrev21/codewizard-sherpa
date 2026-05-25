@@ -1156,7 +1156,7 @@ def cassette_rebuild_lockfile(cassettes_dir: Path | None, check_mode: bool) -> N
             click.echo(
                 "cassette body changed without lock update — run "
                 "`python -m codegenie cassette rebuild-lockfile` and commit the "
-                "result, then resubmit with cassette-review CODEOWNERS approval",
+                "result, then resubmit with cassette-steward CODEOWNERS approval",
                 err=True,
             )
             sys.exit(8)

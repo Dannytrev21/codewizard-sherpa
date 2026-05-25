@@ -117,7 +117,7 @@ def _collect_lock_findings(anthropic_dir: Path) -> tuple[str, ...]:
                 "cassette.lock_drift: "
                 f"{relpath} expected={expected} actual={actual} — "
                 "run `python -m codegenie cassette rebuild-lockfile` and "
-                "commit the result, then resubmit with cassette-review "
+                "commit the result, then resubmit with cassette-steward "
                 "CODEOWNERS approval"
             )
 
