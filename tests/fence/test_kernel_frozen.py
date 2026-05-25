@@ -333,6 +333,17 @@ _TOP_LEVEL_PHASE3_PACKAGES: Final[frozenset[str]] = frozenset(
         # YAML writer, S4-05 chain-verify, S5-01 retriever) land here
         # by precedent.
         "rag",
+        # Phase 6 S1-01 — `workflows/` is the additive home for the harness-
+        # facing SUT contract surface (Phase-6 ADR-0001 four-name commitment:
+        # `VulnRemediationCase` / `VulnRemediationResult` / `SutDigest` /
+        # `VulnRemediationSut`). Established as a new top-level package by
+        # S1-01 with `vuln_sut.py` + `_frozen.py` (single-canonical-home for
+        # `_FROZEN_FORBID`); future Phase-6 modules (S1-02 ledger sum union,
+        # S3-01 plugin-local subgraph adapter, S5-01 stable SUT adapter)
+        # land here by precedent. Phase 7 + Phase 9 sibling SUTs
+        # (`migration_sut.py`, `temporal_vuln_sut.py`) land beside without
+        # editing existing files (Open/Closed at the file boundary).
+        "workflows",
     }
 )
 
