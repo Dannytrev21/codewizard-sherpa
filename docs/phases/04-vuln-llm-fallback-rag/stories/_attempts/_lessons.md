@@ -330,4 +330,3 @@ General rule: when the arch prose names a behaviour as
 a module-level function in a sibling policy module and pin
 `assert not hasattr(Model, "method")` so a future drive-by edit can't
 silently reintroduce the cycle.
-
