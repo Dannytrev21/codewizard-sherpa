@@ -1,7 +1,7 @@
 # Story S4-02 — Embeddings cache.sqlite (BLAKE3(text)-keyed cache-aside; lazy-open; rebuild-on-corruption)
 
 **Step:** Step 4 — Ship RAG substrate kernel: Embedder + SolvedExampleStore + record provenance
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S4-02.md`](_attempts/S4-02.md) for the per-AC evidence table + gate log — `CachedEmbedder` BLAKE3(text)-keyed SQLite cache-aside lands at `src/codegenie/rag/embedding_cache.py` (~360 lines: composite-key schema, lazy-open, two-tier corruption recovery, `threading.RLock`-guarded shared connection, tuple-backed `EmbeddingVector` boundary, `INSERT OR REPLACE` idempotence). `EmbeddingsCacheCorrupted` joins the typed errors at `src/codegenie/rag/errors.py` as a private row-corruption marker the public `embed()` path catches and never leaks. 19 unit tests + 1 Hypothesis property (100 examples) cover AC-1..AC-10; AC-11 lint/format/`mypy --strict` clean on touched. Story-scoped gates green: `make fence` 475 passed, `make typecheck` 230 files, `make lint-imports` 11 contracts kept / 0 broken (path-scoped fence under `codegenie.rag` unchanged — no LLM SDK admission needed). Full suite 6921 passed / 42 skipped / 9 xfailed (L-2 macOS `tsconfig_pathological` timing flake + L-4 `lint_imports_canary` PATH issue deselected per attempt-log convention; CI Linux clean). Three new lessons (L-S402-1 sqlite-corruption fixture shape, L-S402-2 structlog capture_logs vs caplog, L-S402-3 float32 round-trip equality) captured.)
 **Effort:** S
 **Depends on:** S4-01 (`Embedder` Protocol + `FastembedEmbedder` + `model_digest()`)
 **ADRs honored:** ADR-0007 (cache keyed on BLAKE3 of input text + model_digest column; edge case #13 — corruption rebuild)

@@ -208,3 +208,34 @@ The MIN_ENV pattern (`{"PATH": "/usr/bin:/bin"}`) for gate-isolation testing
 strips the venv from PATH — when MIN_ENV is in effect, call `make` (which
 finds its own tools); when MIN_ENV is not in effect, use `sys.executable` for
 the interpreter.
+
+## L-16 (S4-02) — A 1-byte zero file is NOT a corrupt sqlite db
+
+`sqlite3.connect()` + `PRAGMA journal_mode=WAL` + `CREATE TABLE IF NOT
+EXISTS` all succeed on `b"\x00"`. Sqlite permissively treats a near-empty
+file as a fresh database. To exercise a `DatabaseError`-trip fixture for
+the rebuild-on-corruption path, use a sqlite-shaped-but-malformed file
+(`b"SQLite format 3\x00" + b"\xff" * 200`); the magic header forces sqlite
+to attempt body parsing, which then fails with `file is not a database`.
+Assert your simulator actually raises the targeted exception before
+relying on it.
+
+## L-17 (S4-02) — `structlog.testing.capture_logs` not `caplog` for structlog events
+
+The pytest `caplog` fixture only sees stdlib `logging` events; codegenie's
+`_log = structlog.get_logger(__name__)` events flow through structlog's
+own processor chain. For unit tests of code that emits via `_log.warning`
+/ `_log.info`, use `with capture_logs() as logs:` (from
+`structlog.testing`) and assert `entry.get("event") == "my_event_name"`.
+The smoke suite documents the inverse pin: re-configuring structlog
+mid-test clobbers `capture_logs`'s injected processor (see
+`tests/smoke/conftest.py::_disable_cli_configure_logging`).
+
+## L-18 (S4-02) — Float32 round-trip equality requires power-of-2 denominators
+
+`tuple(float(i) / 100.0 for i in range(384))` does NOT survive
+`float64 → float32 → float64` because `0.01` has no exact float32
+representation. Use `float(i) / 256.0` (power-of-2 denominator) when the
+test wants exact tuple equality after a `np.float32` round-trip. The
+encoder is canonical in float32 — testing against values that lose
+precision tests float arithmetic, not the encoder contract.

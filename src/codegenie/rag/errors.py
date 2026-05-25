@@ -111,4 +111,42 @@ class EmbeddingModelMismatch(Exception):
         )
 
 
-__all__ = ("EmbeddingModelMismatch", "EmbeddingsBootstrapRequired")
+class EmbeddingsCacheCorrupted(Exception):
+    """Raised internally by :mod:`codegenie.rag.embedding_cache` when a
+    single cached row's vector blob is not a length-checked ``np.float32``
+    payload of ``_VECTOR_BYTES`` bytes. Carries the composite-key triple
+    (``text_blake3``, ``model_digest``, observed ``byte_len``) so the
+    caller can delete *exactly* that row before re-embedding (story S4-02
+    AC-8).
+
+    This exception is a private contract between the cache wrapper's
+    ``_decode_row`` helper and its ``embed()`` / ``embed_batch()`` shells.
+    It MUST NOT escape the public ``Embedder`` boundary — the shells catch
+    it, delete the offending row, log ``embedding_cache_row_corrupted``,
+    re-embed, and write the replacement (S4-02 §AC-8).
+    """
+
+    __slots__ = ("byte_len", "model_digest", "text_blake3")
+
+    text_blake3: str
+    model_digest: str
+    byte_len: int
+
+    def __init__(self, *, text_blake3: str, model_digest: str, byte_len: int) -> None:
+        super().__init__(text_blake3, model_digest, byte_len)
+        self.text_blake3 = text_blake3
+        self.model_digest = model_digest
+        self.byte_len = byte_len
+
+    def __str__(self) -> str:
+        return (
+            f"embeddings cache row corrupt — text_blake3={self.text_blake3} "
+            f"model_digest={self.model_digest} byte_len={self.byte_len}"
+        )
+
+
+__all__ = (
+    "EmbeddingModelMismatch",
+    "EmbeddingsBootstrapRequired",
+    "EmbeddingsCacheCorrupted",
+)
