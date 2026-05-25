@@ -271,6 +271,12 @@ PHASE4_NAMES = {
     "StoreDigest",
     "TokenCount",
 }
+# Phase 6 S1-01 — VulnRemediationSut contract substrate.
+PHASE6_NEWTYPE_NAMES = {
+    "VulnCaseId",
+    "RepoFixtureRef",
+    "SutDigest",
+}
 
 
 def test_newtype_names_pinned() -> None:
@@ -307,6 +313,7 @@ def test_all_is_exact_set() -> None:
         | PHASE7_NEWTYPE_NAMES
         | PHASE7_TYPE_ALIAS_NAMES
         | PHASE4_NAMES
+        | PHASE6_NEWTYPE_NAMES
     )
     assert ids.__all__ == sorted(ids.__all__), "__all__ must be sorted"
 
@@ -361,6 +368,11 @@ def test_newtype_registry_matches_all() -> None:
             assert "ADR-000" in doc or "ADR-001" in doc, (
                 f"{name} Phase 4 docstring missing Phase 4 ADR citation"
             )
+        elif name in PHASE6_NEWTYPE_NAMES:
+            # Phase 6 S1-01 — entries cite production ADR-0010 (newtype
+            # discipline) AND the Phase-6 ADR-0001 SUT contract.
+            assert "ADR-0010" in doc, f"{name} Phase 6 docstring missing ADR-0010 citation"
+            assert "ADR-0001" in doc, f"{name} Phase 6 docstring missing ADR-0001 citation"
         else:
             assert "ADR-0010" in doc, f"{name} docstring missing ADR-0010 citation"
 

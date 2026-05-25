@@ -653,6 +653,7 @@ source_modules = [
   "codegenie.transforms",
   "codegenie.types",
   "codegenie.vuln_index",
+  "codegenie.workflows",
 ]
 forbidden_modules = ["codegenie.fallback.budget_token"]
 ignore_imports = [
@@ -727,6 +728,7 @@ source_modules = [
   "codegenie.transforms",
   "codegenie.types",
   "codegenie.vuln_index",
+  "codegenie.workflows",
 ]
 as_packages = true
 forbidden_modules = ["codegenie.rag._capability_mint"]

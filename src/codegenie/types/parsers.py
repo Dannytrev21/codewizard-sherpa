@@ -45,15 +45,18 @@ from codegenie.types.identifiers import (
     PrimitiveName,
     RecipeId,
     RegistryUrl,
+    RepoFixtureRef,
     RuntimeId,
     SemverVersion,
     SignalKind,
     Similarity,
     SolvedExampleId,
     StoreDigest,
+    SutDigest,
     TokenCount,
     TransformId,
     TransformKind,
+    VulnCaseId,
     WorkflowId,
 )
 
@@ -78,15 +81,18 @@ __all__ = [
     "parse_primitive_name",
     "parse_recipe_id",
     "parse_registry_url",
+    "parse_repo_fixture_ref",
     "parse_runtime_id",
     "parse_semver",
     "parse_signal_kind",
     "parse_similarity",
     "parse_solved_example_id",
     "parse_store_digest",
+    "parse_sut_digest",
     "parse_token_count",
     "parse_transform_id",
     "parse_transform_kind",
+    "parse_vuln_case_id",
     "parse_workflow_id",
 ]
 
@@ -148,6 +154,16 @@ _SHA256_DIGEST_LEN: Final[int] = 7 + 64
 # messages name the correct type (Phase 3 ``_match``-closure-per-newtype
 # precedent).
 _RUNTIME_KEBAB_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+
+# Phase 6 S1-01 — ``RepoFixtureRef`` grammar (``^[a-z][a-z0-9_-]*$``, ≤ 128
+# chars). A *name*, never a path: leading slash, ``..`` components, and
+# uppercase are all rejected by the grammar above.
+_REPO_FIXTURE_REF_RX: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]*$")
+# Phase 6 S1-01 — ``SutDigest`` grammar: ``blake3:<64 lowercase hex>``. Same
+# shape as Phase-3 ``BundleCacheKey`` but the semantic is "behaviour digest of
+# a SUT," not "cache key over inputs."
+_SUT_DIGEST_RX: Final[re.Pattern[str]] = re.compile(r"^blake3:[0-9a-f]{64}$")
+_SUT_DIGEST_LEN: Final[int] = 7 + 64
 
 # Phase 7 S1-01 — ``parse_image_ref`` floor. Tight rejection set covering
 # whitespace + C0 control chars (``\x00..\x1f``) + DEL (``\x7f``). Full
@@ -213,6 +229,10 @@ _layer_digest_match = _regex_parser(
 )
 _runtime_id_match = _regex_parser(_RUNTIME_KEBAB_RX, max_len=64, name="RuntimeId")
 _docker_stage_name_match = _regex_parser(_RUNTIME_KEBAB_RX, max_len=64, name="DockerStageName")
+# Phase 6 S1-01 — per-newtype closures.
+_vuln_case_id_match = _regex_parser(_ULID_RX, max_len=26, name="VulnCaseId")
+_repo_fixture_ref_match = _regex_parser(_REPO_FIXTURE_REF_RX, max_len=128, name="RepoFixtureRef")
+_sut_digest_match = _regex_parser(_SUT_DIGEST_RX, max_len=_SUT_DIGEST_LEN, name="SutDigest")
 
 
 def _is_ascii(s: str) -> bool:
@@ -563,3 +583,28 @@ def parse_image_ref(s: str) -> Result[ImageRef, ParseError]:
                 error=ParseError(message="ImageRef: empty tag after ':' is not allowed", value=s)
             )
     return Ok(value=ImageRef(s))
+
+
+# --- Phase 6 S1-01 — VulnRemediationSut contract substrate parsers --------
+
+
+def parse_vuln_case_id(s: str) -> Result[VulnCaseId, ParseError]:
+    """External boundary: bench-harness case-id ULID. ADR-0010 + Phase-6 ADR-0001."""
+    r = _vuln_case_id_match(s)
+    if isinstance(r, Err):
+        return Err(
+            error=ParseError(message="VulnCaseId: must be 26-char Crockford base32 ULID", value=s)
+        )
+    return Ok(value=VulnCaseId(r.value))
+
+
+def parse_repo_fixture_ref(s: str) -> Result[RepoFixtureRef, ParseError]:
+    """External boundary: bench-harness fixture *name* (never a path). ADR-0010 + ADR-0001."""
+    r = _repo_fixture_ref_match(s)
+    return Ok(value=RepoFixtureRef(r.value)) if isinstance(r, Ok) else r
+
+
+def parse_sut_digest(s: str) -> Result[SutDigest, ParseError]:
+    """Internal boundary: ``blake3:<64-hex>`` SUT behaviour digest. ADR-0010 + Phase-6 ADR-0001."""
+    r = _sut_digest_match(s)
+    return Ok(value=SutDigest(r.value)) if isinstance(r, Ok) else r

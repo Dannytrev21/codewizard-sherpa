@@ -163,6 +163,25 @@ HexNonce = NewType("HexNonce", str)
 # BLAKE3-rolled manifest chain head. S4-04/S4-05 consume.
 ChainHead = NewType("ChainHead", str)
 
+# --- Phase-6 catalog (S1-01 — VulnRemediationSut contract substrate) ------
+
+# ULID identifying a single vulnerability-remediation case the bench harness
+# feeds the SUT. Smart constructor :func:`codegenie.types.parsers.parse_vuln_case_id`.
+# Phase 6 ADR-0001 + production ADR-0010.
+VulnCaseId = NewType("VulnCaseId", str)
+
+# Name of a repo fixture (NOT a path) — ``^[a-z][a-z0-9_-]*$``, ≤ 128 chars.
+# The harness resolves the name to a working-tree path; the SUT receives only
+# the reference. Phase 6 ADR-0001 + production ADR-0010.
+RepoFixtureRef = NewType("RepoFixtureRef", str)
+
+# ``blake3:<64 lowercase hex>`` digest of a SUT's stable behaviour. Phase 9
+# S4-05 G5 conformance later asserts ``LocalVulnRemediationSut.digest()`` and
+# ``TemporalVulnRemediationSut.digest()`` produce byte-identical output for
+# byte-identical input — the pure helper that computes this digest lives in
+# :mod:`codegenie.workflows.vuln_sut`. Phase 6 ADR-0001 + production ADR-0010.
+SutDigest = NewType("SutDigest", str)
+
 # --- Phase-7 catalog (S1-01) ----------------------------------------------
 
 # OCI image reference (``registry/name[:tag]`` or ``name[:tag]``). The smart
@@ -242,6 +261,7 @@ __all__ = [
     "ProvenanceAdapterId",
     "RecipeId",
     "RegistryUrl",
+    "RepoFixtureRef",
     "RuntimeId",
     "SemverVersion",
     "SignalKind",
@@ -249,10 +269,12 @@ __all__ = [
     "SkillId",
     "SolvedExampleId",
     "StoreDigest",
+    "SutDigest",
     "TaskClassId",
     "TokenCount",
     "TransformId",
     "TransformKind",
+    "VulnCaseId",
     "WorkflowId",
 ]
 
@@ -336,5 +358,18 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     ),
     "DockerStageName": (
         "Phase-7 Dockerfile AS-stage name (ADR-0004); BaseImageStage.name + Dockerfile recipes."
+    ),
+    # Phase-6 (S1-01 — VulnRemediationSut contract substrate).
+    "VulnCaseId": (
+        "Phase-6 vulnerability-remediation case ULID (ADR-0010 + Phase-6 ADR-0001); "
+        "VulnRemediationCase.case_id."
+    ),
+    "RepoFixtureRef": (
+        "Phase-6 named repo-fixture reference (ADR-0010 + Phase-6 ADR-0001); "
+        "VulnRemediationCase.repo_fixture — name, never an absolute path."
+    ),
+    "SutDigest": (
+        "Phase-6 ``blake3:<64-hex>`` SUT digest (ADR-0010 + Phase-6 ADR-0001); "
+        "Phase-9 S4-05 G5 byte-equality substrate across Local/Temporal SUTs."
     ),
 }

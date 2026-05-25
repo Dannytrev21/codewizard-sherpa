@@ -1,0 +1,200 @@
+{
+  "all": [
+    "SutDigest",
+    "VulnRemediationCase",
+    "VulnRemediationResult",
+    "VulnRemediationSut"
+  ],
+  "case_schema": {
+    "additionalProperties": false,
+    "description": "Frozen Pydantic model \u2014 the bench harness hands one of these per case.",
+    "properties": {
+      "case_id": {
+        "title": "Case Id",
+        "type": "string"
+      },
+      "cassette_id": {
+        "title": "Cassette Id",
+        "type": "string"
+      },
+      "cve": {
+        "title": "Cve",
+        "type": "string"
+      },
+      "execution_mode": {
+        "enum": [
+          "dry_run",
+          "apply",
+          "replay"
+        ],
+        "title": "Execution Mode",
+        "type": "string"
+      },
+      "repo_fixture": {
+        "title": "Repo Fixture",
+        "type": "string"
+      }
+    },
+    "required": [
+      "case_id",
+      "repo_fixture",
+      "cve",
+      "cassette_id",
+      "execution_mode"
+    ],
+    "title": "VulnRemediationCase",
+    "type": "object"
+  },
+  "is_runtime_protocol": true,
+  "protocol": {
+    "digest": {
+      "annotations": {
+        "return": "SutDigest"
+      },
+      "is_coroutine_function": false,
+      "signature": "(self) -> 'SutDigest'"
+    },
+    "run_case": {
+      "annotations": {
+        "request": "VulnRemediationCase",
+        "return": "VulnRemediationResult"
+      },
+      "is_coroutine_function": true,
+      "signature": "(self, request: 'VulnRemediationCase') -> 'VulnRemediationResult'"
+    }
+  },
+  "result_schema": {
+    "$defs": {
+      "CostSummary": {
+        "additionalProperties": false,
+        "description": "Token + cassette-replay accounting summary.\n\nNo provider names, no model slugs \u2014 those would couple the harness to\nPhase-4 internals; the bench scorecard reports token cost per case, not\nper model.",
+        "properties": {
+          "cassette_replays": {
+            "title": "Cassette Replays",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tokens_in",
+          "tokens_out",
+          "cassette_replays"
+        ],
+        "title": "CostSummary",
+        "type": "object"
+      },
+      "EvidenceRef": {
+        "additionalProperties": false,
+        "description": "A relative-path reference into the per-run artifact directory.\n\nRejects at construction (AC-5):\n\n* Absolute paths (POSIX ``/...``, Windows drive ``C:\\...``).\n* ``..`` components anywhere in the path.\n* Null bytes (``\\x00``) and C0/DEL control chars.\n* Secret-shaped substrings \u2014 the canonical\n  :data:`codegenie.coordinator.validator.SECRET_FIELD_PATTERN` matched as\n  a *substring* (so ``foo /etc/passwd`` and ``GITHUB_TOKEN=ghp_...``\n  both die before they reach the harness).\n* Cleartext secrets matching any of the Phase-2 sanitizer's\n  ``_PATTERNS`` (AWS / GitHub / JWT / RSA / npm / Anthropic).",
+        "properties": {
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "EvidenceRef",
+        "type": "object"
+      },
+      "GateSummary": {
+        "additionalProperties": false,
+        "description": "Summarised Phase-5 gate outcome the harness consumes.\n\n*Not* the full gate transcript \u2014 that lives in the per-run artifact\ndirectory referenced by ``VulnRemediationResult.evidence_references``.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "last_outcome": {
+            "enum": [
+              "pass",
+              "fail_retryable",
+              "fail_terminal",
+              "not_run"
+            ],
+            "title": "Last Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempts",
+          "last_outcome"
+        ],
+        "title": "GateSummary",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Frozen Pydantic model \u2014 sanitization-enforcing harness output.",
+    "properties": {
+      "case_id": {
+        "title": "Case Id",
+        "type": "string"
+      },
+      "cost_summary": {
+        "$ref": "#/$defs/CostSummary"
+      },
+      "evidence_references": {
+        "items": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "title": "Evidence References",
+        "type": "array"
+      },
+      "failure_modes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Failure Modes",
+        "type": "array"
+      },
+      "gate_summary": {
+        "$ref": "#/$defs/GateSummary"
+      },
+      "patch_digest": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Patch Digest"
+      },
+      "sut_digest": {
+        "title": "Sut Digest",
+        "type": "string"
+      },
+      "terminal_state": {
+        "enum": [
+          "completed",
+          "awaiting_human_review",
+          "failed_unrecoverable"
+        ],
+        "title": "Terminal State",
+        "type": "string"
+      }
+    },
+    "required": [
+      "case_id",
+      "terminal_state",
+      "patch_digest",
+      "gate_summary",
+      "failure_modes",
+      "cost_summary",
+      "evidence_references",
+      "sut_digest"
+    ],
+    "title": "VulnRemediationResult",
+    "type": "object"
+  }
+}

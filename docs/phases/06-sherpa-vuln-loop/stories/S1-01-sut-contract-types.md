@@ -1,7 +1,8 @@
 # S1-01 — SUT contract types
 
-**Status:** HARDENED
+**Status:** GREEN
 **Validated:** 2026-05-25 — see [`_validation/S1-01-sut-contract-types.md`](_validation/S1-01-sut-contract-types.md).
+**Executed:** 2026-05-25 — see [`_attempts/S1-01-sut-contract-types.md`](_attempts/S1-01-sut-contract-types.md).
 **Depends on:** Foundation — no upstream story deps (kernel-tier identifier additions to `codegenie.types.identifiers` + a new `codegenie.workflows` package).
 
 **Goal:** Land the stable harness-facing `VulnRemediationSut` Protocol plus the four immutable, sanitized models the Phase-6.5 bench harness will consume — and *only* those — so every later Phase-6 story (ledger, subgraph, HITL, adapter) can target a frozen public surface and Phase-9 can later swap a `TemporalVulnRemediationSut` behind the same Protocol without touching the harness side.
@@ -26,13 +27,13 @@ This is the contracts-first story High-level-impl.md §Step 1 mandates. The conc
 
 ### Public surface (the four ADR-0001 names)
 
-- [ ] **AC-1 — Canonical module + re-exports.** A new package `src/codegenie/workflows/` exists with:
+- [x] **AC-1 — Canonical module + re-exports.** A new package `src/codegenie/workflows/` exists with:
   - `vuln_sut.py` declaring `VulnRemediationCase`, `VulnRemediationResult`, `SutDigest`, and `VulnRemediationSut`.
   - `__init__.py` re-exporting exactly those four names (and nothing else from this story) via an explicit `__all__`. No `from .vuln_sut import *`.
   - The Phase-6.5-facing public import path is `from codegenie.workflows import VulnRemediationCase, VulnRemediationResult, SutDigest, VulnRemediationSut`. A test asserts importing from `codegenie.workflows.vuln_sut` and from `codegenie.workflows` yields the same four objects (`is`-identity).
   - **Rule-of-three note (DP-A):** the file is named `vuln_sut.py`, *not* `sut.py`, so the next task class (Phase 7 migration) can add `migration_sut.py` beside it without editing this story's file — Open/Closed at the file boundary, anticipating but not building the SUT registry the rule-of-three would justify only at the third concrete SUT.
 
-- [ ] **AC-2 — `VulnRemediationSut` Protocol shape (frozen — ADR-0001).**
+- [x] **AC-2 — `VulnRemediationSut` Protocol shape (frozen — ADR-0001).**
   ```python
   @runtime_checkable
   class VulnRemediationSut(Protocol):
@@ -41,7 +42,7 @@ This is the contracts-first story High-level-impl.md §Step 1 mandates. The conc
   ```
   A static test asserts: (i) two declared methods, no more; (ii) `run_case` is an *async* coroutine function on conforming implementations (verified via `inspect.iscoroutinefunction` on a hand-written conforming stub that the test instantiates); (iii) `digest` is *sync*; (iv) parameter and return annotations match the strings above byte-for-byte (use `typing.get_type_hints` against the Protocol; missing or extra method → fail).
 
-- [ ] **AC-3 — `VulnRemediationCase` field shape (frozen Pydantic model, `extra="forbid"`).** Fields:
+- [x] **AC-3 — `VulnRemediationCase` field shape (frozen Pydantic model, `extra="forbid"`).** Fields:
   - `case_id: VulnCaseId` (new kernel-tier `NewType("VulnCaseId", str)` — ULID; smart-constructed via `parsers.parse_vuln_case_id`).
   - `repo_fixture: RepoFixtureRef` (new kernel-tier `NewType("RepoFixtureRef", str)` — `^[a-z][a-z0-9_-]*$`, ≤ 128 chars; the *name* of a fixture, never an absolute path).
   - `cve: CveId` (existing newtype).
@@ -49,7 +50,7 @@ This is the contracts-first story High-level-impl.md §Step 1 mandates. The conc
   - `execution_mode: ExecutionMode` where `ExecutionMode = Literal["dry_run", "apply", "replay"]` (closed Literal; the test asserts the membership set is byte-equal to that triple — adding a fourth mode is an ADR amendment, never a `str`-widening).
   - All fields required (no defaults); model carries `model_config = _FROZEN_FORBID` (the constant pattern Phase-3 / Phase-4 already use). Frozenness verified by a test that catches `pydantic.ValidationError` on attribute mutation; `extra="forbid"` verified by a test that catches it on construction with an unknown key.
 
-- [ ] **AC-4 — `VulnRemediationResult` field shape (frozen Pydantic model, `extra="forbid"`, sanitization-enforcing).** Fields:
+- [x] **AC-4 — `VulnRemediationResult` field shape (frozen Pydantic model, `extra="forbid"`, sanitization-enforcing).** Fields:
   - `case_id: VulnCaseId`.
   - `terminal_state: TerminalState` where `TerminalState = Literal["completed", "awaiting_human_review", "failed_unrecoverable"]`. The closed set maps exactly to the three terminal states of final-design.md §"State model" (`Completed`, `AwaitingHumanReview`, `FailedUnrecoverable`). The three *non-terminal* ledger states (`NeedsPlan`, `PlanReady`, `PatchApplied`, `GateFailedRetryable`) MUST NOT appear in `TerminalState` — a test enumerates the membership and asserts byte-equality (failure surfaces a directive: "Adding a terminal state requires an ADR amendment to ADR-0001").
   - `patch_digest: BlobDigest | None` (existing newtype — present iff `terminal_state == "completed"`; a `model_validator` rejects all other combinations).
@@ -60,39 +61,39 @@ This is the contracts-first story High-level-impl.md §Step 1 mandates. The conc
   - `sut_digest: SutDigest` — see AC-7.
   - All sub-models use `_FROZEN_FORBID`; an AST test walking `vuln_sut.py` asserts every `BaseModel` subclass sets `model_config = _FROZEN_FORBID` (no exceptions). The constant is imported once from a single canonical location (`codegenie.workflows._frozen`, or via `from codegenie.transforms.outcomes import _FROZEN_FORBID` if the existing constant is promoted to a kernel home in this story — pick one and document the choice in a one-line code comment).
 
-- [ ] **AC-5 — Sanitization is enforced by construction, not by convention.** Three property-based tests (Hypothesis):
+- [x] **AC-5 — Sanitization is enforced by construction, not by convention.** Three property-based tests (Hypothesis):
   - For any drawn `evidence_references` tuple containing at least one absolute path (`st.text().filter(lambda s: s.startswith("/"))`), `VulnRemediationResult(...)` raises `pydantic.ValidationError`. The reason field of the error names `EvidenceRef` and the rejected substring (so the directive is actionable).
   - For any drawn `evidence_references` element matching one of the secret-shaped patterns (`^(?i)(.*_)?(KEY|TOKEN|SECRET|PASSWORD|PAT|JWT|CRED)(_.*)?$` *as a substring*, or matching the JWT / AWS / GitHub-PAT regexes from `codegenie/output/sanitizer.py`), construction is rejected with a directive-shaped error.
   - For any drawn `failure_modes` element NOT matching `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$` (Phase-1 ADR-0007), construction is rejected.
   Two example-based negative tests pin the directive text on `"/etc/passwd"` and `"GITHUB_TOKEN=ghp_..."`. **Mutation thinking:** a `regex.search` swapped for `regex.fullmatch` would let `"foo /etc/passwd"` slip through; the property-test substring draws catch that.
 
-- [ ] **AC-6 — Phase-6.5 import fence (static structural defense).** A new fence test at `tests/fence/test_workflows_public_surface.py` asserts:
+- [x] **AC-6 — Phase-6.5 import fence (static structural defense).** A new fence test at `tests/fence/test_workflows_public_surface.py` asserts:
   - The four named symbols are *importable* from `codegenie.workflows`.
   - The four named symbols are *not* importable from any private path: a glob over `src/codegenie/workflows/_*.py` returns no module that re-exports them.
   - An AST walk over `src/codegenie/workflows/__init__.py` asserts `__all__` is exactly the set `{"VulnRemediationCase", "VulnRemediationResult", "SutDigest", "VulnRemediationSut"}` (anticipates future expansion: a comment in the test names the file as the seam where future SUTs land).
   - **Phase-6.5 substrate fence:** a stub `tests/fence/test_phase6_no_graph_imports_from_phase65.py` walks every Python file under a hypothetical `tests/integration/phase65_harness/` *if it exists* (skipped when absent; the actual fence lands in Phase-6.5's S1), and asserts no import touches `plugins.vulnerability_remediation__node__npm.subgraph`, `codegenie.workflows.vuln_ledger`, or any module name beginning with `_`. This story ships the *placeholder* fence so the executor cannot forget it; Phase-6.5 fills the harness side.
 
-- [ ] **AC-7 — `SutDigest` byte-stability + sensitivity (Hypothesis property tests).** `SutDigest = NewType("SutDigest", str)`; a smart constructor `parsers.parse_sut_digest` accepts only `^blake3:[0-9a-f]{64}$` (mirrors Phase-3 `BundleCacheKey` shape). Three properties:
+- [x] **AC-7 — `SutDigest` byte-stability + sensitivity (Hypothesis property tests).** `SutDigest = NewType("SutDigest", str)`; a smart constructor `parsers.parse_sut_digest` accepts only `^blake3:[0-9a-f]{64}$` (mirrors Phase-3 `BundleCacheKey` shape). Three properties:
   - **Stability:** for any drawn `VulnRemediationCase` `c`, computing the digest substrate `_compute_sut_digest_input(c)` twice yields byte-equal bytes (functional core determinism).
   - **Sensitivity:** for any two drawn cases `c1 ≠ c2` (different on at least one field), `_compute_sut_digest_input(c1) != _compute_sut_digest_input(c2)`. Encoded via Hypothesis `assume(c1 != c2)`; mutation thinking — a buggy implementation that omits one field from the digest would silently collide and fail this property.
   - **No-side-effects:** `digest()` does not touch the filesystem, network, env, or clock — verified by an AST test that walks any future `digest` implementation and forbids the names `open`, `socket`, `urllib`, `httpx`, `requests`, `time.time`, `time.monotonic`, `datetime.now`, `os.environ`, `os.getenv`. (No concrete implementation lands in this story — the AST test is a placeholder asserting that *if* `digest` is defined on a `VulnRemediationSut` implementation under `codegenie/workflows/`, it does not import any of those names. Will start passing trivially because no implementation exists yet, and will start *biting* in S5-01 when the concrete adapter lands.)
 
-- [ ] **AC-8 — JSON round-trip preserves byte-equality (determinism floor).** For any drawn `VulnRemediationCase` / `VulnRemediationResult`, `Model.model_validate_json(m.model_dump_json()) == m` AND `m.model_dump_json()` is byte-deterministic across two independent dumps (sorted keys; Pydantic v2 does this by default but the test pins it explicitly — a future config flip flag-day catches here, not in Phase-6.5).
+- [x] **AC-8 — JSON round-trip preserves byte-equality (determinism floor).** For any drawn `VulnRemediationCase` / `VulnRemediationResult`, `Model.model_validate_json(m.model_dump_json()) == m` AND `m.model_dump_json()` is byte-deterministic across two independent dumps (sorted keys; Pydantic v2 does this by default but the test pins it explicitly — a future config flip flag-day catches here, not in Phase-6.5).
 
-- [ ] **AC-9 — Contract snapshot (CI-gating).** A test at `tests/integration/test_phase6_sut_contract_snapshot.py` byte-compares `model_json_schema(by_alias=True)` for `VulnRemediationCase` + `VulnRemediationResult` + a structural snapshot of the `VulnRemediationSut` Protocol (`inspect.signature` of each method + the four `__all__` names) against a golden at `tests/golden/phase6-contract/snapshot.json`. The test:
+- [x] **AC-9 — Contract snapshot (CI-gating).** A test at `tests/integration/test_phase6_sut_contract_snapshot.py` byte-compares `model_json_schema(by_alias=True)` for `VulnRemediationCase` + `VulnRemediationResult` + a structural snapshot of the `VulnRemediationSut` Protocol (`inspect.signature` of each method + the four `__all__` names) against a golden at `tests/golden/phase6-contract/snapshot.json`. The test:
   - Fails byte-exact on any change.
   - On failure, prints a directive: *"Phase-6 SUT contract drift. If additive (new optional field with default / new sub-model class added without removing or renaming an existing field), regenerate the golden under `PHASE6_CONTRACT_GOLDEN_REWRITE=1 pytest tests/integration/test_phase6_sut_contract_snapshot.py` and amend ADR-0001 §Consequences. If breaking (rename, removal, required-without-default, runtime_checkable removal, Literal narrowing), this is an ADR-0001 amendment + downstream Phase-6.5 / Phase-9 review per ADR-0001 §Consequences."*
   - A *meta-test* `tests/integration/test_phase6_sut_contract_snapshot_meta.py` constructs two synthetic snapshots (one additive, one breaking) and asserts the helper classifies them correctly — guards the directive logic itself (mutation thinking: a `==` swapped for `!=` would silently let breaking changes through; the meta-test catches that. This is the exact gap the Phase-3 S6-06 validation report flagged as "the scariest failure mode").
 
-- [ ] **AC-10 — Newtype registry registration.** The new identifiers introduced by this story (`VulnCaseId`, `RepoFixtureRef`, `SutDigest`) are added to:
+- [x] **AC-10 — Newtype registry registration.** The new identifiers introduced by this story (`VulnCaseId`, `RepoFixtureRef`, `SutDigest`) are added to:
   - `codegenie.types.identifiers.__all__`,
   - the `_NEWTYPE_REGISTRY` mapping with a one-line docstring naming ADR-0010 + Phase-6 ADR-0001,
   - their smart constructors land in `codegenie.types.parsers`.
   The existing identifier registry drift test (`tests/unit/types/test_identifiers_phase3.py::test_newtype_registry_matches_all` and the Phase-4 / Phase-7 equivalents) is extended (or a Phase-6 sibling added) so an unregistered newtype fails CI.
 
-- [ ] **AC-11 — `mypy --strict` clean.** All new modules pass `make typecheck` with no `Any`, no untyped `dict`, no `# type: ignore` without a comment naming the upstream issue. CLAUDE.md "Type everything, strictly" precedent.
+- [x] **AC-11 — `mypy --strict` clean.** All new modules pass `make typecheck` with no `Any`, no untyped `dict`, no `# type: ignore` without a comment naming the upstream issue. CLAUDE.md "Type everything, strictly" precedent.
 
-- [ ] **AC-12 — Public-surface allowlist sentinel.** A static test enumerates every public name exported from `codegenie.workflows` (via `dir()` filtered to non-underscore names) and asserts it equals the set in AC-1. This is the "extension by addition" enforcement mechanism CLAUDE.md names as load-bearing: a new public name lands by additive ADR amendment + this test's allowlist edit, never by accident.
+- [x] **AC-12 — Public-surface allowlist sentinel.** A static test enumerates every public name exported from `codegenie.workflows` (via `dir()` filtered to non-underscore names) and asserts it equals the set in AC-1. This is the "extension by addition" enforcement mechanism CLAUDE.md names as load-bearing: a new public name lands by additive ADR amendment + this test's allowlist edit, never by accident.
 
 ## Files to touch
 
