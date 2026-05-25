@@ -28,7 +28,7 @@ Phase 4 ships the full layered control:
 
 - **Sanitize at record:** `pytest-recording` `before_record_request/response` hooks strip `Authorization`, `X-API-Key`, `Cookie`, `Set-Cookie`, `anthropic-version` headers; body scans for `sk-ant-*` / `claude_*` patterns and 40+-char base64-shaped header values.
 - **CI security scanner:** `tests/security/test_cassettes_clean.py` walks `tests/cassettes/` and fails CI on any leaked pattern (header, body, or shaped token).
-- **CODEOWNERS gate:** cassette diffs require `cassette-review` CODEOWNERS approval.
+- **CODEOWNERS gate:** cassette diffs require the single-human `cassette-steward` CODEOWNERS approval (per Gap 2 in `phase-arch-design.md` — the steward is one named human, not a team alias; rotation is human and quarterly via the CODEOWNERS handle).
 - **Content-addressed manifest:** `tests/cassettes/anthropic/cassettes.lock` carries per-cassette BLAKE3; CI compares on-disk hashes to lock and rejects un-committed re-records.
 - **Nightly drift job:** budget-capped CI job runs real Anthropic calls against a representative bench fixture and annotates drift (not workflow-blocking; cassette refresh + commit is the recovery).
 - **Operator refresh path:** `make refresh-cassettes` requires explicit `--i-understand-this-spends-tokens` flag + CODEOWNERS approval.

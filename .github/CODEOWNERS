@@ -20,7 +20,7 @@
 #
 # Phase 0 ships with a single maintainer. Team-level expansion is a Phase 1+
 # administrative change; the unit test under tests/unit/test_project_artifacts.py
-# enforces "every gated path has >= 1 owner token".
+# enforces "every gated path has at least one owner token".
 
 src/codegenie/probes/base.py @Dannytrev21
 tests/snapshots/probe_contract.v1.json @Dannytrev21
@@ -40,3 +40,12 @@ plugins/PLUGINS.lock @Dannytrev21
 # Broadening the allowed-registry list is a security decision (ADR amendment).
 src/codegenie/transforms/policy/lockfile-policy.yaml @Dannytrev21
 tools/policy/lockfile-policy.yaml @Dannytrev21
+
+# Cassette discipline (ADR-0014 of Phase 4; single rotating cassette-steward).
+# Steward rotates quarterly; the current steward updates these @handle lines as
+# part of handoff. Renewal mechanism: Phase 13.5 operator portal. The directory
+# rule keeps its trailing slash; the two file rules must not (the file's own
+# header above documents why).
+tests/cassettes/anthropic/ @Dannytrev21
+tests/cassettes/anthropic/cassettes.lock @Dannytrev21
+docs/operations/cassettes.md @Dannytrev21

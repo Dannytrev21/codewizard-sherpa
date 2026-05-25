@@ -90,12 +90,12 @@ def test_makefile_test_target_does_not_set_codegenie_live_llm() -> None:
     )
 
 
-def test_no_makefile_target_sets_codegenie_live_llm_today() -> None:
-    """Before S3-06 lands ``refresh-cassettes``, NO target may set the var.
-
-    Once S3-06 introduces ``refresh-cassettes``, that target becomes the
-    sole permitted setter. Until then, any setter is a regression. Update
-    this fence to whitelist ``refresh-cassettes`` in the S3-06 commit.
+def test_refresh_cassettes_is_the_sole_codegenie_live_llm_setter() -> None:
+    """S3-06 introduced ``refresh-cassettes`` as the sole permitted setter
+    of ``CODEGENIE_LIVE_LLM``. Any other target setting the var is a
+    regression — `make test` / `make check` / `make fence` and friends
+    must stay tokenless. Adding a second setter requires an ADR amendment
+    AND an update to this whitelist.
     """
     targets = _parse_make_targets()
     setters = [
@@ -103,9 +103,9 @@ def test_no_makefile_target_sets_codegenie_live_llm_today() -> None:
         for name, recipe in targets.items()
         if any("CODEGENIE_LIVE_LLM" in line for line in recipe)
     ]
-    assert setters == [], (
+    assert setters == ["refresh-cassettes"], (
         f"Unexpected Makefile targets set CODEGENIE_LIVE_LLM: {setters}. "
-        "Only S3-06's `refresh-cassettes` may set this var."
+        "Only `refresh-cassettes` may set this var (S3-06 / ADR-0014 §Decision item 6)."
     )
 
 

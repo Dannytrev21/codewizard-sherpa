@@ -134,4 +134,6 @@ nav:
           - Final design: phases/06.5-per-task-class-eval-harness/final-design.md
           - Architecture: phases/06.5-per-task-class-eval-harness/phase-arch-design.md
           - High-level impl: phases/06.5-per-task-class-eval-harness/High-level-impl.md
+  - Operations:
+      - Cassettes: operations/cassettes.md
   - Contributing: contributing.md

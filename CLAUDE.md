@@ -52,6 +52,8 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+**Cassette workflow:** Anthropic-call replay cassettes live under `tests/cassettes/anthropic/` with a BLAKE3 manifest at `tests/cassettes/anthropic/cassettes.lock`. The operator runbook — refresh triggers, the `make refresh-cassettes I_UNDERSTAND_THIS_SPENDS_TOKENS=1` ergonomic, the CODEOWNERS gate, and the four-layer discipline — is [`docs/operations/cassettes.md`](docs/operations/cassettes.md). Never run `pytest --record-mode=all` directly; always go through the make target so the explicit-acknowledgement gate fires.
+
 **Important pytest config (`pyproject.toml § [tool.pytest.ini_options]`):**
 - `asyncio_mode = "auto"` — coroutine tests run without `@pytest.mark.asyncio`.
 - `addopts` includes `--cov-fail-under=85`; running a narrow subset can falsely fail the coverage gate. Use `--no-cov` for ad-hoc subset runs.

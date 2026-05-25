@@ -331,6 +331,21 @@ workers stay blocked (the AC-8 isolation guarantee, for free). Do **not**
 request the fixture for tests that monkeypatch the socket layer or use
 mocks; those tests never reach the wrapper.
 
+### Recording Anthropic cassettes (Phase-4 S3-06)
+
+Do not run `pytest --record-mode=all` directly. Always use:
+
+```sh
+make refresh-cassettes I_UNDERSTAND_THIS_SPENDS_TOKENS=1
+```
+
+Direct invocation bypasses the explicit-acknowledgement gate that protects
+contributors from spending real Anthropic API tokens by accident, and it
+skips the `rebuild-lockfile` step that keeps `tests/cassettes/anthropic/cassettes.lock`
+in lockstep with the cassette bytes. The full operator runbook —
+refresh triggers, CODEOWNERS gate, the four-layer discipline — lives at
+[`docs/operations/cassettes.md`](operations/cassettes.md).
+
 ### Phase-4 adversarial suite (`phase04_adv` marker)
 
 Adversarial tests for Phase 4 (egress guard, prompt-fence, cassette

@@ -1,7 +1,7 @@
 # Story S3-06 — CODEOWNERS + `docs/operations/cassettes.md` runbook + `make refresh-cassettes` ergonomic
 
 **Step:** Step 3 — Ship LeafLlm Port + AnthropicLeafAdapter + EgressGuard + cassette discipline
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S3-06.md`](_attempts/S3-06.md) for the per-AC evidence table + gate log)
 **Effort:** S
 **Depends on:** S3-05 (`cassettes.lock` + scanner), S3-04 (`CassetteSanitizer` hooks installed in conftest), S3-02 (the live-API recording flow exists)
 **ADRs honored:** ADR-0014 (Phase 4 — cassette discipline §Decision item 6 — operator refresh path; §Improvements — CODEOWNERS gate), Gap 2 from `phase-arch-design.md §Gap analysis`

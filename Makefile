@@ -9,7 +9,7 @@
 # (story S1-03 AC-9). The CI runner is linux/amd64 (sh-as-dash); macOS-only
 # constructs would silently diverge.
 
-.PHONY: bootstrap check lint lint-imports typecheck test docs fence audit-verify clean
+.PHONY: bootstrap check lint lint-imports typecheck test docs fence audit-verify clean refresh-cassettes _refresh-cassettes-gate
 
 bootstrap:
 	@if command -v uv >/dev/null 2>&1; then \
@@ -57,3 +57,27 @@ audit-verify:
 clean:
 	@rm -rf .codegenie/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/
 	@find . -type d -name __pycache__ -prune -exec rm -rf {} +
+
+# ADR-0014 §Consequences — operator refresh path. The gate is split from the
+# action: `_refresh-cassettes-gate` is a cheap, side-effect-free policy check
+# (testable without spending tokens); `refresh-cassettes` depends on it and
+# carries the expensive recording. ADR-0014 §Decision item 6 writes the
+# acknowledgement as a CLI flag `--i-understand-this-spends-tokens`; `make`
+# targets cannot accept `--flags`, so the same contract is rendered as the
+# make variable I_UNDERSTAND_THIS_SPENDS_TOKENS=1. The intent — an explicit,
+# command-line-visible acknowledgement — is preserved.
+_refresh-cassettes-gate:
+	@if [ "$(I_UNDERSTAND_THIS_SPENDS_TOKENS)" != "1" ]; then \
+		echo "ERROR: refresh-cassettes spends real Anthropic API tokens."; \
+		echo "Re-run with: make refresh-cassettes I_UNDERSTAND_THIS_SPENDS_TOKENS=1"; \
+		exit 2; \
+	fi
+	@echo "ack-ok"
+
+refresh-cassettes: _refresh-cassettes-gate
+	@echo "Recording cassettes against live Anthropic API…"
+	CODEGENIE_LIVE_LLM=1 .venv/bin/pytest -q --record-mode=all -m "uses_anthropic_cassette"
+	.venv/bin/python -m codegenie cassette rebuild-lockfile
+	@echo ""
+	@echo "Recording complete. Review the cassette diffs and commit alongside cassettes.lock."
+	@echo "Cassette diffs require CODEOWNERS approval; tag the current steward."

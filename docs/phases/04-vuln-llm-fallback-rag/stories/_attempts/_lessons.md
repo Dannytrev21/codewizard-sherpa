@@ -174,3 +174,37 @@ to widen the fence to recognize `python -m <module>` / `python
 <script>` rather than wrap the CLI in a shim under `scripts/` — the
 shim adds a code path with no semantic value. S3-05 widened the fence;
 future CLI-driven hooks need no further change.
+
+---
+
+## L-13 (S3-06) — macOS pre-commit hooks that invoke bare `python` fail locally
+
+S3-05's `cassette-lock-check` hook uses `entry: python -m codegenie cassette
+rebuild-lockfile --check`. macOS default Python installs ship `python3` only,
+no `python` shim — so `pre-commit run --all-files` fails locally with
+"Executable `python` not found". CI Linux runners have `python` available so
+the hook passes there (and the S3-05 commit landed green). Three resolution
+paths if this ever becomes load-bearing: (a) ship `scripts/<hook>.sh` shim,
+(b) widen hook entry to resolve via `sys.executable`-equivalent, (c) document
+the divergence in `docs/contributing.md`. Same shape as L-2/L-4 — surfaces
+locally, invisible to CI.
+
+## L-14 (S3-06) — fix source data over loosening a literal-spec test
+
+When a story spec writes a literal assertion (e.g. `assert "<" not in text`),
+prefer to fix the data the test reads over weakening the test. A test that
+strips its own input to pass is no longer a guardrail. S3-06's CODEOWNERS
+comment containing `>= 1` violated the AC-16 placeholder-rejection check;
+rewording the comment to "at least one" kept the protection intact (Rule 9 —
+tests verify intent, not just behavior).
+
+## L-15 (S3-06) — `sys.executable` over bare `"python"` for `subprocess.run`
+
+When a test invokes Python via `subprocess.run`, always use `sys.executable`
+unless the test deliberately exercises PATH resolution. Bare `"python"` is
+absent on default macOS PATH (`/usr/bin/python3` is the only shipped binary)
+and surfaces as `FileNotFoundError` instead of the test's intended diagnostic.
+The MIN_ENV pattern (`{"PATH": "/usr/bin:/bin"}`) for gate-isolation testing
+strips the venv from PATH — when MIN_ENV is in effect, call `make` (which
+finds its own tools); when MIN_ENV is not in effect, use `sys.executable` for
+the interpreter.
