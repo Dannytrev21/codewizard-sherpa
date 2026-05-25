@@ -9,7 +9,7 @@
 # (story S1-03 AC-9). The CI runner is linux/amd64 (sh-as-dash); macOS-only
 # constructs would silently diverge.
 
-.PHONY: bootstrap check lint lint-imports typecheck test docs fence audit-verify clean refresh-cassettes _refresh-cassettes-gate
+.PHONY: bootstrap check lint lint-imports typecheck test docs fence audit-verify clean refresh-cassettes _refresh-cassettes-gate rag-rebuild
 
 bootstrap:
 	@if command -v uv >/dev/null 2>&1; then \
@@ -53,6 +53,15 @@ fence:
 
 audit-verify:
 	@python -m codegenie audit verify
+
+# Phase-4 S4-07 — operator convenience wrapper for the RAG-substrate
+# operational-recovery command. See docs/operations/rag.md for when to
+# run this (corruption, schema upgrade, embedding-model upgrade). Pass
+# REEMBED=1 to drop the --reembed flag; ROOT=/path overrides the default.
+rag-rebuild:
+	@python -m codegenie rag rebuild \
+		$(if $(ROOT),--root $(ROOT),) \
+		$(if $(REEMBED),--reembed,)
 
 clean:
 	@rm -rf .codegenie/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/

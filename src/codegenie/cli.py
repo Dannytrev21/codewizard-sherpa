@@ -1431,3 +1431,54 @@ def embeddings_bootstrap(model_name: str, cache_dir: Path | None, lock_path: Pat
         cache_dir=str(cache_dir) if cache_dir else None,
         lock_path=str(lock_path) if lock_path else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# rag — Phase-4 S4-07 operational-recovery CLI surface.
+#
+# Reconstructs the chromadb derived index from the canonical YAML records +
+# manifest.yaml (ADR-0016). Routes through ``codegenie.rag.cli.rebuild`` so
+# every fastembed / chromadb dependency stays under the path-scoped fence.
+#
+# Exit codes:
+#   - 0 — rebuild completed; ``store.digest() == manifest.chain_head``.
+#   - 1 — YAML parse error, chromadb write failure, or rmtree refused.
+#   - 2 — manifest.yaml missing under --root; nothing to rebuild from.
+# ---------------------------------------------------------------------------
+
+
+@cli.group(name="rag")
+def rag_group() -> None:
+    """RAG substrate management subcommands (Phase 4 S4-07)."""
+
+
+@rag_group.command(name="rebuild")
+@click.option(
+    "--root",
+    "root",
+    type=click.Path(path_type=Path),
+    default=Path(".codegenie/rag/"),
+    show_default=True,
+    help="RAG root directory containing manifest.yaml and records/.",
+)
+@click.option(
+    "--reembed",
+    "reembed",
+    is_flag=True,
+    default=False,
+    help=(
+        "Re-embed each record's projected query text via the current "
+        "FastembedEmbedder. Use after `embeddings bootstrap` model upgrade."
+    ),
+)
+def rag_rebuild(root: Path, reembed: bool) -> None:
+    """Reconstruct the chromadb derived index from canonical YAML records.
+
+    \b
+    Exit codes:
+    - 0 — rebuild completed; ``store.digest() == manifest.chain_head``.
+    - 1 — YAML parse error, chromadb write failure, or rmtree refused.
+    - 2 — manifest.yaml missing under --root; nothing to rebuild from.
+    """
+    rag_cli = importlib.import_module("codegenie.rag.cli")
+    rag_cli._rebuild_cli_entrypoint(root=str(root), reembed=reembed)

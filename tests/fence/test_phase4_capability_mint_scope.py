@@ -96,6 +96,9 @@ def test_phase4_mint_contract_shape() -> None:
     assert contract["forbidden_modules"] == ["codegenie.rag._capability_mint"]
     assert contract["ignore_imports"] == [
         "codegenie.rag.ingest -> codegenie.rag._capability_mint",
+        # S4-07 widening — the rebuild CLI is the second sanctioned mint
+        # call-site (ADR-0016 §"operational-recovery").
+        "codegenie.rag.cli -> codegenie.rag._capability_mint",
     ]
 
     sources: list[str] = list(contract["source_modules"])
@@ -114,9 +117,26 @@ def test_phase4_mint_contract_shape() -> None:
     assert "codegenie.rag._capability_mint" not in sources
 
 
+_ALLOWED_MINT_CALLSITES: Final[frozenset[str]] = frozenset(
+    {
+        "src/codegenie/rag/ingest.py",
+        # S4-07 — rebuild CLI reuses ``_phase4_local_capability_mint``
+        # (ADR-0016 §"operational-recovery"). Symbol-level reuse is the
+        # sanctioned extension-by-addition path; the parallel
+        # ``ignore_imports`` row above widens the lint-time contract.
+        "src/codegenie/rag/cli.py",
+    }
+)
+"""Production files allowed to reference ``_phase4_local_capability_mint``
+by any spelling. The AST sweep below treats every other file under
+``src/codegenie/`` as a violator. Adding a new entry here MUST also add
+the matching ``ignore_imports`` row in ``pyproject.toml``.
+"""
+
+
 def test_no_production_imports_private_mint_outside_ingest() -> None:
-    """AC-7: AST sweep proves no production file *but* ingest.py
-    references the private mint module by any spelling.
+    """AC-7: AST sweep proves no production file *but* the explicit
+    allowlist references the private mint module by any spelling.
 
     Three spellings are forbidden:
 
@@ -132,7 +152,7 @@ def test_no_production_imports_private_mint_outside_ingest() -> None:
     src_root = REPO_ROOT / "src/codegenie"
     for path in src_root.rglob("*.py"):
         rel = path.relative_to(REPO_ROOT).as_posix()
-        if rel == "src/codegenie/rag/ingest.py":
+        if rel in _ALLOWED_MINT_CALLSITES:
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))

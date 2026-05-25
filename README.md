@@ -109,6 +109,13 @@ $ python -m codegenie gather ./path/to/repo
 - `codegenie vuln-index refresh --source <nvd|ghsa|osv|all>` — Phase 3 S3-03.
   Fetches + parses CVE feeds into the sqlite `VulnIndex`. Exit codes: `0` ok,
   `4` partial refresh, `5` all feeds failed, `7` schema not migrated.
+- `codegenie rag rebuild [--root .codegenie/rag/] [--reembed]` — Phase 4 S4-07.
+  Reconstructs the chromadb derived index from the canonical YAML records +
+  `manifest.yaml`. `--reembed` re-embeds each record via the current
+  `FastembedEmbedder` (use after `embeddings bootstrap` upgrades the model).
+  Exit codes: `0` ok, `1` parse error / chromadb write failure / rmtree
+  refused (escape or symlink), `2` manifest missing. See
+  [`docs/operations/rag.md`](docs/operations/rag.md) for the operator runbook.
 
 Global flags: `--verbose` (DEBUG events), `--version`, `--refresh-tools`
 (re-detect external tools), `--no-gitignore` / `--auto-gitignore` (skip /

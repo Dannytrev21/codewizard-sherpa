@@ -372,3 +372,48 @@ the test green-passes on a bug. Plant under an enumerated sibling
 package (e.g. `src/codegenie/probes/<name>.py`); record the choice
 inline so a future shape-test edit doesn't bring the planted file back
 up to the codegenie root.
+
+
+## L-S407-1 — chromadb `SharedSystemClient` caches by path; `rmtree` then re-open needs `clear_system_cache()` (S4-07)
+
+`chromadb.PersistentClient(path=p)` registers a process-wide
+`SharedSystemClient` system instance keyed by `p`. After
+`shutil.rmtree(p)` the cached system survives with stale handles to the
+now-deleted sqlite, and the first `collection.add` on a freshly-
+constructed client at the same path raises `OperationalError: no such
+table: collections`. The fix is one line:
+`SharedSystemClient.clear_system_cache()` from
+`chromadb.api.client` between the `rmtree` and re-construction. Keep
+this helper INSIDE `codegenie.rag.store` (the lone ADR-0003-authorized
+chromadb importer) and re-export to callers — leaking a direct
+`chromadb.api.client` import to `codegenie.rag.cli` adds a row to the
+chromadb `ignore_imports` list that the rebuild does not need (the
+call surface fits one helper). First hit: S4-07 `rag rebuild`.
+
+## L-S407-2 — wipe `manifest.yaml` when wiping `chroma/` (S4-07)
+
+`ChromaPersistentStore.__init__` calls `_load_existing_record_ids()`
+which reads `manifest.yaml` into `_record_ids`. A rebuild that calls
+`shutil.rmtree(chroma/)` but leaves the manifest in place re-opens
+a fresh store whose `_record_ids` is already `[ex-000, ex-001, ex-002]`;
+each subsequent `store.add(example)` then `_record_ids.append(...)`s on
+top, and the rebuilt manifest carries every record twice. The fix is
+to `manifest.yaml.unlink()` immediately after `rmtree`. AC-5's byte-
+identical-digest assertion catches the bug, but only because the seed +
+rebuild use the same canonical YAML bytes — a bare "rebuild ran without
+exceptions" check would silently green-pass on the doubled list. First
+hit: S4-07.
+
+## L-S407-3 — `rebuild()` is sync; integration tests calling it must be sync too (S4-07)
+
+`rebuild()` owns an internal `asyncio.run()` boundary so the CLI entry
+point stays sync. Under `asyncio_mode = "auto"` an `async def test_...`
+function runs inside an event loop, and the inner `asyncio.run()` raises
+`RuntimeError: asyncio.run() cannot be called from a running event
+loop`. Make the integration test functions **sync** and bracket any
+async setup (e.g. seeding records via `store.add`) with
+`asyncio.run(_seed_async(...))`. The story Notes §2 anticipated this
+posture; the validator-prescribed test code in the story body used
+`async def + await store.add` and is the trap. General rule: when a
+CLI body uses `asyncio.run` internally, test functions that call it
+directly are sync. First hit: S4-07 `tests/integration/test_phase4_rag_rebuild_*.py`.

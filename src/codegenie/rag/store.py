@@ -190,6 +190,25 @@ class SolvedExampleStore(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def _reset_process_wide_client_cache() -> None:
+    """Phase-4 S4-07 — clear chromadb's process-wide ``System`` cache.
+
+    chromadb's :class:`PersistentClient` keys an internal
+    ``SharedSystemClient`` system instance by on-disk path; after
+    ``shutil.rmtree`` of that path the cached system survives with
+    stale handles to the now-deleted sqlite. The first ``collection.add``
+    on a freshly-constructed client at the same path then raises
+    ``OperationalError: no such table: collections``. The rebuild CLI
+    calls this between ``rmtree`` and re-construction; the helper lives
+    in this module so ``codegenie.rag.cli`` does not gain a direct
+    ``chromadb`` import (the ADR-0003 path-scoped fence's ``ignore_imports``
+    list stays minimal — only ``codegenie.rag.store -> chromadb``).
+    """
+    from chromadb.api.client import SharedSystemClient  # type: ignore[attr-defined]  # noqa: PLC0415
+
+    SharedSystemClient.clear_system_cache()
+
+
 def _collection_name(task_class: str, language: str, build_system: str) -> str:
     sep = _COLLECTION_NAME_SEPARATOR
     return f"{task_class}{sep}{language}{sep}{build_system}"

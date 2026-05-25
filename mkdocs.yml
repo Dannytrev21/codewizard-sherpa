@@ -136,4 +136,6 @@ nav:
           - High-level impl: phases/06.5-per-task-class-eval-harness/High-level-impl.md
   - Operations:
       - Cassettes: operations/cassettes.md
+      - Embeddings: operations/embeddings.md
+      - RAG substrate: operations/rag.md
   - Contributing: contributing.md

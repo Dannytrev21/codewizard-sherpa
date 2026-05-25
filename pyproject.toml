@@ -732,4 +732,8 @@ as_packages = true
 forbidden_modules = ["codegenie.rag._capability_mint"]
 ignore_imports = [
   "codegenie.rag.ingest -> codegenie.rag._capability_mint",
+  # Phase-4 S4-07 — the rebuild CLI is the second sanctioned mint
+  # call-site (ADR-0016 §"operational-recovery"). Story AC-2/AC-13
+  # pin reuse of the mint rather than a parallel `_rebuild_capability`.
+  "codegenie.rag.cli -> codegenie.rag._capability_mint",
 ]
