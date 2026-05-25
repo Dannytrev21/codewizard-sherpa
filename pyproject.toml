@@ -561,6 +561,10 @@ forbidden_modules = ["fastembed", "onnxruntime"]
 # Each downstream story appends its own ``ignore_imports`` line for the
 # allowed importers when the module lands — extension by addition, mirroring
 # the ADR-0003 path-scoped admission pattern above:
+#   - S3-01 (leaf protocol port): codegenie.fallback.leaf.port -> codegenie.fallback.budget_token
+#                                 (Protocol signature ``token: BudgetToken``;
+#                                 ADR-0010 §Consequences pins the type-level
+#                                 capability at this seam.)
 #   - S3-02 (anthropic_adapter):  codegenie.fallback.leaf.anthropic_adapter -> codegenie.fallback.budget_token
 #   - S6-01 (fallback tier):     codegenie.fallback.tier -> codegenie.fallback.budget_token
 # ---------------------------------------------------------------------------
@@ -588,6 +592,7 @@ source_modules = [
   "codegenie.exec",
   "codegenie.fallback.budget",
   "codegenie.fallback.fence",
+  "codegenie.fallback.leaf",
   "codegenie.fallback.plan_outcome",
   "codegenie.fallback.plan_proposal",
   "codegenie.fallback.provenance_gate",
@@ -610,4 +615,5 @@ source_modules = [
 forbidden_modules = ["codegenie.fallback.budget_token"]
 ignore_imports = [
   "codegenie.fallback.budget -> codegenie.fallback.budget_token",
+  "codegenie.fallback.leaf.port -> codegenie.fallback.budget_token",
 ]

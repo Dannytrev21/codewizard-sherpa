@@ -8,12 +8,15 @@ deliberately-failing fixture and asserts the missing-keyword-argument
 diagnostic appears.
 
 This AC is **gated on S3-01** landing
-``codegenie.fallback.leaf.protocol.LeafLlm`` — the Protocol the fixture
+``codegenie.fallback.leaf.port.LeafLlm`` — the Protocol the fixture
 imports. Until S3-01 ships, ``pytest.importorskip`` cleanly skips this
 test. When S3-01 GREENs the skip flips to a real assertion. The
 ``tests/fence/`` convention is "no skip" (Rule 12) but the story
 explicitly allows this single ``importorskip`` because the AC's own goal
 is "land standalone; S3-01 turns it green" (story Notes for AC-15).
+S2-05 shipped this file referencing ``codegenie.fallback.leaf.protocol``;
+S3-01 (the contract owner — AC-1 names ``port.py``) reconciled the path
+to ``codegenie.fallback.leaf.port`` so the gate actually flips.
 
 Tests/`tests/fence/` and tests/fixtures/typecheck/ are mypy-excluded for
 the project's main typecheck run (see pyproject), so the failing fixture
@@ -51,10 +54,10 @@ def _resolve_mypy_binary() -> str:
 def test_invoke_without_budget_token_is_mypy_error() -> None:
     """AC-15 — fixture file must mypy-error with a missing-arg diagnostic.
 
-    Skipped cleanly until S3-01 ships ``codegenie.fallback.leaf.protocol``.
+    Skipped cleanly until S3-01 ships ``codegenie.fallback.leaf.port``.
     """
     pytest.importorskip(
-        "codegenie.fallback.leaf.protocol",
+        "codegenie.fallback.leaf.port",
         reason="AC-15 gated on S3-01 LeafLlm Protocol landing.",
     )
     assert _FIXTURE.is_file(), f"fixture missing: {_FIXTURE}"

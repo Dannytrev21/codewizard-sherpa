@@ -81,3 +81,34 @@ generalises: any property of the form "`SECRET not in output`" where
 itself and embed it in the input — otherwise the strategy is structurally
 unable to reach the violation. Same applies to capability tokens,
 session IDs, BLAKE3 hashes, anything keyed on a per-call random.
+
+## L-7 — A `# type: ignore[<code>]` on the call site under test silently nullifies the gate (S3-01)
+
+S2-05 shipped `tests/fixtures/typecheck/budget_token_missing.py` with
+`# type: ignore[call-arg]` on the very `leaf.invoke(...)` call whose
+missing-keyword-argument diagnostic the gate asserts on. While S3-01
+hadn't landed, `pytest.importorskip` skipped the test cleanly and
+nobody noticed. The moment S3-01 turned the gate live, `mypy --strict`
+exited 0 — exactly the regression the gate exists to catch — because
+the `[call-arg]` suppression hid it. Lesson: a fixture asserting "mypy
+errors with diagnostic X" must NEVER suppress X inline. Suppress the
+expected *noise* (placeholder values, unrelated arg-types) but leave
+the diagnostic-under-test surfaced. Reviewer heuristic: any
+`# type: ignore[<code>]` on the call line a fence test asserts on is a
+red flag — the suppression turns the gate into a tautology.
+
+## L-8 — Reconcile cross-story module-name drafts before the gate flips (S3-01)
+
+S2-05 named the gated-on module `codegenie.fallback.leaf.protocol`;
+S3-01 (the contract owner — AC-1 names `port.py`) settled on
+`codegenie.fallback.leaf.port`. When the S2-05 gate was written its
+target module did not exist yet, so any name "looked correct enough."
+When S3-01 GREENed under the canonical name, the `importorskip`
+silently kept the test skipped (no error — the path just does not
+resolve), defeating the gate's purpose. The S3-01 validator had
+already flagged AC-10 for the same class of bug (pointing at a
+not-yet-existent sibling test). General rule: "gated-on-next-story"
+tests must pin the module path to the *next story's canonical
+surface*, not a draft name; the next-story executor's first job is
+to re-grep the gating-test for its module path and reconcile it
+before declaring GREEN.
