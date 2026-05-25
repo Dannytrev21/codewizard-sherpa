@@ -1,4 +1,4 @@
-"""Phase-4 S4-03 — ``SolvedExampleStore`` Protocol + ``ChromaPersistentStore``.
+"""Phase-4 S4-03/S4-04 — ``SolvedExampleStore`` Protocol + ``ChromaPersistentStore``.
 
 The RAG substrate's read/write seam. ADR-0016 commits Phase 4 to **one**
 Protocol (:class:`SolvedExampleStore`) with **one** in-tree adapter
@@ -33,12 +33,21 @@ case #5, and ADR-0016 §Decision:
    story construct it directly inside the test module (boundary lift
    acknowledged inline).
 
-**What this story does NOT ship.** The YAML-canonical write + manifest
-layer is S4-04; ``add()`` here writes chromadb only and will be
-*extended* (composed under, not edited) by S4-04 to take the
-YAML-canonical path. The ``provenance.event_chain_head`` chain-verify is
-S4-05. The two-threshold band classifier is S5-02 — this module returns
-:class:`RagHit` / :class:`RagMiss` only, never :class:`RagDegraded`.
+5. **YAML-canonical + manifest.yaml (S4-04).** ``add()`` atomically
+   writes (1) ``<root>/records/<id>.yaml`` (canonical Pydantic dump via
+   :func:`_canonical_yaml_dump`, sorted keys, trailing newline), (2)
+   chromadb (the derived index), (3) ``<root>/manifest.yaml`` rolled
+   under the same ``asyncio.Lock``. ``manifest.yaml`` is the
+   **order-of-truth** at store-open. ``digest()`` re-rolls the canonical
+   YAML bytes (NOT the record-id strings — ADR-0016 §"content-addressed
+   derived-index" pattern) so ``codegenie rag rebuild`` can golden-check
+   ``digest() == manifest.chain_head`` byte-identical.
+
+**What this module does NOT ship.** The ``provenance.event_chain_head``
+chain-verify is S4-05. The ``codegenie rag rebuild`` operational
+recovery command is S4-07. The two-threshold band classifier is S5-02 —
+this module returns :class:`RagHit` / :class:`RagMiss` only, never
+:class:`RagDegraded`.
 
 **Vector boundary.** The store stores pre-computed ``embedding_vector``
 values supplied by the caller and searches with a caller-supplied
@@ -51,19 +60,23 @@ does. The Protocol's public ``query`` therefore returns
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, final, runtime_checkable
+from typing import TYPE_CHECKING, Final, Literal, Protocol, final, runtime_checkable
 
 import blake3
 import chromadb
 import structlog
+import yaml
 from chromadb.config import Settings
+from pydantic import BaseModel, ConfigDict, ValidationError
 
-from codegenie.rag.errors import StoreClosed, StoreWriteContention
+from codegenie.rag.errors import StoreClosed, StoreCorrupted, StoreWriteContention
 from codegenie.rag.models import Query, RagHit, RagMiss, RetrievalOutcome, SolvedExample
 from codegenie.types.identifiers import (
+    ChainHead,
     EmbeddingVector,
     Similarity,
     SolvedExampleId,
@@ -91,6 +104,19 @@ _HNSW_COSINE_METADATA: Final[dict[str, str]] = {"hnsw:space": "cosine"}
 ``[-1.0, 1.0]`` mandated by :class:`~codegenie.rag.models.RagHit`."""
 
 _CHROMA_SETTINGS: Final[Settings] = Settings(anonymized_telemetry=False)
+
+_MANIFEST_FILENAME: Final[str] = "manifest.yaml"
+_RECORDS_SUBDIR: Final[str] = "records"
+_MANIFEST_SCHEMA_VERSION: Final[int] = 1
+"""S4-04: ``manifest.yaml``'s ``schema_version`` literal. A future v2 (e.g.
+Phase-11 pgvector or a ``backend_kind`` widening) bumps this and adds a
+table-keyed dispatcher; the v1-only branch lives inline here per Rule 2."""
+
+_FORBIDDEN_ID_SUBSTRINGS: Final[tuple[str, ...]] = ("/", "\\", "\x00")
+"""S4-04 AC-14: a record id containing any of these would escape
+``<root>/records/`` on disk. The check is in :meth:`ChromaPersistentStore.add`
+before any write — :data:`SolvedExampleId` is a bare ``NewType`` and does
+not re-validate."""
 
 
 # ---------------------------------------------------------------------------
@@ -169,21 +195,175 @@ def _collection_name(task_class: str, language: str, build_system: str) -> str:
     return f"{task_class}{sep}{language}{sep}{build_system}"
 
 
-def _digest_record_ids(record_ids: list[SolvedExampleId]) -> StoreDigest:
-    """Pure: roll BLAKE3 over the record-id list in given order.
+def _roll_chain_head(record_bytes: Iterable[bytes]) -> ChainHead:
+    """Pure functional core (S4-04 AC-8): BLAKE3 over the concatenation of
+    ``record_bytes`` in iteration order.
 
-    Order-sensitive on purpose (AC-6) — the S4-07 ``rag rebuild`` golden
-    test rebuilds from S4-04's manifest in the same insertion order and
-    asserts byte-identical digest. Sorting would hide insertion-order
-    bugs; do not sort.
+    Order-sensitive on purpose (ADR-0016 §"content-addressed derived-index").
+    Sorting would hide insertion-order bugs; do not sort.
 
     The empty roll equals ``blake3(b"").hexdigest()`` (literal:
     ``af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262``).
+
+    Pure — no filesystem, no allocation beyond the hasher. Pinned by
+    ``tests/unit/rag/test_chain_head_monotonic.py``'s prefix-stability
+    table test.
     """
     h = blake3.blake3()
-    for rid in record_ids:
-        h.update(rid.encode("utf-8"))
-    return StoreDigest(h.hexdigest())
+    for blob in record_bytes:
+        h.update(blob)
+    return ChainHead(h.hexdigest())
+
+
+def _compute_chain_head(record_ids: list[SolvedExampleId], records_dir: Path) -> ChainHead:
+    """Imperative shell over :func:`_roll_chain_head`: read each canonical
+    YAML record off disk in insertion order, then roll.
+
+    Raises :class:`StoreCorrupted` (NOT bare ``FileNotFoundError``) when a
+    listed record file is absent — AC-13. The translation lives here so
+    every caller (``digest()``, the manifest write, ``_load_existing_record_ids``)
+    sees the same typed error.
+
+    **Why O(N) re-read each call (Notes §10).** A running hasher on
+    ``self`` would be O(1) amortised but is hidden mutable state that can
+    desync from disk and make ``digest()`` silently lie (Rule 12 violation).
+    The stateless re-read keeps ``digest()`` a pure projection over disk.
+    """
+
+    def _read(rid: SolvedExampleId) -> bytes:
+        try:
+            return (records_dir / f"{rid}.yaml").read_bytes()
+        except FileNotFoundError as e:
+            raise StoreCorrupted(f"manifest references missing record: {rid}") from e
+
+    return _roll_chain_head(_read(rid) for rid in record_ids)
+
+
+def _canonical_yaml_dump(model: BaseModel) -> str:
+    """Single serialisation surface for both the record YAML and the
+    manifest YAML (S4-04 AC-1/AC-2). Identical PyYAML options on both
+    sides keep AC-7's byte-identity guarantee stable across PyYAML
+    versions.
+
+    ``model_dump(mode="json")`` is load-bearing: Pydantic's ``json`` mode
+    coerces ``datetime`` to ISO-8601 strings (otherwise PyYAML would
+    serialise them as ``!!timestamp`` tags which would round-trip
+    awkwardly). Sorted keys, no flow style, allow unicode, trailing
+    newline.
+    """
+    return yaml.safe_dump(
+        model.model_dump(mode="json"),
+        sort_keys=True,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Atomic write via sibling ``.tmp`` + :func:`os.replace`. Caller
+    ensures ``path.parent`` exists (no hidden ``mkdir`` — Notes §2;
+    Rule 8 — read before you write).
+
+    The sibling ``.tmp`` lives in the same directory so ``os.replace``
+    stays within one filesystem (a cross-fs replace raises
+    ``OSError``). A stale ``.tmp`` from a crashed write is harmless:
+    ``os.replace`` overwrites the same path on retry, and
+    :meth:`ChromaPersistentStore._load_existing_record_ids` reads the
+    manifest (not a ``records/*.yaml`` glob), so ``.tmp`` files are
+    never enumerated (Notes §9).
+
+    Mirrors ``src/codegenie/probes/layer_d/conventions.py`` — do not
+    "improve" to ``shutil.move`` (Notes §2; cross-fs move is NOT atomic).
+    Consolidating the ~8 per-module copies into a shared
+    ``codegenie/_fsutil.py`` is a sanctioned migration candidate but
+    out of scope for S4-04 (Rule 3).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _validate_record_id_path_safe(record_id: str) -> None:
+    """S4-04 AC-14: reject ids that would escape ``<root>/records/`` on
+    disk before any write happens. :data:`SolvedExampleId` is a bare
+    ``NewType`` and does not re-validate at the model boundary; this
+    check is the write-path gate.
+
+    The story's strict ``^[0-9a-f]{8,64}$`` reading would also reject the
+    fixture ids the validator-prescribed tests themselves use (``ex-A``,
+    ``ex-canonical-001``). The intent recorded in the AC text — "a test
+    proves ``id="../../etc/passwd"`` cannot reach a filesystem write" —
+    is path-safety, which this guard enforces (no path separators, no
+    parent traversal, no NUL byte, no leading dot, non-empty).
+    """
+    if not record_id:
+        raise ValueError("SolvedExample.id must be non-empty")
+    if record_id.startswith("."):
+        raise ValueError(f"SolvedExample.id may not begin with '.': {record_id!r}")
+    if ".." in record_id:
+        raise ValueError(f"SolvedExample.id may not contain '..' (path traversal): {record_id!r}")
+    for forbidden in _FORBIDDEN_ID_SUBSTRINGS:
+        if forbidden in record_id:
+            raise ValueError(f"SolvedExample.id may not contain {forbidden!r}: {record_id!r}")
+
+
+# ---------------------------------------------------------------------------
+# _Manifest — module-private durability artefact (S4-04 AC-9)
+# ---------------------------------------------------------------------------
+
+
+class _Manifest(BaseModel):
+    """``manifest.yaml`` durability shape — module-private (NOT exported).
+
+    Schema versioning is intentionally minimal (``Literal[1]``); a future
+    v2 (Phase-11 pgvector or a ``backend_kind`` widening) will bump the
+    version and the genuine Open/Closed seam (a table keyed on
+    ``schema_version``) lands then — premature today (Rule 2; Notes §8).
+
+    No ``from_yaml`` classmethod by design: the inline defensive parse
+    in :meth:`ChromaPersistentStore._load_existing_record_ids` is the
+    only reader. Public ``SolvedExample.from_yaml`` (S4-07 consumer) is
+    the only named YAML parser in the RAG surface.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    schema_version: Literal[1] = 1
+    records: list[SolvedExampleId]
+    chain_head: ChainHead
+
+
+def _parse_manifest_or_raise(manifest_path: Path) -> _Manifest:
+    """Defensive parse — every malformed-manifest case translates to
+    :class:`StoreCorrupted` (S4-04 AC-9). NEVER lets ``yaml.YAMLError``
+    or ``pydantic.ValidationError`` leak through.
+
+    Check order matters (Notes §8): the raw ``schema_version`` is
+    inspected BEFORE :meth:`_Manifest.model_validate`. ``_Manifest`` is
+    ``extra="forbid"`` + ``schema_version: Literal[1]``; without the
+    pre-check a hypothetical v2 manifest would fail validation with a
+    generic :class:`ValidationError` instead of the intended
+    :class:`StoreCorrupted` diagnostic that names the upgrade path.
+    """
+    try:
+        raw_text = manifest_path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise StoreCorrupted(f"manifest.yaml read failed: {e}") from e
+    try:
+        parsed = yaml.safe_load(raw_text)
+    except yaml.YAMLError as e:
+        raise StoreCorrupted("manifest.yaml is not valid YAML") from e
+    if not isinstance(parsed, dict):
+        raise StoreCorrupted("manifest.yaml must be a mapping at the top level")
+    schema_version = parsed.get("schema_version")
+    if schema_version != _MANIFEST_SCHEMA_VERSION:
+        raise StoreCorrupted(
+            f"unknown manifest schema_version: {schema_version!r} "
+            f"(expected {_MANIFEST_SCHEMA_VERSION})"
+        )
+    try:
+        return _Manifest.model_validate(parsed)
+    except ValidationError as e:
+        raise StoreCorrupted(f"manifest.yaml is malformed: {e}") from e
 
 
 class ChromaPersistentStore:
@@ -199,10 +379,18 @@ class ChromaPersistentStore:
     cross-process correctness tractable.
     """
 
-    __slots__ = ("_add_lock", "_client", "_collections", "_record_ids", "_root_dir")
+    __slots__ = (
+        "_add_lock",
+        "_client",
+        "_collections",
+        "_record_ids",
+        "_records_dir",
+        "_root_dir",
+    )
 
     def __init__(self, root_dir: Path) -> None:
         self._root_dir = root_dir
+        self._records_dir = root_dir / _RECORDS_SUBDIR
         chroma_path = root_dir / "chroma"
         chroma_path.mkdir(parents=True, exist_ok=True)
         self._client: chromadb.api.ClientAPI | None = chromadb.PersistentClient(
@@ -260,35 +448,27 @@ class ChromaPersistentStore:
         return collection
 
     def _load_existing_record_ids(self) -> None:
-        """Populate ``_record_ids`` from any collections already on disk.
+        """S4-04 AC-3 — populate ``_record_ids`` from ``manifest.yaml``.
 
-        **Insertion-order caveat (S4-03 AC-3 + Notes §11).** chromadb's
-        ``collection.get()`` does not guarantee insertion order, and
-        there is one collection per partition, so the order this method
-        produces is best-effort within-process. Cross-process digest
-        determinism arrives with S4-04's ``manifest.yaml`` (the
-        canonical insertion-order source); do not pretend otherwise.
+        ``manifest.yaml`` is the order-of-truth (NOT chromadb): chromadb's
+        ``collection.get()`` does not guarantee insertion order and there
+        is one collection per partition.
+
+        Absent manifest → fresh store (``_record_ids = []``). Present but
+        malformed → :class:`StoreCorrupted` (AC-9). Listed record file
+        missing on disk → :class:`StoreCorrupted` via
+        :func:`_compute_chain_head` (AC-13).
         """
-        assert self._client is not None
-        loaded: list[SolvedExampleId] = []
-        try:
-            collections = self._client.list_collections()
-        except Exception:
+        manifest_path = self._root_dir / _MANIFEST_FILENAME
+        if not manifest_path.exists():
+            self._record_ids = []
             return
-        for collection_handle in collections:
-            try:
-                collection = self._client.get_collection(name=collection_handle.name)
-            except Exception:
-                continue
-            self._collections[collection_handle.name] = collection
-            try:
-                existing = collection.get(include=[])
-            except Exception:
-                continue
-            ids = existing.get("ids") or []
-            for rid in ids:
-                loaded.append(SolvedExampleId(rid))
-        self._record_ids = loaded
+        manifest = _parse_manifest_or_raise(manifest_path)
+        # AC-13: every listed record file must be present on disk; the
+        # cheapest reproduction is to drive _compute_chain_head, which
+        # already translates missing files to StoreCorrupted.
+        _compute_chain_head(list(manifest.records), self._records_dir)
+        self._record_ids = list(manifest.records)
 
     # ---------------------------- write path --------------------------------
 
@@ -308,6 +488,7 @@ class ChromaPersistentStore:
         attributable.
         """
         self._check_open()
+        _validate_record_id_path_safe(example.id)
         acquired = False
         try:
             try:
@@ -323,6 +504,21 @@ class ChromaPersistentStore:
                 raise StoreWriteContention(workflow_id=capability.workflow_id) from exc
             acquired = True
             _LOG.debug("store.add.acquired", example_id=example.id)
+
+            # 1. Canonical YAML (S4-04 AC-1) — written FIRST so a chromadb
+            #    failure leaves a recoverable orphan (AC-4); caller mkdirs
+            #    the records dir, NOT the atomic-write helper (AC-1 + Notes §2).
+            self._records_dir.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(
+                self._records_dir / f"{example.id}.yaml",
+                _canonical_yaml_dump(example),
+            )
+            _LOG.debug("store.add.yaml_written", example_id=example.id)
+
+            # 2. chromadb (derived index) — if this raises, steps 3..5 never
+            #    run; _record_ids stays unappended; manifest stays untouched
+            #    (AC-4). The YAML orphan is recoverable by `codegenie rag
+            #    rebuild` (S4-07).
             collection = self._get_collection(
                 example.task_class, example.language, example.build_system
             )
@@ -335,8 +531,29 @@ class ChromaPersistentStore:
                 embeddings=embeddings,
                 metadatas=[metadata],
             )
+            _LOG.debug("store.add.chroma_written", example_id=example.id)
+
+            # 3. Manifest update (S4-04 AC-2) — last; identical PyYAML
+            #    options to AC-1's record dump (AC-7 byte-identity). If the
+            #    manifest write raises (AC-12), in-process self-heal kicks
+            #    in on the next successful add; cross-process recovery is
+            #    `codegenie rag rebuild` (S4-07).
             self._record_ids.append(SolvedExampleId(example.id))
-            _LOG.debug("store.add.completed", example_id=example.id)
+            chain_head = _compute_chain_head(self._record_ids, self._records_dir)
+            manifest = _Manifest(
+                records=list(self._record_ids),
+                chain_head=chain_head,
+            )
+            _atomic_write_text(
+                self._root_dir / _MANIFEST_FILENAME,
+                _canonical_yaml_dump(manifest),
+            )
+            # AC-12: if the manifest write raised, the exception propagates
+            # and `self._record_ids` still holds `example.id` — by design.
+            # The next successful add() rewrites a manifest that re-includes
+            # it (in-process self-heal); a cross-process restart reconciles
+            # via `codegenie rag rebuild` (S4-07).
+            _LOG.debug("store.add.manifest_updated", example_id=example.id)
             return SolvedExampleId(example.id)
         finally:
             if acquired:
@@ -435,20 +652,28 @@ class ChromaPersistentStore:
     # ---------------------------- projection --------------------------------
 
     def digest(self) -> StoreDigest:
-        """BLAKE3-rolled digest over the record-id list (insertion order).
+        """BLAKE3-rolled digest over the canonical YAML bytes of every
+        record (insertion order — S4-04 §5).
 
-        Pure projection over in-memory state; safe after :meth:`close`
-        (AC-7) and never raises :class:`StoreClosed`.
+        Re-wraps :func:`_compute_chain_head` from :data:`ChainHead` to the
+        Protocol-pinned :data:`StoreDigest` newtype (S4-04 AC-5). The
+        same BLAKE3 hex is re-typed at the boundary; one canonical
+        computation, two distinct domain newtypes.
 
-        **Within-process scope.** Cross-process (close/reopen)
-        determinism is **deferred to S4-04**'s manifest.yaml — chromadb
-        does not promise insertion order on ``get()`` and there is one
-        collection per partition (Notes §11). Within a single live store
-        the contract holds: two stores fed the same records in the same
-        order produce identical digests; opposite order produces
-        different digests; pinned by ``test_digest_is_insertion_order_sensitive``.
+        ``digest() == manifest.chain_head`` is the load-bearing invariant
+        S4-07's ``rag rebuild`` golden test pins. Cross-process
+        determinism arrives because both sides roll the canonical YAML
+        bytes (NOT the record-id strings — ADR-0016 §"content-addressed
+        derived-index").
+
+        Empty store digest is ``blake3(b"").hexdigest()`` —
+        ``af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262``.
+        Survives :meth:`close` because ``_record_ids`` is unaffected
+        (AC-7).
         """
-        return _digest_record_ids(self._record_ids)
+        chain_head = _compute_chain_head(self._record_ids, self._records_dir)
+        # ChainHead → StoreDigest re-wrap at the Protocol boundary (AC-5)
+        return StoreDigest(chain_head)
 
     def close(self) -> None:
         """Drop the chromadb client reference. Idempotent (AC-7).

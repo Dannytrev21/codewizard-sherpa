@@ -53,7 +53,7 @@ The **Source-of-truth split** pattern (canonical YAML + derived sqlite) is a tex
 
 - `.codegenie/rag/records/<id>.yaml` — canonical `SolvedExample` (human-reviewable; git-attributable per PR).
 - `.codegenie/rag/chroma/` — derived sqlite + parquet; rebuildable.
-- `.codegenie/rag/manifest.yaml` — `{records: [...], chain_head: ChainHead}`; BLAKE3-rolled head over records list.
+- `.codegenie/rag/manifest.yaml` — `{schema_version: 1, records: [...], chain_head: ChainHead}` (S4-04 amendment — `schema_version` is the forward-compat hook; bumping is the upgrade path); BLAKE3-rolled head over the **canonical YAML bytes** of each record in insertion order (content-addressed, not ID-addressed — so a record edit invalidates the chain).
 - `codegenie rag rebuild` is the operational-recovery command; reads YAML, re-inserts into chromadb without re-embedding (records carry embedding model digest + vector).
 - `SolvedExampleStore.add()` is single-writer (asyncio-lock-guarded inside the adapter); concurrent ingest serializes.
 - `SolvedExampleStore.add(example, capability)` requires the `SolvedExampleWriteCapability` (per [ADR-0009](0009-inline-auto-harvest-confidence-gate.md)); read paths (`query`) require no capability.

@@ -22,9 +22,11 @@ References:
 
 from __future__ import annotations
 
-from typing import Annotated, Final, Literal
+from pathlib import Path
+from typing import Annotated, Final, Literal, Self
 
 import blake3
+import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -152,6 +154,17 @@ class SolvedExample(BaseModel):
     embedding_model: ModelId
     embedding_vector: EmbeddingVector
     created_at: TzAwareDatetime
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> Self:
+        """S4-04 AC-10 — convenience parser used by S4-07's
+        ``codegenie rag rebuild`` to rehydrate canonical YAML records.
+
+        Shares the exact ``model_validate(yaml.safe_load(...))`` parse
+        core the S4-04 Hypothesis roundtrip property exercises. Errors
+        surface as :class:`pydantic.ValidationError` — S4-07 wraps them.
+        """
+        return cls.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 # --- RetrievalOutcome -----------------------------------------------------
