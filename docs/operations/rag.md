@@ -20,6 +20,14 @@ Three operator scenarios trip the rebuild:
    to drop the new weights + lock; then `codegenie rag rebuild --reembed`
    to re-embed every record's projected text against the new model.
 
+   **Non-default `--root`:** if the RAG substrate lives outside the
+   default `.codegenie/rag/`, pass the matching `--lock-path` and
+   `--cache-dir` to `embeddings bootstrap` so the lock + weights cache
+   land under `<root>/embeddings_model.lock` and `<root>/fastembed-cache`
+   respectively. `codegenie rag rebuild --root <root> --reembed` resolves
+   both relative to `--root` — it does **not** fall back to
+   `.codegenie/rag/`.
+
 ## Usage
 
 ```bash
@@ -47,11 +55,18 @@ codegenie rag rebuild [--root .codegenie/rag/] [--reembed]
 - **Default mode is transactional at the directory level.** The dry-run
   pass parses every record YAML before deleting `<root>/chroma/`; a
   parse failure aborts before any destructive operation.
-- **`--reembed` is idempotent but NOT atomic.** Each record's canonical
-  YAML is rewritten mid-loop with its new vector + model digest. A
-  mid-loop failure leaves earlier records re-embedded on disk; re-running
-  `codegenie rag rebuild --reembed` finishes the job (same text + same
-  embedder → same vectors).
+- **`--reembed` runs an embedder-preflight before any destructive op.**
+  The embedder is constructed (lock + cache verified) *before* the
+  rebuild touches `<root>/chroma/` or `<root>/manifest.yaml`. A
+  missing/corrupt lock exits 1 with the store fully intact — the
+  canonical records, derived chroma, and manifest are all preserved, so
+  the operator can `codegenie embeddings bootstrap` then re-invoke.
+- **`--reembed` is idempotent but NOT atomic.** Once the preflight passes
+  and the rebuild starts re-writing canonical YAMLs, each record's
+  canonical YAML is rewritten mid-loop with its new vector + model
+  digest. A mid-loop failure leaves earlier records re-embedded on disk;
+  re-running `codegenie rag rebuild --reembed` finishes the job (same
+  text + same embedder → same vectors).
 - **`rmtree` refuses to escape `--root`.** A symlinked or out-of-tree
   `chroma/` exits 1 with `"refusing to remove"` and never touches the
   filesystem (Rule 12 — fail loud).

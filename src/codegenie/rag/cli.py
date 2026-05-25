@@ -298,9 +298,21 @@ def _seam_build_reembed_embedder(root: Path) -> object:
     Return type is ``object`` to keep the boundary loose: any
     :class:`~codegenie.rag.embedder.Embedder`-shaped object works (the
     Protocol is :func:`typing.runtime_checkable`).
+
+    **Root-scoped lookup** (2026-05-25 shakedown fix): the embedder reads
+    its lock + weights cache from ``<root>/embeddings_model.lock`` and
+    ``<root>/fastembed-cache`` — mirroring the ``codegenie embeddings
+    bootstrap`` CLI's own defaults. The earlier shape (``FastembedEmbedder()``
+    with no args) fell back to the cwd-relative ``.codegenie/rag/``
+    defaults regardless of ``--root``, breaking the documented operator
+    workflow when the operator placed the substrate under a non-default
+    root.
     """
     return CachedEmbedder(
-        inner=FastembedEmbedder(),
+        inner=FastembedEmbedder(
+            lock_path=root / "embeddings_model.lock",
+            cache_dir=root / "fastembed-cache",
+        ),
         db_path=root / "embeddings.cache.sqlite",
     )
 
@@ -310,14 +322,16 @@ async def _rebuild_async(
     root: Path,
     reembed: bool,
     parsed: list[SolvedExample],
+    embedder: object | None,
 ) -> None:
     """Inner async body — separate from :func:`rebuild` so the sync entry
     point owns the ``asyncio.run`` boundary (Notes §2).
 
     Steps:
 
-    1. If ``--reembed``: build embedder (cached); re-embed each record's
-       ``query_text`` projection; ``model_copy`` with the new
+    1. If ``--reembed``: use the embedder already constructed in the
+       sync preflight (passed in via ``embedder``) to re-embed each
+       record's ``query_text`` projection; ``model_copy`` with the new
        ``embedding_model`` + ``embedding_vector``; rewrite the canonical
        YAML *before* chromadb re-insertion (so ``store.add`` rolls the
        NEW canonical bytes into ``manifest.chain_head``).
@@ -329,11 +343,16 @@ async def _rebuild_async(
        which converges to the post-rebuild chain head naturally (AC-2).
     4. ``store.close()`` so the chromadb client releases its handle
        before the test re-opens.
+
+    The embedder is built in :func:`rebuild`'s preflight (before chroma/
+    + manifest.yaml are touched) so an embedder-construction failure
+    cannot leave the store in a half-deleted state (2026-05-25
+    shakedown F2 fix).
     """
     log = importlib.import_module("structlog").get_logger(__name__)
 
     if reembed:
-        embedder: object = _seam_build_reembed_embedder(root)
+        assert embedder is not None, "preflight must build the embedder when reembed=True"
         new_model_digest = ModelId(str(embedder.model_digest()))  # type: ignore[attr-defined]
         for idx, example in enumerate(parsed):
             new_vector = embedder.embed(_query_text_for(example))  # type: ignore[attr-defined]
@@ -408,6 +427,25 @@ def rebuild(
         sys.stderr.write(f"yaml parse error in {offender}: {exc}\n")
         return _REBUILD_EXIT_ERROR
 
+    # Phase 1b — preflight embedder construction for ``--reembed`` (2026-05-25
+    # shakedown F2 fix). The embedder is built BEFORE chroma/ + manifest.yaml
+    # are touched so a missing/corrupt embeddings lock cannot leave the store
+    # in a half-deleted state. Mirrors phase 1's "dry-run-parse-first"
+    # discipline: every preflight check that can fail is run before the
+    # destructive operations of phase 2.
+    embedder: object | None = None
+    if reembed:
+        try:
+            embedder = _seam_build_reembed_embedder(root)
+        except Exception as exc:  # noqa: BLE001 — embedder errors map to exit 1
+            log.error(
+                "rebuild.embedder_preflight_failed",
+                error_class=type(exc).__name__,
+                error=str(exc),
+            )
+            sys.stderr.write(f"rebuild --reembed cannot start: {type(exc).__name__}: {exc}\n")
+            return _REBUILD_EXIT_ERROR
+
     # Phase 2 — rmtree guard + wipe ``chroma/``. Even a corrupted sqlite is
     # replaced wholesale (AC-4 corruption-recovery contract).
     try:
@@ -438,7 +476,14 @@ def rebuild(
 
     # Phase 3+4 — re-insert in order; assert digest reproduction.
     try:
-        asyncio.run(_rebuild_async(root=root, reembed=reembed, parsed=parsed))
+        asyncio.run(
+            _rebuild_async(
+                root=root,
+                reembed=reembed,
+                parsed=parsed,
+                embedder=embedder,
+            )
+        )
     except Exception as exc:  # noqa: BLE001 — chromadb-side failures map to exit 1
         log.error("rebuild.digest_mismatch", error_class=type(exc).__name__, error=str(exc))
         sys.stderr.write(f"rebuild failed: {type(exc).__name__}: {exc}\n")
