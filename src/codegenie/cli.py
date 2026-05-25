@@ -1368,3 +1368,66 @@ def _vuln_index_refresh_body(*, source: str, index_path: Path | None) -> None:
         raise VulnRefreshPartialError(
             f"partial refresh: inserted={total_inserted} errors={total_errors}"
         )
+
+
+# ---------------------------------------------------------------------------
+# embeddings — Phase 4 S4-01 FastembedEmbedder weight-bootstrap CLI surface.
+#
+# The subcommand's *body* lives in ``codegenie.rag.cli`` — the only module
+# authorized to trigger a fastembed weights download (ADR-0007 §Decision).
+# This module wires the Click registration and defer-imports the body so
+# ``cli.py`` stays free of any ``fastembed`` symbol (preserves both the
+# Phase-4 path-scoped fence at ``tests/fence/test_pyproject_fence_phase4.py``
+# AND ``cli.py``'s own cold-start import-linter contract).
+#
+# Exit codes:
+#   - 0 — first write / no-op same-digest / explicit model upgrade.
+#   - 1 — same-model digest drift (corruption / tampering) — lock NOT
+#         rewritten.
+# ---------------------------------------------------------------------------
+
+
+@cli.group(name="embeddings")
+def embeddings_group() -> None:
+    """Embeddings substrate management subcommands (Phase 4 S4-01)."""
+
+
+@embeddings_group.command(name="bootstrap")
+@click.option(
+    "--model-name",
+    "model_name",
+    default="BAAI/bge-small-en-v1.5",
+    show_default=True,
+    help="fastembed model identifier (ADR-0007 default: BGE-small-en-v1.5).",
+)
+@click.option(
+    "--cache-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Model-weights cache root. Defaults to $FASTEMBED_CACHE_DIR or "
+        "<cwd>/.codegenie/rag/fastembed-cache."
+    ),
+)
+@click.option(
+    "--lock-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=("Lock file path. Defaults to .codegenie/rag/embeddings_model.lock."),
+)
+def embeddings_bootstrap(model_name: str, cache_dir: Path | None, lock_path: Path | None) -> None:
+    """Download pinned BGE-small weights and write the embeddings model lock.
+
+    \b
+    Exit codes:
+    - 0 — lock written (first run), lock_current (idempotent re-run),
+          or explicit model upgrade.
+    - 1 — same-model digest drift (corruption / tampering). The lock is
+          NOT rewritten.
+    """
+    rag_cli = importlib.import_module("codegenie.rag.cli")
+    rag_cli._cli_entrypoint(
+        model_name=model_name,
+        cache_dir=str(cache_dir) if cache_dir else None,
+        lock_path=str(lock_path) if lock_path else None,
+    )

@@ -69,6 +69,14 @@ repos:
           # the SDK admission outside its single callsite.
           - anthropic>=0.40.0,<1.0.0
           - keyring>=24,<26
+          # Phase 4 S4-01: ``codegenie.rag.embedder`` + ``codegenie.rag.cli``
+          # are the sole importers of ``fastembed`` (path-scoped fence —
+          # ADR-0003) and use ``numpy`` for the singleton-vs-batch finalize
+          # path. Mirror them here so the isolated mypy hook resolves both
+          # stubs; the ``fastembed.*`` override in pyproject silences the
+          # missing-stub warning since the package does not ship py.typed.
+          - fastembed>=0.3,<1.0
+          - numpy
 
   # gitleaks — secret-scanning at pre-commit (per ADR-0008: structural defense
   # outside the gather hot path). Pinned to v8.30.1.

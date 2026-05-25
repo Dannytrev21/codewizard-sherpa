@@ -284,6 +284,17 @@ module = ["networkx", "networkx.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# Phase 4 S4-01 — `fastembed` does not ship a `py.typed` marker (as of
+# v0.8). `ignore_missing_imports` keeps `codegenie.rag.embedder` and
+# `codegenie.rag.cli` clean under `mypy --strict` without polluting the
+# source with per-line `# type: ignore`s. The path-scoped fence
+# (`tests/fence/test_pyproject_fence_phase4.py`) restricts `fastembed`
+# usage to `src/codegenie/rag/` so the silenced typing area is the
+# minimum possible.
+module = ["fastembed", "fastembed.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # Phase 7 S1-01 — `codegenie.primitives.vuln_provenance.registry` is the
 # Phase 7 ADR-0004 home for the `Layer` / `Ecosystem` enums; the module
 # lands in S2-01. Until then, the TYPE_CHECKING-guarded forward references
@@ -328,6 +339,7 @@ markers = [
   "nightly_macos: macOS-substrate live tests run only on the nightly darwin runner (S4-03 AC-12)",
   "phase_7_preview: Phase 7 preview tests; skipped in Phase 3 CI by default — collected only with -m phase_7_preview",
   "uses_anthropic_cassette: live Anthropic cassette tests (S3-02 reserves the marker; S3-04/S3-05/S3-06 land the discipline)",
+  "fastembed: tests that load real BGE-small ONNX weights via fastembed — require `codegenie embeddings bootstrap` to have run (S4-01)",
 ]
 
 [tool.coverage.run]
@@ -563,7 +575,14 @@ type = "forbidden"
 as_packages = true
 source_modules = ["codegenie"]
 forbidden_modules = ["fastembed", "onnxruntime"]
-# ignore_imports omitted — S4-01 appends `codegenie.rag.embedder -> fastembed` / `-> onnxruntime`.
+# S4-01 admits the two rag-substrate modules authorized to import the
+# fastembed runtime: `embedder` (refuse-start verification + embed()
+# shell) and `cli` (the single bootstrap callsite, per ADR-0007). Any
+# new admission requires an ADR amendment.
+ignore_imports = [
+  "codegenie.rag.embedder -> fastembed",
+  "codegenie.rag.cli -> fastembed",
+]
 
 # ---------------------------------------------------------------------------
 # Phase-4 S2-05 — ``BudgetToken`` two-frame capability scope (ADR-0010).
