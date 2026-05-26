@@ -15,12 +15,9 @@ Covers the load-bearing ACs:
 
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import json
-import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Final
 from unittest.mock import AsyncMock, patch
 
@@ -40,17 +37,8 @@ _COLLECTOR_PATH: Final[Path] = (
 )
 
 
-def _load_collector() -> ModuleType:
-    mod_name = "_test_ts_typecheck_signal"
-    spec = importlib.util.spec_from_file_location(mod_name, _COLLECTOR_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = module
-    spec.loader.exec_module(module)
-    return module
+from tests.unit.plugin._ts_typecheck_collector_module import MODULE as _MODULE
 
-
-_MODULE = _load_collector()
 collect = _MODULE.collect_typecheck_typescript_signal
 TYPECHECK_TYPESCRIPT = _MODULE.TYPECHECK_TYPESCRIPT
 _parse_tsc_error_count = _MODULE._parse_tsc_error_count
@@ -123,6 +111,15 @@ def test_ac11_parser_multi_file_with_diagnostics() -> None:
 # --- AC-7: strict-AND boundary cases ------------------------------------
 
 
+def _seed_ts_project(repo: Path) -> None:
+    """Seed a repo with tsconfig.json + a single .ts file so the S6-06
+    applicability check returns ``Applicable`` and the collector runs
+    `tsc`. (The applicability short-circuit otherwise prevents the
+    AC-8/9/10/11 paths from being reached.)"""
+    (repo / "tsconfig.json").write_text('{"compilerOptions":{}}', encoding="utf-8")
+    (repo / "index.ts").write_text("export const x = 1;\n", encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("baseline", "after", "expected_passed"),
     [
@@ -138,6 +135,7 @@ async def test_ac7_baseline_boundary(
     baseline: int, after: int, expected_passed: bool, tmp_path: Path
 ) -> None:
     """Strict-AND: passed iff new_errors_after <= new_errors_before."""
+    _seed_ts_project(tmp_path)
     # Seed the baseline.
     typecheck_dir = tmp_path / ".codegenie" / "typecheck"
     typecheck_dir.mkdir(parents=True)
@@ -169,6 +167,7 @@ async def test_ac7_baseline_boundary(
 @pytest.mark.asyncio
 async def test_ac8_no_baseline_degraded_pass(tmp_path: Path) -> None:
     """No baseline → passed=True, degraded_reason='no_baseline'."""
+    _seed_ts_project(tmp_path)
     proc = ProcessResult(returncode=0, stdout=b"", stderr=b"")
     with patch.object(_MODULE, "run_allowlisted", AsyncMock(return_value=proc)):
         signal = await collect(tmp_path, "anysha" * 5)
@@ -183,6 +182,7 @@ async def test_ac8_no_baseline_degraded_pass(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_ac9_timeout_fails_with_timeout_flag(tmp_path: Path) -> None:
     """Timeout → passed=False, details['timeout']=True."""
+    _seed_ts_project(tmp_path)
     with patch.object(
         _MODULE,
         "run_allowlisted",
@@ -199,6 +199,7 @@ async def test_ac9_timeout_fails_with_timeout_flag(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_ac10_missing_tsc_emits_no_tsconfig_degraded(tmp_path: Path) -> None:
     """ToolMissingError → passed=False, degraded_reason='no_tsconfig_or_tsc'."""
+    _seed_ts_project(tmp_path)
     with patch.object(
         _MODULE,
         "run_allowlisted",
@@ -215,6 +216,7 @@ async def test_ac10_missing_tsc_emits_no_tsconfig_degraded(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_ac11_unparseable_output_degraded(tmp_path: Path) -> None:
     """Non-zero with no summary → passed=False with degraded_reason."""
+    _seed_ts_project(tmp_path)
     proc = ProcessResult(returncode=1, stdout=b"garbage no summary", stderr=b"stderr text")
     with patch.object(_MODULE, "run_allowlisted", AsyncMock(return_value=proc)):
         signal = await collect(tmp_path, "anysha" * 5)

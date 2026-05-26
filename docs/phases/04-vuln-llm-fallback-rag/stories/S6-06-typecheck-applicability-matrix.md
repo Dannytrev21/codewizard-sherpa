@@ -1,7 +1,7 @@
 # Story S6-06 — `typecheck.typescript` applicability matrix (JS-only repos pass, not degrade)
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor). `_typescript_applicability(repo_root) -> TypeScriptApplicability` helper + 3-variant `Applicable | DegradedNoTsconfig | NotApplicable` discriminated union landed in the same `ts_typecheck_signal.py` module S6-05 ships. The collector's run dispatch short-circuits BEFORE `run_allowlisted` for JS-only repos, emitting `TrustSignal(passed=True, details={"applicable": False})` per AC-1 row 4 (arch §Gap 4 four-case truth table). 8 tests cover AC-1 (four-case table), AC-2 (bounded-I/O purity), AC-3 (closed-union frozen dataclasses), AC-4 (NotApplicable short-circuits BEFORE run_allowlisted), AC-5 (node_modules exclusion), AC-6 (`.tsx` files trigger DegradedNoTsconfig). Match exhaustiveness via `assert_never` at the dispatch site. Also seeds the shared `_ts_typecheck_collector_module.py` test fixture so S6-05 + S6-06 tests can share one loaded module (avoids `SignalKindAlreadyRegistered` on double-load).
 **Effort:** S
 **Depends on:** S6-05 (the base collector + registration must ship first — S6-06 extends the same module)
 **ADRs honored:** ADR-04-0015 (TypeScript-in-scope detection lives in the plugin; applicability is plugin-local), Gap 4 from arch §Gap analysis (pass-not-degrade for JS-only repos)
