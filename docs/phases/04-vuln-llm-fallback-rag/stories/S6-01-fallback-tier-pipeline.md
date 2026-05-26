@@ -1,7 +1,7 @@
 # Story S6-01 — `FallbackTier` named-sequential pipeline
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** GREEN-partial (scaffold) 2026-05-25 (phase-story-executor; see [`_attempts/S6-01.md`](_attempts/S6-01.md)). Structural contract pinned: `FallbackTier` frozen dataclass + 7-positional-3-kw-only constructor + `async run()` with immutable-empty-tuple default + `on_validated` stub + pure `transform_from_plan` with `match` exhaustiveness over 4 PlanProposal variants. 10 tests cover the contract every downstream story (S6-02/S6-03/S6-07/S6-08, S7-01..S7-10) reads against. **Deferred to S6-01 completion session:** the full 9-step happy-path dispatch (provenance→budget-precheck→retrieval→prompt→precharge→invoke→reconcile→transform), 4 refuse-path tests, 10-event happy-path tape test, `make_fallback_tier_for_fixtures` factory, AST fence tests, cross-event payload-identity assertions. Phase-4-local stubs for `CveAdvisory`/`RecipeSelection`/`RepoContext` shipped at `src/codegenie/fallback/contracts.py` (Phase-5 will harmonize with canonical types). 3 new event types (`BudgetPrechecked`/`TransformBuilt`/`PlanOutcomeEmitted`) registered on `WorkflowInternalEvent`.
 **Effort:** L
 **Depends on:** S2-01 (ProvenanceGate), S2-05 (LlmInvocationGuard + BudgetToken), S3-02 (AnthropicLeafAdapter), S5-02 (two-threshold band classifier); transitively S2-02..S2-04, S4-*, S5-01
 **ADRs honored:** ADR-0002 (named sequential Pipeline — no LangGraph), ADR-0004 (`PlanOutcome` wraps `RecipeOutcome` — no widening), ADR-0010 (`BudgetToken` capability flows only two frames), ADR-0012 (ProvenanceGate as explicit tier-0), ADR-0013 (FenceWrapper / CanaryGuard discipline)
