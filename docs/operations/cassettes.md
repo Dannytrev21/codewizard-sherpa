@@ -201,3 +201,80 @@ didn't fire. Check `tests/conftest.py`'s `vcr_config` fixture is present and
 the test recording the cassette is collecting it. If a real secret leaked,
 rotate the key (Anthropic key rotation is the operator's responsibility) and
 purge the cassette from git history.
+
+## Refresh trigger matrix
+
+Canonical trigger table — owners and rotation rules referenced from
+[`## Refresh triggers`](#refresh-triggers). Naming the matrix explicitly so the
+P5 ops-docs fence (`tests/integration/test_ops_docs_exist.py`) can verify the
+section-and-body shape per S7-10 AC-12.
+
+| Trigger | Detected by | Responsible owner |
+|---|---|---|
+| Nightly cassette drift | Scheduled CI job (drift-runner) | Cassette-steward |
+| Anthropic SDK upgrade | `pyproject.toml` dep bump PR | PR author + cassette-steward |
+| Prompt-template change in `plugins/.../skills/` | Path-scoped pre-commit hook | Prompt-template owner + cassette-steward |
+
+## make refresh-cassettes invocation
+
+The canonical refresh one-liner — pinned by
+[ADR-04-0014](../phases/04-vuln-llm-fallback-rag/ADRs/0014-cassette-discipline-security-control.md)
+as the only path that calls the live Anthropic API:
+
+```bash
+CODEGENIE_LIVE_LLM=1 make refresh-cassettes I_UNDERSTAND_THIS_SPENDS_TOKENS=1
+```
+
+The `I_UNDERSTAND_THIS_SPENDS_TOKENS=1` acknowledgement is mandatory — the
+Makefile target refuses to run without it. CI never sets either variable;
+live refresh is operator-initiated only.
+
+## CODEOWNERS approval flow
+
+A rotating cassette-steward role owns every cassette change. Procedure:
+
+1. The author of the cassette change drafts the PR.
+2. The CODEOWNERS file at `tests/cassettes/anthropic/CODEOWNERS` requires the
+   current cassette-steward as an approver.
+3. The steward verifies (a) the sanitizer ran, (b) the `cassettes.lock`
+   refresh accompanies the cassette bytes, (c) the live-LLM token spend
+   is justified by a documented trigger.
+4. Rotation cadence: the steward role rotates **quarterly** alongside the
+   Anthropic key rotation in [`secrets.md`](secrets.md). A new steward is
+   named via a CODEOWNERS PR; the outgoing steward approves the rotation PR
+   itself as their last act in the role.
+
+## BLAKE3 lock refresh
+
+The `tests/cassettes/anthropic/cassettes.lock` manifest stores a BLAKE3
+digest of every cassette file. The CI scanner
+(`tests/security/test_cassettes_clean.py`) computes the digest of each
+on-disk cassette and refuses the build if any digest mismatches.
+
+To recompute after a cassette change:
+
+```bash
+python -m codegenie cassette rebuild-lockfile
+```
+
+The command is idempotent; committing the regenerated `cassettes.lock`
+alongside the cassette bytes is mandatory.
+
+## Sanitizer guarantees
+
+The `CassetteSanitizer` pytest-recording hook strips on every recording:
+
+- `Authorization`, `X-API-Key`, `Cookie`, `anthropic-version` request headers.
+- Response-body matches for `sk-ant-*`, `claude_*` token prefixes, and any
+  40+ char base64 sequence.
+- The sanitizer is **idempotent** — `sanitize(sanitize(bytes)) == sanitize(bytes)`
+  per the Hypothesis property in `tests/unit/fallback/test_cassette_sanitizer.py`.
+
+Details are pinned by [ADR-04-0014](../phases/04-vuln-llm-fallback-rag/ADRs/0014-cassette-discipline-security-control.md);
+any change to the strip list is an ADR amendment.
+
+## See also
+
+- [`../phases/04-vuln-llm-fallback-rag/ADRs/0014-cassette-discipline-security-control.md`](../phases/04-vuln-llm-fallback-rag/ADRs/0014-cassette-discipline-security-control.md) — cassette discipline as a security control.
+- [`./secrets.md`](./secrets.md) — Anthropic key rotation pairs with the cassette-steward rotation.
+- [`./embeddings.md`](./embeddings.md) — embeddings runbook (separate substrate).
