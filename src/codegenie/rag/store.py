@@ -74,7 +74,14 @@ from chromadb.config import Settings
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from codegenie.rag.errors import StoreClosed, StoreCorrupted, StoreWriteContention
-from codegenie.rag.models import Query, RagHit, RagMiss, RetrievalOutcome, SolvedExample
+from codegenie.rag.models import (
+    Query,
+    RagHit,
+    RagMiss,
+    RetrievalOutcome,
+    ScoredSolvedExample,
+    SolvedExample,
+)
 from codegenie.types.identifiers import (
     ChainHead,
     EmbeddingVector,
@@ -146,7 +153,7 @@ class SolvedExampleWriteCapability:
 
 @runtime_checkable
 class SolvedExampleStore(Protocol):
-    """RAG persistent-store seam. Four methods, exactly.
+    """RAG persistent-store seam.
 
     The **single-writer constraint** (ADR-0016 §Decision) is part of the
     contract: any adapter implementing this Protocol MUST serialize
@@ -164,6 +171,18 @@ class SolvedExampleStore(Protocol):
     around the synchronous chromadb client both require an async caller.
     This deviation is acknowledged in the S4-03 story Notes §10 — do not
     "fix" it back to sync.
+
+    Phase-4 S5-01 candidate-read amendment (2026-05-25)
+    -------------------------------------------------------
+    :meth:`query_candidates` is the **read seam the retriever uses**: it
+    returns the raw scored candidate set so the retriever (S5-01) can
+    chain-verify, model-mismatch-filter, and fence *before* the band
+    classifier sees them. Pre-classification at the store layer (the
+    legacy :meth:`_query_with_embedding -> RetrievalOutcome` path) could
+    discard a valid second candidate behind an orphan top-1 — see S5-01
+    validation §F1. :meth:`query` is preserved as a legacy
+    Protocol-surface read used by callers that do not need the
+    pre-fenced/pre-classified raw set.
     """
 
     async def query(
@@ -173,6 +192,28 @@ class SolvedExampleStore(Protocol):
         top_k: int = 5,
         similarity_floor: float | None = None,
     ) -> RetrievalOutcome: ...
+
+    async def query_candidates(
+        self,
+        q: Query,
+        *,
+        embedding: EmbeddingVector,
+        top_k: int = 5,
+    ) -> Sequence[ScoredSolvedExample]:
+        """Return the raw scored candidate set for ``q`` + ``embedding``.
+
+        S5-01 read-path (Phase-4 candidate-read amendment). Caller owns:
+
+        * chain-verification (S4-05 ``provenance.verify``);
+        * model-digest filtering (S5-03);
+        * fencing as ``source_kind="rag_retrieved"`` (ADR-04-0013);
+        * band classification (S5-02 ``BandClassifier``).
+
+        Adapters MUST NOT pre-classify or pre-fence here — those are
+        retriever-side responsibilities. An empty store / partition
+        returns an empty sequence (NOT a :class:`RagMiss`).
+        """
+        ...
 
     async def add(
         self,
@@ -599,6 +640,59 @@ class ChromaPersistentStore:
         self._check_open()
         _ = self._existing_collection(q.task_class, q.language, q.build_system)
         return RagMiss()
+
+    async def query_candidates(
+        self,
+        q: Query,
+        *,
+        embedding: EmbeddingVector,
+        top_k: int = 5,
+    ) -> Sequence[ScoredSolvedExample]:
+        """Return raw scored candidates for ``q`` — S5-01 read seam.
+
+        Phase-4 candidate-read amendment: this method does NOT
+        pre-classify or pre-fence. The retriever (S5-01) walks every
+        returned ``ScoredSolvedExample`` through chain-verify →
+        model-mismatch-filter → fence → classifier in that order.
+        Pre-classification at this layer could mask a valid second
+        candidate behind an orphan top-1 (S5-01 validation §F1).
+
+        Empty partition / closed store / unrehydratable metadata each
+        contribute zero rows to the returned sequence; an empty result
+        is a valid outcome (the caller folds it to :class:`RagMiss` with
+        an appropriate audit event).
+        """
+        self._check_open()
+        collection = self._existing_collection(q.task_class, q.language, q.build_system)
+        if collection is None:
+            return []
+        query_vector: Sequence[float] = [float(x) for x in embedding]
+        query_embeddings: list[Sequence[float] | Sequence[int]] = [query_vector]
+        result = await asyncio.to_thread(
+            collection.query,
+            query_embeddings=query_embeddings,
+            n_results=top_k,
+        )
+        ids_pages = result.get("ids") or []
+        distances_pages = result.get("distances") or []
+        metadatas_pages = result.get("metadatas") or []
+        if not ids_pages or not ids_pages[0]:
+            return []
+        ids_row = ids_pages[0]
+        distances_row = distances_pages[0] if distances_pages else []
+        metadatas_row = metadatas_pages[0] if metadatas_pages else []
+        out: list[ScoredSolvedExample] = []
+        for rank, candidate_id in enumerate(ids_row):
+            if rank >= len(distances_row):
+                continue
+            distance = distances_row[rank]
+            score = max(-1.0, min(1.0, 1.0 - float(distance)))
+            metadata = metadatas_row[rank] if rank < len(metadatas_row) else None
+            record = self._rehydrate_record_or_none(SolvedExampleId(candidate_id), metadata)
+            if record is None:
+                continue
+            out.append(ScoredSolvedExample(record=record, score=Similarity(score)))
+        return out
 
     async def _query_with_embedding(
         self,

@@ -221,6 +221,28 @@ RetrievalOutcome = Annotated[
 """
 
 
+# --- ScoredSolvedExample (S5-01 read-path DTO) ----------------------------
+
+
+class ScoredSolvedExample(BaseModel):
+    """Raw store-side scored candidate — pre-band-classification.
+
+    Phase-4 S4-03 candidate-read amendment (Phase-4 S5-01 precondition):
+    ``SolvedExampleStore.query_candidates(...)`` returns these so the
+    retriever (S5-01) can chain-verify, model-mismatch-filter, and fence
+    candidates *before* classification. The Protocol previously
+    pre-classified via ``_query_with_embedding -> RetrievalOutcome``,
+    which could discard a valid second candidate behind an orphan top-1
+    — see S5-01 validation §F1.
+
+    Frozen, ``extra="forbid"`` — the shape is the contract.
+    """
+
+    model_config = _FROZEN_FORBID
+    record: SolvedExample
+    score: Annotated[Similarity, Field(ge=-1.0, le=1.0)]
+
+
 # --- TypecheckNodeSignal --------------------------------------------------
 
 
@@ -248,6 +270,7 @@ __all__: Final[tuple[str, ...]] = (
     "RagMiss",
     "RecordProvenance",
     "RetrievalOutcome",
+    "ScoredSolvedExample",
     "SolvedExample",
     "TypecheckNodeSignal",
 )
