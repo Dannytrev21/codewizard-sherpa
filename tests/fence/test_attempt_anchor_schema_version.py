@@ -41,9 +41,7 @@ def test_schema_bump_requires_coexistence_integration_test() -> None:
     explicit migration work, never a one-line edit."""
     if AttemptAnchor.model_fields["schema_version"].default == 1:
         return
-    assert _git_tracks(
-        "tests/integration/test_attempt_anchor_v1_v2_coexist.py"
-    ), (
+    assert _git_tracks("tests/integration/test_attempt_anchor_v1_v2_coexist.py"), (
         "AttemptAnchor.schema_version default bumped above 1 but the "
         "coexistence integration test does not exist; create "
         "tests/integration/test_attempt_anchor_v1_v2_coexist.py and pin "

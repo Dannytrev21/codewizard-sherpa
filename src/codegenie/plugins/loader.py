@@ -36,6 +36,8 @@ substitutes Sigstore via the :class:`PluginVerifier` Protocol (see
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
@@ -286,10 +288,36 @@ def load_plugins(
         return Err(error=MissingPluginDirectory(plugin=locked_plugin))
 
     # Gate 4: Import every verified plugin's entry module. Fail-fast.
+    #
+    # Plugin slugs are not Python-identifier-valid (they contain hyphens
+    # — e.g. ``vulnerability-remediation--node--npm``). The
+    # ``plugins/{slug}/__init__.py`` documents that ``api.py`` is loaded
+    # via :func:`importlib.util.spec_from_file_location` rather than the
+    # dotted-name :func:`importlib.import_module` path: a dotted import
+    # is fragile because ``plugins`` can be shadowed by an unrelated
+    # ``plugins/`` directory on ``sys.path`` (notably ``tests/unit/plugins/``
+    # under pytest's prepend-mode discovery). Loading the api.py file by
+    # absolute path eliminates that ambiguity.
     for slug, plugin_id in verified:
+        slug_dir = plugin_root / slug
+        api_path = slug_dir / "api.py"
+        if not api_path.is_file():
+            return Err(
+                error=PluginImportError(plugin=plugin_id, detail=f"missing api.py at {api_path}")
+            )
+        # Use a unique synthetic module name keyed on the slug + plugin id
+        # so two plugins never collide and so test runs that load+unload
+        # plugins stay isolated.
+        mod_name = f"_codegenie_plugin_{slug.replace('-', '_')}_api"
         try:
-            importlib.import_module(f"plugins.{slug}.api")
+            spec = importlib.util.spec_from_file_location(mod_name, api_path)
+            if spec is None or spec.loader is None:  # pragma: no cover — defensive
+                raise ImportError(f"spec_from_file_location returned None for {api_path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            spec.loader.exec_module(module)
         except Exception as exc:  # noqa: BLE001 — third-party module body
+            sys.modules.pop(mod_name, None)
             return Err(error=PluginImportError(plugin=plugin_id, detail=repr(exc)))
 
     # The ``registry`` parameter exists for future hooks (e.g., to assert

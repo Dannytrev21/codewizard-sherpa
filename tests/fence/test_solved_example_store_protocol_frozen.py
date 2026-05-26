@@ -1,10 +1,18 @@
 """Phase-4 S4-03 AC-9 — :class:`SolvedExampleStore` Protocol fence.
 
-Pins the four-method surface, the async/sync split, the
+Pins the public-method surface, the async/sync split, the
 ``capability`` parameter on ``add`` (the load-bearing gate), and the
 literal ``"single-writer constraint"`` substring in the module docstring.
 Any of these moving is the Phase-11 conformance bar drifting; the fence
 makes the drift loud.
+
+Phase-4 S5-01 candidate-read amendment (2026-05-25)
+---------------------------------------------------
+``query_candidates`` admitted as the fifth public method — the raw
+candidate read seam the S5-01 retriever uses to chain-verify, filter,
+and band-classify *before* the BandClassifier sees results. Documented
+in :mod:`codegenie.rag.store`'s module docstring §"Phase-4 S5-01
+candidate-read amendment".
 """
 
 from __future__ import annotations
@@ -15,12 +23,12 @@ from codegenie.rag import store as store_module
 from codegenie.rag.store import SolvedExampleStore
 
 
-def test_protocol_has_exactly_four_public_members() -> None:
+def test_protocol_has_exactly_five_public_members() -> None:
     public_members = {n for n in dir(SolvedExampleStore) if not n.startswith("_")}
-    assert public_members == {"query", "add", "digest", "close"}, (
-        "SolvedExampleStore Protocol surface drifted from the four-method "
-        "contract (ADR-0016). A speculative `update` / `delete` belongs in "
-        "a Phase-11 ADR amendment, not S4-03."
+    assert public_members == {"query", "query_candidates", "add", "digest", "close"}, (
+        "SolvedExampleStore Protocol surface drifted from the five-method "
+        "contract (ADR-0016 + S5-01 candidate-read amendment). A speculative "
+        "`update` / `delete` belongs in a Phase-11 ADR amendment, not Phase-4."
     )
 
 

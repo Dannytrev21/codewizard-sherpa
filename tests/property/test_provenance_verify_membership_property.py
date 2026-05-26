@@ -23,7 +23,13 @@ _HEX_64 = st.text(alphabet="0123456789abcdef", min_size=64, max_size=64)
 
 class _FakeSpanningLog:
     """Set-backed ``SpanningChainLog`` with a call counter for AC-8's
-    "exactly-once per non-empty head" pin."""
+    "exactly-once per non-empty head" pin.
+
+    S5-01 widened the Protocol with ``head()`` so the chain-orphan event
+    can carry ``spanning_log_head`` for triage. The fake returns a stable
+    zero-filled head — the membership property does not exercise ``head()``
+    but the runtime-checkable Protocol pin (AC-2) requires the method.
+    """
 
     def __init__(self, known: frozenset[ChainHead]) -> None:
         self._known = known
@@ -32,6 +38,9 @@ class _FakeSpanningLog:
     def contains_chain_head(self, head: ChainHead) -> bool:
         self.calls += 1
         return head in self._known
+
+    def head(self) -> ChainHead:
+        return ChainHead("0" * 64)
 
 
 @given(record_head=_HEX_64, known_heads=st.sets(_HEX_64, max_size=8))

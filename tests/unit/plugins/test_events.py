@@ -1490,7 +1490,9 @@ def test_rag_skipped_on_retry_is_in_internal_classes_tuple() -> None:
     Missing registration would cause emit_internal to raise TypeError
     even though Pydantic validation would otherwise accept the payload.
     """
-    from codegenie.plugins.events import RagSkippedOnRetry
-    from codegenie.plugins.events import _INTERNAL_CLASSES  # noqa: PLC2701
+    from codegenie.plugins.events import (
+        _INTERNAL_CLASSES,  # noqa: PLC2701
+        RagSkippedOnRetry,
+    )
 
     assert RagSkippedOnRetry in _INTERNAL_CLASSES

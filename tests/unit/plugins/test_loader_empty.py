@@ -8,6 +8,7 @@ intentional Step-2 state, not a misconfiguration to guard against.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from codegenie.plugins.loader import LoadReport, load_plugins
@@ -27,17 +28,36 @@ def test_empty_lock_zero_plugins(tmp_path: Path) -> None:
     assert report.total_walked == 0
 
 
-def test_repo_root_plugins_lock_ships_empty() -> None:
-    """The committed ``plugins/PLUGINS.lock`` is the empty-object happy path.
+def test_repo_root_plugins_lock_pins_landed_plugins() -> None:
+    """The committed ``plugins/PLUGINS.lock`` pins exactly the plugins
+    whose directory has shipped.
 
-    A maintainer who pre-populates the lock without a concrete plugin
-    tripping this test signals the partial-migration condition ADR-0011
-    warns about.
+    Pre-S7-01 this fence enforced the empty-object happy path. S7-01
+    (Phase-4) landed the first concrete plugin
+    (``vulnerability-remediation--node--npm``) and its manifest. The
+    fence now enforces the load-bearing invariant directly: every
+    plugin directory under ``plugins/`` must be in the lock, and every
+    locked plugin name must have a directory. Adding a plugin requires
+    refreshing the lock in the same PR.
     """
     repo_root = Path(__file__).resolve().parents[3]
-    lock_path = repo_root / "plugins" / "PLUGINS.lock"
-    content = lock_path.read_text(encoding="utf-8").strip()
-    assert content == "{}", (
-        f"plugins/PLUGINS.lock is non-empty; expected '{{}}' until S7-01 lands "
-        f"the first concrete plugin. Got: {content!r}"
+    plugin_root = repo_root / "plugins"
+    lock_path = plugin_root / "PLUGINS.lock"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert isinstance(lock, dict), f"PLUGINS.lock must be a JSON object; got {type(lock)!r}"
+
+    on_disk = {
+        p.name for p in plugin_root.iterdir() if p.is_dir() and (p / "plugin.yaml").is_file()
+    }
+    locked = set(lock.keys())
+    missing_from_lock = on_disk - locked
+    extra_in_lock = locked - on_disk
+    assert not missing_from_lock, (
+        f"plugins on disk but not in PLUGINS.lock: {sorted(missing_from_lock)!r}. "
+        f"Run the plugin-digest pinning step before committing."
+    )
+    assert not extra_in_lock, (
+        f"plugins in PLUGINS.lock but not on disk: {sorted(extra_in_lock)!r}. "
+        f"Stale lock entries must be removed in the same PR that deletes the "
+        f"plugin directory."
     )

@@ -53,8 +53,14 @@ EXPECTED_NEW_BINARIES: frozenset[str] = frozenset(
 # additions. This test file is the Phase-2 family — exact-equality assertions
 # below use the ratchet-extended union so a Phase-3-aware codepath survives.
 _PHASE_3_NEW_BINARIES: frozenset[str] = frozenset({"npm", "bwrap", "sandbox-exec", "jq"})
+# Phase 4 ratchet (04-ADR-0015): one further addition admitted for the
+# typecheck.typescript trust signal.
+_PHASE_4_NEW_BINARIES: frozenset[str] = frozenset({"tsc"})
 EXPECTED_TOTAL: frozenset[str] = (
-    frozenset({"git", "node"}) | EXPECTED_NEW_BINARIES | _PHASE_3_NEW_BINARIES
+    frozenset({"git", "node"})
+    | EXPECTED_NEW_BINARIES
+    | _PHASE_3_NEW_BINARIES
+    | _PHASE_4_NEW_BINARIES
 )
 
 SENSITIVE_ENV_KEYS: tuple[str, ...] = (
@@ -87,13 +93,15 @@ def _make_spawn_spy(monkeypatch: pytest.MonkeyPatch) -> mock.AsyncMock:
 
 
 def test_allowed_binaries_is_exact_sixteen_entry_set() -> None:
-    """AC-1 (Phase-3-ratcheted) — strict equality. Phase 2 12-baseline +
+    """AC-1 (Phase-4-ratcheted) — strict equality. Phase 2 12-baseline +
     Phase 3 03-ADR-0012's four additions (``npm``, ``bwrap``,
-    ``sandbox-exec``, ``jq``) = sixteen-entry closed set. A silent
-    addition (e.g. ``"bash"``) or silent deletion (e.g. dropping ``"git"``)
-    fails this test."""
+    ``sandbox-exec``, ``jq``) + Phase 4 04-ADR-0015's single addition
+    (``tsc``) = seventeen-entry closed set. A silent addition
+    (e.g. ``"bash"``) or silent deletion (e.g. dropping ``"git"``) fails
+    this test. The function name is retained for grep continuity across
+    historical attempts; the count is the Phase-4 ratchet."""
     assert ALLOWED_BINARIES == EXPECTED_TOTAL
-    assert len(ALLOWED_BINARIES) == 16
+    assert len(ALLOWED_BINARIES) == 17
 
 
 def test_every_new_binary_is_present() -> None:

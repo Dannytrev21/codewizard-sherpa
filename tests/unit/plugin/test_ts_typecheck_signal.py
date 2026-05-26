@@ -26,6 +26,7 @@ import pytest
 from codegenie.errors import ProbeTimeoutError, ToolMissingError
 from codegenie.exec import ProcessResult
 from codegenie.transforms.outcomes import TrustSignal
+from tests.unit.plugin._ts_typecheck_collector_module import MODULE as _MODULE
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 _COLLECTOR_PATH: Final[Path] = (
@@ -35,9 +36,6 @@ _COLLECTOR_PATH: Final[Path] = (
     / "adapters"
     / "ts_typecheck_signal.py"
 )
-
-
-from tests.unit.plugin._ts_typecheck_collector_module import MODULE as _MODULE
 
 collect = _MODULE.collect_typecheck_typescript_signal
 TYPECHECK_TYPESCRIPT = _MODULE.TYPECHECK_TYPESCRIPT

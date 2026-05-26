@@ -26,8 +26,11 @@ from codegenie.errors import (
     ProbeTimeoutError,
     ToolMissingError,
 )
-from codegenie.exec import ALLOWED_BINARIES, run_allowlisted
-from codegenie.exec import _RUNNING_PROCS  # type: ignore[attr-defined]
+from codegenie.exec import (
+    _RUNNING_PROCS,  # type: ignore[attr-defined]
+    ALLOWED_BINARIES,
+    run_allowlisted,
+)
 
 _PHASE_3_EXPECTED_BINARIES: frozenset[str] = frozenset(
     {
@@ -63,9 +66,7 @@ def test_ac10_phase4_admits_exactly_tsc() -> None:
     over-broad admission (e.g. ``"tsc"`` plus a sibling) both fail.
     """
     delta = ALLOWED_BINARIES - _PHASE_3_EXPECTED_BINARIES
-    assert delta == frozenset({"tsc"}), (
-        f"Phase-4 must admit exactly {{'tsc'}}; got {delta}"
-    )
+    assert delta == frozenset({"tsc"}), f"Phase-4 must admit exactly {{'tsc'}}; got {delta}"
 
 
 async def test_ac3_path_shaped_tsc_invocations_rejected(
@@ -96,9 +97,7 @@ def test_ac6_adr_0015_enumerates_tsc() -> None:
         "0015-typecheck-typescript-signal-and-tsc-allowed-binary.md"
     )
     text = adr.read_text(encoding="utf-8")
-    assert "`tsc`" in text, (
-        "ADR-04-0015 must enumerate `tsc` as a backticked identifier"
-    )
+    assert "`tsc`" in text, "ADR-04-0015 must enumerate `tsc` as a backticked identifier"
 
 
 def test_ac7_exec_module_docstring_phase4_present() -> None:
@@ -106,8 +105,6 @@ def test_ac7_exec_module_docstring_phase4_present() -> None:
     amendment (ADR-04-0015 + a phrase capturing the addition)."""
     import codegenie.exec as exec_mod
 
-    doc_raw = exec_mod.__doc__ or ""
-    doc_normalized = " ".join(doc_raw.split())
     # The amendment comment lives in the module body's grouping comment
     # block (above the frozenset literal), so we check the file source
     # rather than the module docstring proper.

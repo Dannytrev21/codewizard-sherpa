@@ -589,9 +589,10 @@ def test_probe_no_subprocess_calls() -> None:
 
 
 def test_allowed_binaries_invariant_phase2() -> None:
-    """AC-37 (Phase-3-ratcheted). The Phase-2 twelve-entry closed set
+    """AC-37 (Phase-4-ratcheted). The Phase-2 twelve-entry closed set
     under 02-ADR-0001 + Phase 3's four additions under 03-ADR-0012
-    (``npm``, ``bwrap``, ``sandbox-exec``, ``jq``) = sixteen entries.
+    (``npm``, ``bwrap``, ``sandbox-exec``, ``jq``) + Phase 4's single
+    addition under 04-ADR-0015 (``tsc``) = seventeen entries.
     Pinning the full set at the deployment boundary protects against
     silent additions outside an ADR."""
     from codegenie.exec import ALLOWED_BINARIES
@@ -616,6 +617,8 @@ def test_allowed_binaries_invariant_phase2() -> None:
         "bwrap",
         "sandbox-exec",
         "jq",
+        # Phase 4 04-ADR-0015 addition (typecheck.typescript signal).
+        "tsc",
     }
 
 

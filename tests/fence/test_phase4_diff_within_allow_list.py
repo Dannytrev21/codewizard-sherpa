@@ -66,9 +66,7 @@ ALLOWED_EXACT: Final[frozenset[str]] = frozenset(
 
 
 # AC-9 — pure helper extracted for table-tested classification.
-def _classify(
-    path: str, prefixes: Sequence[str], exact: frozenset[str]
-) -> bool:
+def _classify(path: str, prefixes: Sequence[str], exact: frozenset[str]) -> bool:
     """Return True iff ``path`` lives in an allow-list bucket."""
     if path in exact:
         return True
@@ -116,10 +114,7 @@ def test_phase4_diff_within_allow_list(tmp_path: Path) -> None:
     ).stdout.strip()
     # AC-7 — no-op skip when HEAD == merge-base.
     if base == head:
-        pytest.skip(
-            "running on master/empty-diff branch; nothing to gate "
-            "(merge-base == HEAD)"
-        )
+        pytest.skip("running on master/empty-diff branch; nothing to gate (merge-base == HEAD)")
     paths = _diff_paths(base)
     classification = {p: _classify(p, ALLOWED_PREFIXES, ALLOWED_EXACT) for p in paths}
     # AC-12 — full classification artifact for reviewer audit.
@@ -176,6 +171,5 @@ def test_allowed_exact_are_non_empty_and_not_root() -> None:
 )
 def test_classify_planted_inputs(path: str, expected_inside: bool) -> None:
     assert _classify(path, ALLOWED_PREFIXES, ALLOWED_EXACT) is expected_inside, (
-        f"Classifier verdict for {path!r} disagrees with planted expectation "
-        f"{expected_inside!r}"
+        f"Classifier verdict for {path!r} disagrees with planted expectation {expected_inside!r}"
     )

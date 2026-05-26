@@ -99,6 +99,10 @@ def test_phase4_mint_contract_shape() -> None:
         # S4-07 widening — the rebuild CLI is the second sanctioned mint
         # call-site (ADR-0016 §"operational-recovery").
         "codegenie.rag.cli -> codegenie.rag._capability_mint",
+        # S6-03 widening — FallbackTier.on_validated is the third
+        # sanctioned mint call-site (ADR-04-0009 §Decision: inline
+        # auto-harvest wired into FallbackTier).
+        "codegenie.fallback.tier -> codegenie.rag._capability_mint",
     ]
 
     sources: list[str] = list(contract["source_modules"])
@@ -125,6 +129,10 @@ _ALLOWED_MINT_CALLSITES: Final[frozenset[str]] = frozenset(
         # sanctioned extension-by-addition path; the parallel
         # ``ignore_imports`` row above widens the lint-time contract.
         "src/codegenie/rag/cli.py",
+        # S6-03 — FallbackTier.on_validated mints a write-capability for
+        # the auto-harvest hook (ADR-04-0009 §Decision). The parallel
+        # ``ignore_imports`` row above widens the lint-time contract.
+        "src/codegenie/fallback/tier.py",
     }
 )
 """Production files allowed to reference ``_phase4_local_capability_mint``

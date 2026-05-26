@@ -66,6 +66,16 @@ ALLOWED_TEST_CONSTRUCTOR_DIRS: Final[frozenset[str]] = frozenset(
 ALLOWED_WRITER_CALL_SITES: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("src/codegenie/cli.py", "_seam_write_envelope"),
+        # Phase-4 S6-03 + S6-08 — FallbackTier.on_validated and the
+        # attempt-anchor emission helper write attempt anchors via the
+        # sanitized AttemptAnchorWriter. The sanitizer pipeline upstream
+        # (RedactedSlice + path/secret scrubber) keeps the "no in-memory
+        # secret leak" guarantee intact across these two call sites.
+        # ADR-04-0009 (auto-harvest) + ADR-04-0014 (attempt anchors) gate
+        # the addition. Adding a fourth call site requires the same
+        # lockstep: this frozenset AND an ADR amendment to 02-ADR-0010.
+        ("src/codegenie/fallback/tier.py", "run"),
+        ("src/codegenie/fallback/tier.py", "finalize_success_anchor"),
     }
 )
 
