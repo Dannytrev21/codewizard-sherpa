@@ -13,6 +13,14 @@ candidate read seam the S5-01 retriever uses to chain-verify, filter,
 and band-classify *before* the BandClassifier sees results. Documented
 in :mod:`codegenie.rag.store`'s module docstring §"Phase-4 S5-01
 candidate-read amendment".
+
+Phase-4 S6-03 idempotence amendment (2026-05-26)
+------------------------------------------------
+``contains`` admitted as the sixth public method — the
+auto-harvest idempotence-pre-check seam the
+:meth:`FallbackTier.on_validated` hook uses (AC-8) to detect a
+duplicate harvest and emit ``HarvestSkipped(reason="already_harvested")``
+without paying the embed + write cost.
 """
 
 from __future__ import annotations
@@ -23,12 +31,34 @@ from codegenie.rag import store as store_module
 from codegenie.rag.store import SolvedExampleStore
 
 
-def test_protocol_has_exactly_five_public_members() -> None:
+def test_protocol_has_exactly_six_public_members() -> None:
     public_members = {n for n in dir(SolvedExampleStore) if not n.startswith("_")}
-    assert public_members == {"query", "query_candidates", "add", "digest", "close"}, (
-        "SolvedExampleStore Protocol surface drifted from the five-method "
-        "contract (ADR-0016 + S5-01 candidate-read amendment). A speculative "
-        "`update` / `delete` belongs in a Phase-11 ADR amendment, not Phase-4."
+    assert public_members == {
+        "query",
+        "query_candidates",
+        "add",
+        "contains",
+        "digest",
+        "close",
+    }, (
+        "SolvedExampleStore Protocol surface drifted from the six-method "
+        "contract (ADR-0016 + S5-01 candidate-read amendment + S6-03 "
+        "idempotence amendment). A speculative `update` / `delete` belongs "
+        "in a Phase-11 ADR amendment, not Phase-4."
+    )
+
+
+def test_contains_is_a_coroutine() -> None:
+    """S6-03 — ``contains()`` is async (matches ``query`` + ``add`` discipline)."""
+    assert inspect.iscoroutinefunction(SolvedExampleStore.contains)
+
+
+def test_contains_signature_is_pinned() -> None:
+    """S6-03 — ``contains(self, sid: SolvedExampleId) -> bool``."""
+    sig = inspect.signature(SolvedExampleStore.contains)
+    assert list(sig.parameters) == ["self", "sid"], (
+        "SolvedExampleStore.contains signature drifted from the S6-03 "
+        f"shape; got {list(sig.parameters)!r}"
     )
 
 

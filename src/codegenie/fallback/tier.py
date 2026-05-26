@@ -87,7 +87,11 @@ from codegenie.plugins.events import (
 )
 from codegenie.rag._capability_mint import _phase4_local_capability_mint
 from codegenie.rag.embedder import Embedder
-from codegenie.rag.ingest import ValidatedPlanOutcome, ingest_solved_example
+from codegenie.rag.ingest import (
+    ValidatedPlanOutcome,
+    _solved_example_id_for,  # noqa: PLC2701 — S6-03 AC-8 idempotence pre-check
+    ingest_solved_example,
+)
 from codegenie.rag.store import SolvedExampleStore
 from codegenie.transforms.apply_context import AttemptSummary
 from codegenie.transforms.outcomes import TrustOutcome
@@ -377,20 +381,26 @@ class FallbackTier:
     ) -> None:
         """S6-03 — inline auto-harvest dispatch.
 
-        Six-step body (ADR-04-0009 §Decision; the original 7-step list
-        in the story includes the AC-8 idempotence pre-check, deferred
-        until ``SolvedExampleStore.contains()`` lands on the Protocol):
+        Seven-step body (ADR-04-0009 §Decision; AC-7 dispatch order):
 
         1. ``eligibility = harvest_eligibility(outcome)`` — only
            :class:`AppliedFromLlm` is eligible. Otherwise emit
            ``HarvestSkipped(reason="outcome_not_harvestable")``.
         2. ``self.confidence_gate.passes(trust)`` — if False, emit
            ``HarvestSkipped(reason=skip_reason_for(trust))``.
-        3. Mint capability via ``_phase4_local_capability_mint``.
-        4. Project ``ValidatedPlanOutcome`` via
-           :func:`_validated_outcome_from`.
-        5. ``await ingest_solved_example(...)`` — keyword-only writer.
-        6. Emit ``SolvedExampleHarvested`` with the actual returned id.
+        3. **Idempotence pre-check (S6-03 AC-8):** compute deterministic
+           :data:`SolvedExampleId` from the tentative
+           :class:`ValidatedPlanOutcome` + embedder digest; if
+           ``await self.store.contains(sid)`` returns ``True``, emit
+           ``HarvestSkipped(reason="already_harvested")`` and return —
+           **before** minting capability. Spares the embed + write cost
+           and prevents a duplicate write into the persistent store.
+        4. Mint capability via ``_phase4_local_capability_mint``.
+        5. Project ``ValidatedPlanOutcome`` via
+           :func:`_validated_outcome_from` (already done in step 3;
+           re-used).
+        6. ``await ingest_solved_example(...)`` — keyword-only writer.
+        7. Emit ``SolvedExampleHarvested`` with the actual returned id.
         """
         eligibility = harvest_eligibility(outcome)
         if not eligibility.eligible:
@@ -405,6 +415,19 @@ class FallbackTier:
         # Type-narrow: eligibility guard guarantees outcome is AppliedFromLlm.
         assert isinstance(outcome, AppliedFromLlm)  # noqa: S101
         validated = _validated_outcome_from(outcome=outcome, context=context)
+        # AC-8 idempotence pre-check — deterministic id over the five
+        # identity fields (S4-06 AC-3). Skip mint + ingest if the store
+        # already contains this id; emit the "already_harvested" branch.
+        sid_candidate = _solved_example_id_for(
+            outcome=validated,
+            embedding_model=ModelId(str(self.embedder.model_digest())),
+        )
+        if await self.store.contains(sid_candidate):
+            self._emit_harvest_skipped(
+                reason="already_harvested",
+                outcome_kind=outcome.kind,
+            )
+            return
         capability = _phase4_local_capability_mint(
             workflow_id=context.workflow_id,
             chain_head=context.chain_head,

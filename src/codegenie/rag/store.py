@@ -221,6 +221,22 @@ class SolvedExampleStore(Protocol):
         capability: SolvedExampleWriteCapability,
     ) -> SolvedExampleId: ...
 
+    async def contains(self, sid: SolvedExampleId) -> bool:
+        """Phase-4 S6-03 idempotence-pre-check seam.
+
+        Returns ``True`` iff a :class:`SolvedExample` with deterministic
+        :data:`SolvedExampleId` ``sid`` already exists in the store.
+        The auto-harvest hook (``FallbackTier.on_validated``) consults
+        this before minting a write-capability so a duplicate harvest
+        emits :class:`HarvestSkipped(reason="already_harvested")` rather
+        than re-paying the embed + write cost.
+
+        Read-only: never mints a capability, never writes. Adapters MUST
+        return the empty-store ``False`` rather than raising on missing
+        partitions (the auto-harvester treats absence as a miss).
+        """
+        ...
+
     def digest(self) -> StoreDigest: ...
 
     def close(self) -> None: ...
@@ -761,6 +777,28 @@ class ChromaPersistentStore:
             return SolvedExample.model_validate_json(payload)
         except Exception:
             return None
+
+    # ---------------------------- idempotence pre-check ---------------------
+
+    async def contains(self, sid: SolvedExampleId) -> bool:
+        """Phase-4 S6-03 idempotence pre-check.
+
+        ``True`` iff ``sid`` is already present in this store. Implemented
+        as a membership check against the in-memory ``_record_ids``
+        roster maintained by :meth:`_load_existing_record_ids` (replayed
+        at construction) + every successful :meth:`add` call (S4-04
+        canonical YAML write-then-record). Read-only; no embedder,
+        client, or capability surface is touched.
+
+        Returns ``False`` for closed-store too (rather than raise). The
+        auto-harvester treats "store closed" the same as "record absent":
+        we cannot prove already-harvested so we let the inner ``add``
+        layer fail loud if a write is actually attempted on a closed
+        store.
+        """
+        if self._client is None:
+            return False
+        return sid in self._record_ids
 
     # ---------------------------- projection --------------------------------
 

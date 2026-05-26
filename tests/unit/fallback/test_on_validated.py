@@ -101,6 +101,10 @@ def _make_tier(
     embedder.model_digest = lambda: BlobDigest(embedder_digest)
     embedder.embed = lambda _text: tuple(0.1 for _ in range(384))
     store = MagicMock()
+    # AC-8 idempotence pre-check — default to "not contained" so existing
+    # happy-path tests exercise the new harvest flow rather than the
+    # already_harvested branch.
+    store.contains = AsyncMock(return_value=False)
     ingest_spy: MagicMock = MagicMock()
     store.add = AsyncMock(return_value=SolvedExampleId(ingest_return_id))
 
