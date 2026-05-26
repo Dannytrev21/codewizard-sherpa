@@ -60,7 +60,6 @@ from codegenie.plugins.events import (
     RagHitEvent,
     RagMissEvent,
     RagRecordChainOrphan,
-    RagRecordModelMismatch,
     RecordsChainVerifiedEvent,
     RecordsEmbeddedEvent,
     RecordsFencedEvent,
@@ -302,18 +301,11 @@ class SolvedExampleRetriever:
             )
             return RagMiss()
 
-        # 6. model_digest_filter (optional — S5-03 supplies the concrete)
+        # 6. model_digest_filter (optional — S5-03 supplies the concrete).
+        # The filter owns its own ``RagRecordModelMismatch`` event emission
+        # (it knows the model digests; the retriever does not).
         if self.model_digest_filter is not None:
-            verified, excluded = self.model_digest_filter(verified)
-            if excluded:
-                self.event_log.emit_internal(
-                    RagRecordModelMismatch(
-                        event_id=_new_event_id(),
-                        workflow_id=wf_id,
-                        timestamp=_now_utc(),
-                        count=excluded,
-                    )
-                )
+            verified, _excluded = self.model_digest_filter(verified)
             if not verified:
                 self.event_log.emit_internal(
                     RagMissEvent(

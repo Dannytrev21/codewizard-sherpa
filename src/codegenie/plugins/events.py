@@ -862,15 +862,24 @@ class RecordsFencedEvent(BaseModel):
 class RagRecordModelMismatch(BaseModel):
     """S5-01 / S5-03 — ``count`` records were excluded by the model-digest
     filter (their embedding model digest does not match the live embedder).
+
     Adversary-resistance: a model bump invalidates prior records' vectors;
-    this event surfaces the gap so the operator can trigger a re-embed."""
+    this event surfaces the gap so the operator can trigger a re-embed.
+
+    Phase-4 S5-03 extension (2026-05-25): ``current_model`` +
+    ``sample_stale_model`` fields name the live digest and a
+    representative stale digest for triage. ``count`` is validated
+    ``>= 1`` so the "emit only on exclusion" invariant is structural.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     event_type: Literal["rag_record_model_mismatch"] = "rag_record_model_mismatch"
     event_id: EventId
     workflow_id: WorkflowId
     timestamp: datetime
-    count: int
+    count: Annotated[int, Field(ge=1)]
+    current_model: BlobDigest
+    sample_stale_model: BlobDigest
 
 
 class RagHitEvent(BaseModel):

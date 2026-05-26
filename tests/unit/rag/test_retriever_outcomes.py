@@ -310,7 +310,13 @@ async def test_ac17_all_model_mismatch_returns_bare_rag_miss(tmp_path: Path) -> 
     assert not classifier_called[0]
     assert source_kinds == []
     names = _emitted_event_types(event_log, tmp_path)
-    assert "RagRecordModelMismatch" in names
+    # Phase-4 S5-03 moved RagRecordModelMismatch emission from the
+    # retriever into the filter (the filter holds the model digests
+    # and emits the event with both current_model + sample_stale_model).
+    # The retriever's contract here is just to emit RagMissEvent with
+    # reason="all_candidates_model_mismatch" when the filter excludes
+    # every candidate. The filter's own emission is exercised in
+    # tests/unit/rag/test_model_mismatch_filter.py.
     miss_events = [
         e
         for e in event_log.replay()
@@ -318,6 +324,10 @@ async def test_ac17_all_model_mismatch_returns_bare_rag_miss(tmp_path: Path) -> 
     ]
     assert len(miss_events) == 1
     assert miss_events[0].reason == "all_candidates_model_mismatch"
+    assert "RagRecordModelMismatch" not in names, (
+        "The retriever must NOT emit RagRecordModelMismatch — that "
+        "responsibility moved to EmbeddingModelMismatchFilter in S5-03."
+    )
 
 
 # Hit-path: classifier returns RagHit → RagHitEvent + RagCandidateSelectedEvent emitted.
