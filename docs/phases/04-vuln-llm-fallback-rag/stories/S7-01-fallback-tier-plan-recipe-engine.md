@@ -1,7 +1,7 @@
 # Story S7-01 — `FallbackTierPlanRecipeEngine` plugin adapter
 
 **Step:** Step 7 — Ship plugin wiring: FallbackTierPlanRecipeEngine + harvest + E2E exit criteria
-**Status:** HARDENED (2026-05-24 — phase-story-validator)
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S7-01.md`](_attempts/S7-01.md)). Plugin directory + `FallbackTierPlanRecipeEngine` adapter + pure `_project_plan_outcome_to_recipe_outcome` projector shipped under `plugins/vulnerability-remediation--node--npm/subgraph/`. 10 tests cover AC-PROJECTION-TOTALITY (4 PlanOutcome variants → RecipeOutcome), AC-CTOR (keyword-only frozen dataclass), AC-PROTOCOL-CONFORMANCE (returns RecipeOutcome), AC-NO-EMIT (adapter contributes zero events), AC-FENCE-IMPORT (AST walk rejects anthropic/chromadb/fastembed/onnxruntime), AC-KERNEL-FROZEN (the diff lands only under `plugins/` and `tests/unit/plugin/`; `tests/fence/test_kernel_frozen.py` stays green; lint-imports 12 contracts kept). The plugin module is loaded via `importlib.util.spec_from_file_location` (the hyphenated slug is not Python-identifier-valid). Production triple-extraction from Phase-3 `ApplicationPlan` lands when the Phase-5 `(advisory, repo_ctx, recipe_selection)` contract types harmonize.
 **Effort:** M
 **Depends on:** S6-01 (`FallbackTier.run`), S1-03 (`PlanOutcome`), S1-02 (`PlanProposal`); Phase-3 plugin `RecipeEngine` Protocol stable
 **ADRs honored:** ADR-0002 (FallbackTier pipeline), ADR-0004 (PlanOutcome wraps RecipeOutcome — never widens), ADR-0003 (path-scoped fence), production-ADR-0031 (extension by addition into plugin)
