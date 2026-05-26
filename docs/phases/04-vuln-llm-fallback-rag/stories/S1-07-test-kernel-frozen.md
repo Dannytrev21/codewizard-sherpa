@@ -1,32 +1,104 @@
-# Story S1-07 — `test_kernel_frozen.py` guard
+# Story S1-07 — `test_kernel_frozen.py` Phase-3 baseline extension
 
 **Step:** Step 1 — Establish Phase-4 type substrate + path-scoped fence amendment
-**Status:** RESCUE — 2026-05-21 (phase-story-validator; see [`_validation/S1-07-test-kernel-frozen.md`](_validation/S1-07-test-kernel-frozen.md))
-**Effort:** S
-**Depends on:** S1-05
-**ADRs honored:** ADR-0004 (`PlanOutcome` wraps `RecipeOutcome` — no Phase-3 sum-type widening; the kernel-frozen test is the structural backstop), ADR-0003 (path-scoped fence — kernel-frozen and fence-CI together compose the "no LLM in gather pipeline" invariant), `production/adrs/0031-plugin-architecture.md` (Phase-7 exit criterion — "diff touches only the new plugin directory" — this story lands the test that proves it for Phase 4)
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; re-scoped per validator + executed in a single session — see [`_attempts/S1-07.md`](_attempts/S1-07.md)). 18 fence tests pass (4 new parametrized rows × 2 baselines + 1 docstring assertion); the live phase-3-baseline diff against HEAD is clean (no out-of-allowlist kernel edits since Phase 3 complete).
+**Effort:** XS (one-row baseline append + pinned SHA file)
+**Depends on:** S1-05 (Phase-4 fence amendment); Phase-3 complete (the SHA being pinned)
+**ADRs honored:** ADR-0004 (`PlanOutcome` wraps `RecipeOutcome` — no Phase-3 sum-type widening; the kernel-frozen test is the structural backstop), ADR-0003 (path-scoped fence — kernel-frozen and fence-CI together compose the "no LLM in gather pipeline" invariant), `production/adrs/0031-plugin-architecture.md` (Phase-7 exit criterion — "diff touches only the new plugin directory" — this story lands the test that proves it for Phase 4), ADR-0011 (audit + lint framing — inherited from the shipped Phase-3 fence; no mechanism change)
 
-## Validation notes
+## Validation re-scope (2026-05-25)
 
-Validated: 2026-05-21 — phase-story-validator
-Verdict: **RESCUE** — story not edited (its goal is wrong, not just its ACs).
+The original story prescribed a brand-new `tests/fence/test_kernel_frozen.py`
+built on a BLAKE3 content-snapshot. That file already exists — Phase-3 S1-05
+shipped it GREEN on 2026-05-18 as a **git-diff-against-baseline-SHA** fence with
+a `_BASELINES: Final[tuple[tuple[str, Path], ...]]` extension seam. Per the
+validator's recommended rewrite, Phase-4's contribution is a **one-row append**
+to that seam plus a new pinned-SHA sidecar — no new mechanism, no generator
+script, no BLAKE3 snapshot, no env-var skip.
 
-This story prescribes a brand-new `tests/fence/test_kernel_frozen.py` built on a
-BLAKE3 content-snapshot mechanism. That file **already exists** — Phase-3 story
-S1-05 shipped it GREEN on 2026-05-18 as a git-diff-against-baseline-SHA fence.
-Phase-4 `final-design.md:680` and `phase-arch-design.md` §CI gates both say
-Phase 4's job is to **extend** that existing file's allow-list / baselines
-("Phase 3, extended", "allow-list extension") — *not* rebuild it. The goal, all
-ten ACs, the TDD plan, and all four Files-to-touch entries are built on the wrong
-mechanism. The story also cites a non-existent arch section
-("§Implementation-level risks §1").
+### Re-scoped Goal
 
-**Do not send this story to `phase-story-executor`.** It needs a
-`phase-story-writer` re-run. The full audit log — including a concrete
-"Recommended rewrite" brief — is at
-[`_validation/S1-07-test-kernel-frozen.md`](_validation/S1-07-test-kernel-frozen.md).
-The original Goal / Acceptance criteria / TDD plan below are left intact as raw
-material for the re-author.
+Extend the existing `tests/fence/test_kernel_frozen.py` so that the
+parametrized fence suite also diffs the working tree against the **Phase-3**
+kernel state. Concretely:
+
+1. Append `("phase-3", Path("tests/fence/_phase3_baseline.txt"))` to the
+   `_BASELINES` `Final` tuple (one-row extension).
+2. Create `tests/fence/_phase3_baseline.txt` containing the 40-char SHA of the
+   Phase-3-complete commit (`788512f570a0c34e37def129abd262c05de85855` —
+   `feat(phase3/S6-04): land ADR-0015 resolver substrate`, the last
+   Phase-3 source-code commit before Phase-4 work began).
+3. Loop the live "no kernel edits" test over every baseline (not just
+   `_BASELINES[0]`) so the Phase-3 row is actively exercised.
+4. Update the module docstring + the helpful-error test to name both
+   `_phase2_baseline.txt` and `_phase3_baseline.txt`.
+
+The existing `_KERNEL_ALLOWLIST` is **not** widened — Phase-4 adds entirely
+new top-level packages (`fallback/`, `rag/`, `workflows/`) that live outside
+`_KERNEL_SCOPE_DIRS` and require no allow-list entry. The handful of Phase-4
+edits to kernel files (`pyproject.toml`, `_fence.py`, `cli.py`,
+`output/sanitizer.py`, `logging.py`, `types/*`) are already on the allow-list
+from earlier Phase-4 stories.
+
+### Re-scoped Acceptance criteria
+
+- [ ] **AC-1.** `_BASELINES` contains exactly two rows after this change:
+      `("phase-2", _phase2_baseline.txt)` and `("phase-3", _phase3_baseline.txt)`.
+- [ ] **AC-2.** `tests/fence/_phase3_baseline.txt` contains exactly one
+      40-char lowercase hex SHA — `788512f570a0c34e37def129abd262c05de85855`
+      — terminated with a single newline (mirrors `_phase2_baseline.txt`).
+- [ ] **AC-3.** The two existing parametrized tests
+      (`test_baseline_file_is_a_real_40_char_sha`,
+      `test_baseline_resolves_to_ancestor_of_head_and_is_not_head`) cover
+      the new row automatically and pass.
+- [ ] **AC-4.** A new parametrized test
+      `test_no_kernel_edits_outside_allowlist[phase-3]` runs the live
+      diff against the Phase-3 baseline and passes (no out-of-allowlist
+      kernel edits since Phase 3 complete).
+- [ ] **AC-5.** A planted-violation test (using the existing
+      `_kernel_violations` helper with a fake diff) confirms that a
+      hypothetical edit to a Phase-3 kernel file under
+      `_KERNEL_SCOPE_DIRS` would be flagged when diffed against the
+      Phase-3 baseline.
+- [ ] **AC-6.** The module docstring + the helpful-error message name
+      both `_phase2_baseline.txt` and `_phase3_baseline.txt`; the existing
+      `test_module_docstring_names_adr_0011_framing_and_fetch_depth`
+      assertion is extended to cover the Phase-3 baseline filename.
+
+### Re-scoped Files to touch
+
+- `tests/fence/test_kernel_frozen.py` (EDIT — append baseline row;
+  generalize the live-diff test; add AC-5 planted-violation test; update
+  docstring + helpful-error message).
+- `tests/fence/_phase3_baseline.txt` (NEW — single 40-char SHA + newline).
+
+### Re-scoped TDD plan
+
+Red → Green → Refactor:
+
+1. **Red.** Add the new baseline row and create `_phase3_baseline.txt`.
+   The existing parametrized tests instantly cover the new row; the live
+   diff test still uses `_BASELINES[0]` so it does not yet exercise
+   Phase-3. Write the AC-4 generalization + AC-5 planted-violation test
+   first — both fail because the live test only iterates over `[0]`.
+2. **Green.** Refactor the live test to iterate over all `_BASELINES`
+   rows (a parametrized form of the existing function). Run the suite;
+   both new tests pass.
+3. **Refactor.** Pull the docstring + helpful-error string out so both
+   baseline filenames appear in one place; update
+   `test_module_docstring_names_adr_0011_framing_and_fetch_depth` to
+   assert both names. Re-run the suite.
+
+### Re-scoped Out-of-scope
+
+- BLAKE3 content snapshot mechanism (validator-rejected as duplication-by-addition).
+- `scripts/regenerate_kernel_snapshot.py` and `_kernel_snapshot.json`
+  (validator-rejected — the existing 40-char SHA file is the canonical
+  baseline format).
+- `_KERNEL_ALLOWLIST` extension (Phase-4 does not edit kernel files
+  outside the already-allowlisted set).
+- Subprocess-tree-copy mutation guard (parametrized test suite covers
+  the equivalent failure mode for free).
 
 ## Context
 

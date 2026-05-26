@@ -1,10 +1,11 @@
-"""Phase 0/1/2 kernel-frozen fence: git-diff against a pinned baseline SHA.
+"""Phase 0/1/2/3 kernel-frozen fence: git-diff against pinned baseline SHAs.
 
 ADR-0011 framing: this is **audit + lint** enforcement, NOT a runtime guarantee.
 A determined PR that edits both the baseline file
-(``_phase2_baseline.txt``) and the violation defeats this fence; CODEOWNERS
-on ``tests/fence/`` + ``tests/fence/_phase2_baseline.txt`` is the social
-anchor (raise via review).
+(``_phase2_baseline.txt`` or ``_phase3_baseline.txt``) and the violation
+defeats this fence; CODEOWNERS on ``tests/fence/`` +
+``tests/fence/_phase2_baseline.txt`` + ``tests/fence/_phase3_baseline.txt`` is
+the social anchor (raise via review).
 
 **CI fetch-depth requirement.** GitHub Actions defaults to a shallow clone.
 The baseline SHA must be reachable from ``HEAD`` for ``git merge-base
@@ -14,6 +15,12 @@ baseline SHA is missing — so this fence works without callers having to set
 ``actions/checkout`` with ``fetch-depth: 0`` ahead of time. If the unshallow
 fetch fails (e.g., the SHA was rewritten on the remote), the diff call
 surfaces a clear error.
+
+**Phase-4 S1-07 extension (2026-05-25).** A second row
+``("phase-3", _phase3_baseline.txt)`` joins ``_BASELINES`` so the live diff
+also runs against the Phase-3-complete commit. The mechanism is unchanged
+(git-diff + 40-char SHA + ADR-0011 audit/lint framing); the existing
+parametrized integrity tests cover the new row automatically.
 """
 
 from __future__ import annotations
@@ -32,6 +39,10 @@ import pytest
 
 _BASELINES: Final[tuple[tuple[str, Path], ...]] = (
     ("phase-2", Path("tests/fence/_phase2_baseline.txt")),
+    # Phase-4 S1-07 — Phase-3-complete baseline. The SHA in the sidecar
+    # is ``feat(phase3/S6-04): land ADR-0015 resolver substrate``, the
+    # last Phase-3 source-code commit before Phase-4 work began.
+    ("phase-3", Path("tests/fence/_phase3_baseline.txt")),
 )
 
 
@@ -506,17 +517,24 @@ def _kernel_violations(
     return out
 
 
-def test_phase3_has_not_modified_phase012_kernel_outside_allowlist() -> None:
-    """AC-6 live: ``git diff`` between baseline and HEAD MUST be empty under
-    the kernel scope (modulo the ADR-anchored allowlist)."""
-    baseline = _read_baseline_sha(_BASELINES[0][1])
+@pytest.mark.parametrize("name,baseline_path", _BASELINES, ids=[n for n, _ in _BASELINES])
+def test_no_kernel_edits_outside_allowlist(name: str, baseline_path: Path) -> None:
+    """AC-6 live (Phase-2) + Phase-4 S1-07 AC-4 (Phase-3): the live ``git
+    diff`` between each baseline and HEAD MUST be empty under the kernel
+    scope (modulo the ADR-anchored allowlist).
+
+    Parametrized over ``_BASELINES`` so adding a Phase-N baseline at
+    Phase-(N+1) time is a one-row append — the live diff for the new
+    row runs automatically.
+    """
+    baseline = _read_baseline_sha(baseline_path)
     diff = _run_git_diff(baseline)
     violations = _kernel_violations(diff)
     assert violations == [], (
-        f"Phase 3 work touched Phase 0/1/2 kernel files outside the "
-        f"`_KERNEL_ALLOWLIST`: {violations}. Either add the file to the "
-        f"allowlist (with an `# adr:` comment) via ADR amendment, or revert "
-        f"the change. See `tests/fence/_phase2_baseline.txt` + ADR-0011."
+        f"Work since the {name} baseline touched Phase 0/1/2/3 kernel files "
+        f"outside the `_KERNEL_ALLOWLIST`: {violations}. Either add the file "
+        f"to the allowlist (with an `# adr:` comment) via ADR amendment, or "
+        f"revert the change. See `{baseline_path}` + ADR-0011."
     )
 
 
@@ -525,9 +543,19 @@ def test_phase3_has_not_modified_phase012_kernel_outside_allowlist() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_helpful_error_names_baseline_file_and_adr_amendment() -> None:
-    """AC-6.c: if the kernel-frozen test fails, the error message MUST point
-    operators at ``_phase2_baseline.txt`` and the words ``ADR amendment``."""
+@pytest.mark.parametrize("name,baseline_path", _BASELINES, ids=[n for n, _ in _BASELINES])
+def test_helpful_error_names_baseline_file_and_adr_amendment(
+    name: str, baseline_path: Path
+) -> None:
+    """AC-6.c (Phase-2) + Phase-4 S1-07 AC-5 (Phase-3): if the kernel-frozen
+    test fails for any baseline row, the error message MUST point operators
+    at the right baseline file and the words ``ADR amendment``.
+
+    Planted-violation form: an edit to ``probes/layer_a/language_detection.py``
+    is in kernel scope and would be caught for *every* baseline row — the
+    parametrization confirms each baseline's error message names the right
+    sidecar.
+    """
     fake_diff: list[tuple[str, Path]] = [
         ("M", Path("src/codegenie/probes/layer_a/language_detection.py"))
     ]
@@ -535,12 +563,14 @@ def test_helpful_error_names_baseline_file_and_adr_amendment() -> None:
     assert violations, "Fake diff MUST be flagged as a kernel violation"
     # Re-build the message the live test would emit so we can pin its shape.
     expected_message = (
-        f"Phase 3 work touched Phase 0/1/2 kernel files outside the "
-        f"`_KERNEL_ALLOWLIST`: {violations}. Either add the file to the "
-        f"allowlist (with an `# adr:` comment) via ADR amendment, or revert "
-        f"the change. See `tests/fence/_phase2_baseline.txt` + ADR-0011."
+        f"Work since the {name} baseline touched Phase 0/1/2/3 kernel files "
+        f"outside the `_KERNEL_ALLOWLIST`: {violations}. Either add the file "
+        f"to the allowlist (with an `# adr:` comment) via ADR amendment, or "
+        f"revert the change. See `{baseline_path}` + ADR-0011."
     )
-    assert "_phase2_baseline.txt" in expected_message
+    assert str(baseline_path) in expected_message, (
+        f"{name} baseline must be named in the error message"
+    )
     assert "ADR amendment" in expected_message
 
 
@@ -589,5 +619,7 @@ def test_module_docstring_names_adr_0011_framing_and_fetch_depth() -> None:
     assert "audit + lint" in doc or "audit and lint" in doc
     assert "not a runtime guarantee" in doc
     assert "fetch-depth" in doc
-    # The baseline rotation file should be named so future readers find it.
+    # Both baseline rotation files should be named so future readers find
+    # them — Phase-2 (original) + Phase-3 (S1-07 extension).
     assert "_phase2_baseline.txt" in me.__doc__
+    assert "_phase3_baseline.txt" in me.__doc__
