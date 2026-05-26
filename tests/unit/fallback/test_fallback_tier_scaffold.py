@@ -33,6 +33,8 @@ from codegenie.types.identifiers import (
 
 def _make_tier(tmp_path: Path) -> FallbackTier:
     """Build a FallbackTier with mock collaborators for shape testing."""
+    from codegenie.fallback.confidence_gate import ConfidenceGate
+
     event_log = EventLog(root=tmp_path, workflow_id=WorkflowId("01HS601SCAFFOLDTESTWX0001"))
     return FallbackTier(
         retriever=MagicMock(),
@@ -44,7 +46,9 @@ def _make_tier(tmp_path: Path) -> FallbackTier:
         event_log=event_log,
         prompt_builder=MagicMock(),
         harvester=MagicMock(),
-        confidence_gate=MagicMock(),
+        confidence_gate=ConfidenceGate(),
+        store=MagicMock(),
+        embedder=MagicMock(),
     )
 
 
@@ -97,11 +101,13 @@ def test_run_signature_has_immutable_empty_tuple_default(tmp_path: Path) -> None
     assert p.kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_on_validated_stub_raises_not_implemented(tmp_path: Path) -> None:
-    """`on_validated` is a stub — S6-03 fills the body."""
-    tier = _make_tier(tmp_path)
-    with pytest.raises(NotImplementedError, match="S6-03"):
-        tier.on_validated(Refused(reason="LEAF_REFUSED"), object())
+def test_on_validated_signature_is_async_kw_context(tmp_path: Path) -> None:
+    """S6-03 AC-1 — `on_validated(outcome, trust, *, context)` async signature."""
+    sig = inspect.signature(FallbackTier.on_validated)
+    params = list(sig.parameters)
+    assert params == ["self", "outcome", "trust", "context"]
+    assert sig.parameters["context"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert inspect.iscoroutinefunction(FallbackTier.on_validated)
 
 
 def test_run_returns_a_typed_plan_outcome(tmp_path: Path) -> None:

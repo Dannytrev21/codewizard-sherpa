@@ -1,7 +1,7 @@
 # Story S6-03 — `FallbackTier.on_validated` harvest hook with confidence gate
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S6-03.md`](_attempts/S6-03.md)). FallbackTier.on_validated body shipped with the six-step dispatch (eligibility → gate → mint → project → ingest → emit); ConfidenceGate ctor-injected; PostValidationContext kw-only carrier; HarvestSkipped event registered with closed-set reason/outcome_kind Literals; import-linter contract extended (codegenie.fallback.tier → codegenie.rag._capability_mint admitted). 9 on_validated tests + 14 prep tests = 23 tests covering AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14. **Deferred:** AC-8 idempotence pre-check (needs `SolvedExampleStore.contains()` Protocol method — Phase-5 extension), AC-15 Hypothesis exactly-one-terminal-event property.
 **Effort:** M
 **Depends on:** S6-01 (FallbackTier shell + ctor-injected `confidence_gate`), S4-06 HARDENED (`ingest_solved_example` keyword-only, `_phase4_local_capability_mint` in `codegenie.rag._capability_mint`, `SolvedExampleHarvested` event registered)
 **ADRs honored:** ADR-0009 (inline auto-harvest gated by `TrustOutcome.passed AND confidence == "high"`; Module Boundary not Capability), ADR-0004 (`PlanOutcome` wraps `RecipeOutcome` — never widened)

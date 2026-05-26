@@ -738,11 +738,9 @@ ignore_imports = [
   # call-site (ADR-0016 §"operational-recovery"). Story AC-2/AC-13
   # pin reuse of the mint rather than a parallel `_rebuild_capability`.
   "codegenie.rag.cli -> codegenie.rag._capability_mint",
-  # Phase-4 S6-03 — the FallbackTier.on_validated harvest hook will be
-  # the third sanctioned mint call-site (ADR-04-0009 §Decision: inline
-  # auto-harvest wired into FallbackTier). This row is added by the
-  # S6-03 completion session ALONGSIDE the import in
-  # codegenie.fallback.tier — import-linter 2.x rejects unmatched
-  # ignore_imports rows (S1-06 lesson), so the row + the import must
-  # land in the same commit.
+  # Phase-4 S6-03 — the FallbackTier.on_validated harvest hook is the
+  # third sanctioned mint call-site (ADR-04-0009 §Decision: inline
+  # auto-harvest wired into FallbackTier). Mint is called keyword-only
+  # inside on_validated; S6-03 AC-10 pins the import shape.
+  "codegenie.fallback.tier -> codegenie.rag._capability_mint",
 ]

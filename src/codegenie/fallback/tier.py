@@ -48,6 +48,7 @@ from datetime import UTC, datetime
 from typing import assert_never
 
 from codegenie.fallback.budget import LlmInvocationGuard
+from codegenie.fallback.confidence_gate import ConfidenceGate
 from codegenie.fallback.contracts import (
     CveAdvisory,
     RecipeSelection,
@@ -73,11 +74,19 @@ from codegenie.fallback.plan_proposal import (
 )
 from codegenie.fallback.post_validation_context import PostValidationContext
 from codegenie.fallback.provenance_gate import ProvenanceGate
-from codegenie.plugins.events import EventLog, PlanOutcomeEmitted
-from codegenie.rag.ingest import ValidatedPlanOutcome
+from codegenie.plugins.events import (
+    EventLog,
+    HarvestSkipped,
+    PlanOutcomeEmitted,
+    SolvedExampleHarvested,
+)
+from codegenie.rag._capability_mint import _phase4_local_capability_mint
+from codegenie.rag.embedder import Embedder
+from codegenie.rag.ingest import ValidatedPlanOutcome, ingest_solved_example
+from codegenie.rag.store import SolvedExampleStore
 from codegenie.transforms.apply_context import AttemptSummary
 from codegenie.transforms.outcomes import TrustOutcome
-from codegenie.types.identifiers import EventId, LeafResponseId
+from codegenie.types.identifiers import EventId, LeafResponseId, ModelId
 
 __all__ = [
     "FallbackTier",
@@ -248,8 +257,10 @@ class FallbackTier:
     provenance: ProvenanceGate
     event_log: EventLog
     prompt_builder: PromptBuilder = field(kw_only=True)
-    harvester: object = field(kw_only=True)  # S6-03 narrows
-    confidence_gate: object = field(kw_only=True)  # S6-03 narrows
+    harvester: object = field(kw_only=True)  # Phase-4-local placeholder
+    confidence_gate: ConfidenceGate = field(kw_only=True)
+    store: SolvedExampleStore = field(kw_only=True)  # S6-03 — for harvest
+    embedder: Embedder = field(kw_only=True)  # S6-03 — for harvest
 
     async def run(
         self,
@@ -277,16 +288,65 @@ class FallbackTier:
         self._emit_plan_outcome(outcome)
         return outcome
 
-    def on_validated(self, outcome: PlanOutcome, trust: object) -> None:
-        """S6-03 hook — fires after Phase-5 ``GateRunner`` reports trust.
+    async def on_validated(
+        self,
+        outcome: PlanOutcome,
+        trust: TrustOutcome,
+        *,
+        context: PostValidationContext,
+    ) -> None:
+        """S6-03 — inline auto-harvest dispatch.
 
-        S6-01 ships the stub so Phase-5/Phase-3 orchestrator callsites
-        can import the method symbol from Step 6 onward. S6-03 fills
-        the on-success harvester invocation that ingests the
-        ``(advisory, plan, outcome)`` triple into the RAG store.
+        Six-step body (ADR-04-0009 §Decision; the original 7-step list
+        in the story includes the AC-8 idempotence pre-check, deferred
+        until ``SolvedExampleStore.contains()`` lands on the Protocol):
+
+        1. ``eligibility = harvest_eligibility(outcome)`` — only
+           :class:`AppliedFromLlm` is eligible. Otherwise emit
+           ``HarvestSkipped(reason="outcome_not_harvestable")``.
+        2. ``self.confidence_gate.passes(trust)`` — if False, emit
+           ``HarvestSkipped(reason=skip_reason_for(trust))``.
+        3. Mint capability via ``_phase4_local_capability_mint``.
+        4. Project ``ValidatedPlanOutcome`` via
+           :func:`_validated_outcome_from`.
+        5. ``await ingest_solved_example(...)`` — keyword-only writer.
+        6. Emit ``SolvedExampleHarvested`` with the actual returned id.
         """
-        del outcome, trust
-        raise NotImplementedError("see S6-03")
+        eligibility = harvest_eligibility(outcome)
+        if not eligibility.eligible:
+            self._emit_harvest_skipped(
+                reason="outcome_not_harvestable", outcome_kind=outcome.kind
+            )
+            return
+        if not self.confidence_gate.passes(trust):
+            self._emit_harvest_skipped(
+                reason=skip_reason_for(trust),
+                outcome_kind=outcome.kind,
+            )
+            return
+        # Type-narrow: eligibility guard guarantees outcome is AppliedFromLlm.
+        assert isinstance(outcome, AppliedFromLlm)  # noqa: S101
+        validated = _validated_outcome_from(outcome=outcome, context=context)
+        capability = _phase4_local_capability_mint(
+            workflow_id=context.workflow_id,
+            chain_head=context.chain_head,
+        )
+        actual_sid = await ingest_solved_example(
+            outcome=validated,
+            store=self.store,
+            embedder=self.embedder,
+            capability=capability,
+        )
+        self.event_log.emit_internal(
+            SolvedExampleHarvested(
+                event_id=_new_event_id(),
+                workflow_id=self.event_log.workflow_id,
+                timestamp=_now_utc(),
+                solved_example_id=actual_sid,
+                embedding_model=ModelId(str(self.embedder.model_digest())),
+                event_chain_head=context.chain_head,
+            )
+        )
 
     # ---- private helpers --------------------------------------------------
 
@@ -300,5 +360,23 @@ class FallbackTier:
                 timestamp=_now_utc(),
                 outcome_kind=outcome.kind,
                 outcome_payload=outcome.model_dump(mode="json"),
+            )
+        )
+
+    def _emit_harvest_skipped(
+        self,
+        *,
+        reason: str,
+        outcome_kind: str,
+    ) -> None:
+        """Emit a :class:`HarvestSkipped` event with the closed-set
+        ``reason`` and the gate's ``plan_outcome_kind`` discriminator."""
+        self.event_log.emit_internal(
+            HarvestSkipped(
+                event_id=_new_event_id(),
+                workflow_id=self.event_log.workflow_id,
+                timestamp=_now_utc(),
+                reason=reason,  # type: ignore[arg-type]
+                plan_outcome_kind=outcome_kind,  # type: ignore[arg-type]
             )
         )
