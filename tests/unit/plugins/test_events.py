@@ -1431,3 +1431,66 @@ def test_solved_example_harvested_origin_default_is_llm_solved() -> None:
         event_chain_head=ChainHead("a" * 64),
     )
     assert event.origin == "llm_solved"
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 S6-02 — ``RagSkippedOnRetry`` variant round-trip + registration
+# ---------------------------------------------------------------------------
+
+
+def test_rag_skipped_on_retry_is_internal_event_variant() -> None:
+    """S6-02 AC: ``rag_skipped_on_retry`` discriminator is registered in
+    :data:`WorkflowInternalEvent`. Missing registration would fail at the
+    first :meth:`EventLog.emit_internal` call with a Pydantic discriminator
+    error — pin it structurally instead.
+    """
+    from pydantic import TypeAdapter
+
+    from codegenie.plugins.events import RagSkippedOnRetry, WorkflowInternalEvent
+
+    mapping = TypeAdapter(WorkflowInternalEvent).json_schema()["discriminator"]["mapping"]
+    assert "rag_skipped_on_retry" in mapping
+    assert RagSkippedOnRetry.model_fields["event_type"].default == "rag_skipped_on_retry"
+
+
+def test_rag_skipped_on_retry_round_trips_through_event_log(tmp_path: Path) -> None:
+    """S6-02 AC: ``RagSkippedOnRetry`` emits via :meth:`emit_internal` and
+    its typed payload (``attempt_count``, ``last_attempt_number``,
+    ``last_failing_signals``) round-trips byte-equal through
+    :meth:`replay`.
+    """
+    from codegenie.plugins.events import RagSkippedOnRetry
+    from codegenie.types.identifiers import SignalKind
+
+    log = EventLog(root=tmp_path, workflow_id=_wf())
+    log.emit_internal(
+        RagSkippedOnRetry(
+            event_id=EventId("01HS602ROUND0000000000"),
+            workflow_id=_wf(),
+            timestamp=_now(),
+            attempt_count=2,
+            last_attempt_number=2,
+            last_failing_signals=(SignalKind("typecheck.typescript"),),
+        )
+    )
+    log.flush()
+
+    replayed = [e for e in log.replay() if isinstance(e, RagSkippedOnRetry)]
+    assert len(replayed) == 1
+    e = replayed[0]
+    assert e.attempt_count == 2
+    assert e.last_attempt_number == 2
+    assert e.last_failing_signals == (SignalKind("typecheck.typescript"),)
+
+
+def test_rag_skipped_on_retry_is_in_internal_classes_tuple() -> None:
+    """S6-02 AC: ``RagSkippedOnRetry`` appears in
+    :data:`_INTERNAL_CLASSES` — the runtime guard
+    :meth:`EventLog.emit_internal` uses to reject mistyped emissions.
+    Missing registration would cause emit_internal to raise TypeError
+    even though Pydantic validation would otherwise accept the payload.
+    """
+    from codegenie.plugins.events import RagSkippedOnRetry
+    from codegenie.plugins.events import _INTERNAL_CLASSES  # noqa: PLC2701
+
+    assert RagSkippedOnRetry in _INTERNAL_CLASSES

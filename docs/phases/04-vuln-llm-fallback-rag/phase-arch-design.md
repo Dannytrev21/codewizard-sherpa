@@ -816,7 +816,7 @@ After Stage 6 validates (Phase 5 envelope): orchestrator invokes `FallbackTier.o
 11. **Mint capability** via `_phase4_local_capability_mint(workflow_id, chain_head)` (Phase 5 supersedes).
 12. **`ingest_solved_example`** — under `asyncio.Lock`; emit `SolvedExampleHarvested`.
 
-**Retry path (Phase 5 re-enters).** `prior_attempts != []` ⇒ RAG **bypassed**; prompt body includes only the fence-wrapped `prior_failure_summary` from the most recent `AttemptSummary`. ADR-04-0003 records this as a deliberate departure from ADR-0011's chain order (which describes initial-plan order, not retry order).
+**Retry path (Phase 5 re-enters).** `prior_attempts != []` ⇒ RAG **bypassed**; prompt body includes only the fence-wrapped `prior_failure_summary` from the most recent `AttemptSummary`. ADR-04-0011 records this as a deliberate departure from ADR-0011's chain order (which describes initial-plan order, not retry order).
 
 ---
 
@@ -935,7 +935,7 @@ Walking the toolkit's "flag on sight" list:
 | 8 | Major-bump diff exceeds 64 KB cap | `UnifiedDiff` smart-constructor rejects | `PlanProposalCallsiteRewrite.diff` validator | `LeafProtocolViolation(diff_too_large)`; LLM re-prompted to emit `Refuse(out_of_scope)` → HITL. Cap is the blast-radius/capability trade. |
 | 9 | `./node_modules/.bin/tsc` not on PATH | `SubprocessJail.run` returns `Completed(exit_code=127)` or `Missing` | `TypecheckTypescriptSignal.collect` | `TrustSignal(passed=False, details={"degraded_reason": "no_tsconfig_or_tsc"}, confidence="medium")`. Phase 7 base plugin owns the discoverability fix. |
 | 10 | RAG retriever returns top-1 below floor | `score < degraded_floor` | `SolvedExampleRetriever` band classifier | `RagMiss`; LLM invoked without few-shot; harvested if validate passes (cold start). |
-| 11 | Retry-on-fail re-queries RAG | `prior_attempts != []` would re-fetch same hit → same wrong patch | `FallbackTier` retry guard | RAG **bypassed**; prompt body carries only the fence-wrapped `prior_failure_summary`. ADR-04-0003 records this departure from ADR-0011's chain order. |
+| 11 | Retry-on-fail re-queries RAG | `prior_attempts != []` would re-fetch same hit → same wrong patch | `FallbackTier` retry guard | RAG **bypassed**; prompt body carries only the fence-wrapped `prior_failure_summary`. ADR-04-0011 records this departure from ADR-0011's chain order. |
 | 12 | Egress to non-Anthropic host attempted (transitive dep) | `socket.create_connection` to other host | `EgressGuard` socket wrapper | `EgressViolation(host)` raised; workflow halts; operator supply-chain audit. |
 | 13 | `embeddings.cache.sqlite` corrupted | sqlite open raises | `FastembedEmbedder` lazy-open | Cache rebuilt on demand (embed-on-miss); no workflow failure; logged. |
 | 14 | RAG record chain-orphan on retrieval | `provenance.event_chain_head` not in spanning log | `RecordProvenance.verify` | Exclude record from result set; emit `RagRecordChainOrphan`; continue. |
@@ -1054,7 +1054,7 @@ Phase 5's contract-snapshot test (`tests/integration/test_phase5_contract_snapsh
 
 **Deferred ADRs sharpened or resolvable post-Phase-4:**
 
-- **ADR-0011 (recipe → RAG → LLM chain order)** — clarified: chain order describes initial-plan order; ADR-04-0003 documents the retry-path RAG-bypass deliberately.
+- **ADR-0011 (recipe → RAG → LLM chain order)** — clarified: chain order describes initial-plan order; ADR-04-0011 documents the retry-path RAG-bypass deliberately.
 - **ADR-0017 (KG backend)** — Phase 4 establishes the solved-example store shape; Phase 11's pgvector decision can cite Phase-4 evidence (single-writer contention frequency).
 - **ADR-0020 (leaf agent SDK)** — Anthropic is locked at the adapter; second-vendor un-deferral is a one-adapter change behind the existing Protocol.
 - **ADR-0037 (`typecheck.*` SignalKinds)** — first concrete kind lands.
@@ -1075,7 +1075,7 @@ Phase 5's contract-snapshot test (`tests/integration/test_phase5_contract_snapsh
 | Chroma single-writer + `asyncio.Lock` | No docker; embedded; rebuild-from-YAML recovery | Bottleneck at portfolio scale; Phase 11 pgvector swap inevitable | final-design §Component 7 |
 | `fastembed` over `sentence-transformers` | One-third install footprint; no torch; no GPU | ONNX cross-arch float drift at 5th decimal (acknowledged) | critic [B] §2 |
 | `EgressGuard` via `sitecustomize.py` | Process-wide catch of dynamic socket use | Import-time side effect; C-extension bypass residual | final-design §Component 10 |
-| RAG bypass on retry (`prior_attempts != []`) | Avoids same-wrong-hit-twice failure mode | Loses compounding for legitimate same-hit retry; ADR-04-0003 documents | final-design §Component 1 |
+| RAG bypass on retry (`prior_attempts != []`) | Avoids same-wrong-hit-twice failure mode | Loses compounding for legitimate same-hit retry; ADR-04-0011 documents | final-design §Component 1 |
 | Capability-pattern budget (`BudgetToken`) | Type-error if leaf is called without budget | One extra arg through two frames | final-design §Component 5 |
 | Three cached system blocks | system[0]+[1] cache reuse across workflows | system[2] only warm within 5-min batch | final-design §Component 4 |
 | **Phase-4-local `_phase4_local_capability_mint`** shim | Inline harvest meets roadmap exit criterion now | Phase 5's `GateRunner` mint supersedes; interim ownership unclear | final-design §Component 9 |

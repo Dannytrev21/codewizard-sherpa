@@ -82,6 +82,7 @@ from codegenie.plugins.events import (
     EventLog,
     HarvestSkipped,
     PlanOutcomeEmitted,
+    RagSkippedOnRetry,
     SolvedExampleHarvested,
 )
 from codegenie.rag._capability_mint import _phase4_local_capability_mint
@@ -102,6 +103,7 @@ __all__ = [
     "FallbackTier",
     "HarvestEligibility",
     "harvest_eligibility",
+    "select_retry_summary",
     "skip_reason_for",
     "transform_from_plan",
 ]
@@ -243,6 +245,33 @@ def transform_from_plan(plan: PlanProposal) -> _TransformProjection:
             assert_never(unreachable)
 
 
+# --- S6-02 retry-bypass functional core -----------------------------------
+
+
+def select_retry_summary(
+    prior_attempts: Sequence[AttemptSummary],
+) -> AttemptSummary:
+    """Pure selector — return the most recent :class:`AttemptSummary`.
+
+    The retry-bypass branch (ADR-04-0011) passes the last attempt's
+    ``prior_failure_summary`` into :meth:`PromptBuilder.build` in place
+    of the RAG few-shot. This helper makes the selection rule explicit
+    and unit-testable in isolation (mirrors S6-01's
+    :func:`transform_from_plan` functional-core split).
+
+    The ``len > 0`` assertion is **defense-in-depth** — the
+    ``bool(prior_attempts)`` guard in :meth:`FallbackTier.run` already
+    prevents the empty case. A future refactor that flips the predicate
+    would silently :class:`IndexError` without this assert; instead it
+    surfaces with a clear "unreachable" message.
+    """
+    assert len(prior_attempts) > 0, (  # noqa: S101 — defense-in-depth invariant
+        "unreachable: select_retry_summary called with no prior attempts; "
+        "the bool(prior_attempts) guard in FallbackTier.run must precede this call"
+    )
+    return prior_attempts[-1]
+
+
 # --- FallbackTier ----------------------------------------------------------
 
 
@@ -319,6 +348,14 @@ class FallbackTier:
         """
         del repo_ctx, recipe_selection
         attempt_id = _new_attempt_id()
+        # S6-02 retry-bypass branch (ADR-04-0011): when prior_attempts is
+        # non-empty, RAG retrieval is skipped entirely; the last attempt's
+        # ``prior_failure_summary`` substitutes for the RAG few-shot in the
+        # prompt. ``bool(prior_attempts)`` is the load-bearing predicate —
+        # both ``()`` and ``[]`` are falsy (initial-plan path); any non-
+        # empty Sequence is truthy (retry-bypass path).
+        if prior_attempts:
+            self._emit_rag_skipped_on_retry(prior_attempts)
         outcome: PlanOutcome = Refused(reason="PROVENANCE_NOT_APP_LAYER")
         self._emit_plan_outcome(outcome)
         anchor = self._build_refusal_anchor(
@@ -390,6 +427,29 @@ class FallbackTier:
         )
 
     # ---- private helpers --------------------------------------------------
+
+    def _emit_rag_skipped_on_retry(
+        self,
+        prior_attempts: Sequence[AttemptSummary],
+    ) -> None:
+        """Emit :class:`RagSkippedOnRetry` for the retry-bypass branch.
+
+        Payload reflects the **last** attempt (``[-1]``) plus the total
+        count. ``select_retry_summary`` enforces the "last attempt is the
+        signal" invariant; emitting from ``[0]`` instead would be a
+        regression invisible to N=1 cases.
+        """
+        latest = select_retry_summary(prior_attempts)
+        self.event_log.emit_internal(
+            RagSkippedOnRetry(
+                event_id=_new_event_id(),
+                workflow_id=self.event_log.workflow_id,
+                timestamp=_now_utc(),
+                attempt_count=len(prior_attempts),
+                last_attempt_number=latest.attempt,
+                last_failing_signals=latest.failing_signals,
+            )
+        )
 
     def _emit_plan_outcome(self, outcome: PlanOutcome) -> None:
         """Emit the terminal :class:`PlanOutcomeEmitted` event carrying
