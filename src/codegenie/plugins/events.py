@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Annotated, Final, Literal, Protocol, runtime_checkable
 
 import zstandard
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from codegenie.hashing import content_hash_bytes
 from codegenie.plugins.cache_gc import CacheGcCompletedEvent
@@ -936,6 +936,60 @@ class RagCandidateSelectedEvent(BaseModel):
     fenced_digest: BlobDigest
 
 
+# --- Phase-4 S6-01 — FallbackTier dispatch events ---------------------------
+
+
+class BudgetPrechecked(BaseModel):
+    """S6-01 — :meth:`LlmInvocationGuard.running_total` was consulted before
+    the leaf invocation. ``running`` is the consumed-token total at probe
+    time; ``requested`` is the per-call budget the tier intends to
+    precharge. Probing is read-only (no token mint)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["budget_prechecked"] = "budget_prechecked"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    running: int
+    requested: int
+
+
+class TransformBuilt(BaseModel):
+    """S6-01 — a :class:`PlanProposal` returned by the leaf was projected
+    into a typed :class:`Transform`. ``plan_kind`` is the discriminator
+    name of the source plan variant for audit forensics. Emitted just
+    before the terminal ``PlanOutcomeEmitted``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["transform_built"] = "transform_built"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    plan_kind: Literal["dep_bump", "override", "callsite_rewrite", "refuse"]
+
+
+class PlanOutcomeEmitted(BaseModel):
+    """S6-01 — terminal event emitted by :meth:`FallbackTier.run`. Carries
+    the typed :data:`PlanOutcome` discriminated union (NOT a ``dict[str,
+    Any]``) so downstream consumers can ``match`` on the kind without
+    re-parsing.
+
+    ``outcome_kind`` is the literal discriminator value carried by the
+    embedded :data:`PlanOutcome`; the embedded ``outcome_payload`` is the
+    full ``model_dump(mode='json')`` of the variant. The discriminator
+    is duplicated for the same reason ``LedgerStateKind`` is closed —
+    a future widening shows up structurally.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["plan_outcome_emitted"] = "plan_outcome_emitted"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    outcome_kind: Literal["recipe", "llm", "rag_only", "refused"]
+    outcome_payload: JsonValue
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -1090,7 +1144,10 @@ WorkflowInternalEvent = Annotated[
     | RagHitEvent
     | RagDegradedEvent
     | RagMissEvent
-    | RagCandidateSelectedEvent,
+    | RagCandidateSelectedEvent
+    | BudgetPrechecked
+    | TransformBuilt
+    | PlanOutcomeEmitted,
     Field(discriminator="event_type"),
 ]
 
@@ -1154,6 +1211,9 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     RagDegradedEvent,
     RagMissEvent,
     RagCandidateSelectedEvent,
+    BudgetPrechecked,
+    TransformBuilt,
+    PlanOutcomeEmitted,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1530,7 +1590,10 @@ __all__ = [
     "PluginResolved",
     "PluginsLoaded",
     "PromptAssembled",
+    "BudgetPrechecked",
     "ProvenanceClassified",
+    "PlanOutcomeEmitted",
+    "TransformBuilt",
     "QueryBuiltEvent",
     "QueryRenderedEvent",
     "RagCandidateSelectedEvent",
