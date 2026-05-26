@@ -40,6 +40,10 @@ tools listed in
 Phase 3 (03-ADR-0012) extends with four binaries (``npm``, ``bwrap``,
 ``sandbox-exec``, ``jq``) — see
 ``docs/phases/03-vuln-deterministic-recipe/ADRs/0012-amend-allowed-binaries-npm-bwrap-sandbox-exec-jq.md``.
+Phase 4 (ADR-04-0015) extends with one binary (``tsc`` — the TypeScript
+compiler driver invoked by the Phase-4 typecheck collector that
+produces :class:`~codegenie.rag.models.TypecheckNodeSignal`); see
+``docs/phases/04-vuln-llm-fallback-rag/ADRs/0015-typecheck-typescript-signal-and-tsc-allowed-binary.md``.
 Future additions are ADR-amend or new-phase-ADR; no silent expansion.
 
 Sources:
@@ -126,6 +130,8 @@ ALLOWED_BINARIES: frozenset[str] = frozenset(
         "bwrap",  # Linux SubprocessJail adapter (ADR-0006 / S4-02)
         "sandbox-exec",  # macOS SubprocessJail adapter (ADR-0006 / S4-03)
         "jq",  # operator-tooling adjunct for audit verify / integration tests
+        # Phase 4 ADR-04-0015 addition:
+        "tsc",  # TypeScript compiler — TypecheckNodeSignal collector
     }
 )
 

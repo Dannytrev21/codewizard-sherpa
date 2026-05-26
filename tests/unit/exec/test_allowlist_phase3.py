@@ -50,7 +50,11 @@ PHASE2_BASELINE: frozenset[str] = frozenset(
         "strace",
     }
 )
-EXPECTED_TOTAL: frozenset[str] = PHASE2_BASELINE | NEW_BINARIES  # sixteen entries
+# Phase-4 ADR-04-0015 (S6-04) admits one additional binary: ``"tsc"``. The
+# closure-equality assertion grows by one row but stays anchored in this
+# Phase-3 family file for AC-4/AC-5 historical-precedent purposes.
+PHASE4_ADDITIONS: frozenset[str] = frozenset({"tsc"})
+EXPECTED_TOTAL: frozenset[str] = PHASE2_BASELINE | NEW_BINARIES | PHASE4_ADDITIONS  # 17 entries
 
 
 def _make_spawn_spy(monkeypatch: pytest.MonkeyPatch) -> mock.AsyncMock:
@@ -71,9 +75,14 @@ def _make_spawn_spy(monkeypatch: pytest.MonkeyPatch) -> mock.AsyncMock:
 
 def test_allowed_binaries_is_exact_sixteen_entry_set() -> None:
     """AC-1 — exact equality. Silent addition (e.g. ``"bash"``) or silent
-    deletion (e.g. dropping ``"npm"``) fails this test."""
+    deletion (e.g. dropping ``"npm"``) fails this test.
+
+    Phase-4 ADR-04-0015 (S6-04) admits ``"tsc"``: the closed set grows
+    from 16 → 17 entries. The historical name preserves the anchor for
+    AC-4/AC-5 precedent tests; the assertion uses the updated total.
+    """
     assert ALLOWED_BINARIES == EXPECTED_TOTAL
-    assert len(ALLOWED_BINARIES) == 16
+    assert len(ALLOWED_BINARIES) == 17
 
 
 def test_phase_2_baseline_preserved() -> None:

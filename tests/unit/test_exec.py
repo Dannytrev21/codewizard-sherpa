@@ -335,7 +335,11 @@ _PHASE_2_BASELINE_BINARIES: frozenset[str] = frozenset(
     }
 )
 _PHASE_3_NEW_BINARIES: frozenset[str] = frozenset({"npm", "bwrap", "sandbox-exec", "jq"})
-_PHASE_2_EXPECTED_BINARIES: frozenset[str] = _PHASE_2_BASELINE_BINARIES | _PHASE_3_NEW_BINARIES
+# Phase-4 ADR-04-0015 (S6-04) admits one additional binary: ``"tsc"``.
+_PHASE_4_NEW_BINARIES: frozenset[str] = frozenset({"tsc"})
+_PHASE_2_EXPECTED_BINARIES: frozenset[str] = (
+    _PHASE_2_BASELINE_BINARIES | _PHASE_3_NEW_BINARIES | _PHASE_4_NEW_BINARIES
+)
 
 
 def test_node_in_allowed_binaries() -> None:

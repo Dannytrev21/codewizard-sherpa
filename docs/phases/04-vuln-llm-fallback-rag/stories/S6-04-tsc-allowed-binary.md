@@ -1,7 +1,7 @@
 # Story S6-04 — `tsc` admitted to `ALLOWED_BINARIES`
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor; see [`_attempts/S6-04.md`](_attempts/S6-04.md)). Single-binary allowlist amendment landed: `"tsc"` added to `src/codegenie/exec/__init__.py:ALLOWED_BINARIES` with the Phase-4 grouping comment + module-docstring reference; closure-equality tests bumped 16 → 17 in lockstep across both anchored sites (`tests/unit/exec/test_allowlist_phase3.py`, `tests/unit/test_exec.py`); new `tests/unit/exec/test_allowlist_phase4.py` covers AC-1, AC-3, AC-6, AC-7, AC-9, AC-10 (delta-equality property barrier); all 66 allowlist tests pass.
 **Effort:** S
 **Depends on:** S1-05 (path-scoped fence amendment lands cleanly)
 **ADRs honored:** ADR-04-0015 (`typecheck.typescript` SignalKind + `tsc` admitted), production Phase-2 ADR-0001 (omnibus subprocess-allowlist), production Phase-3 ADR-0012 (ALLOWED_BINARIES amendment via ADR pattern)
