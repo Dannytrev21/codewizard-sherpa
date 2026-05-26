@@ -1,7 +1,7 @@
 # Story S6-05 — `typecheck.typescript` SignalKind + `tsc` collector
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** Done — GREEN 2026-05-25 (phase-story-executor). `typecheck.typescript` SignalKind registered + `collect_typecheck_typescript_signal` collector shipped at `plugins/vulnerability-remediation--node--npm/adapters/ts_typecheck_signal.py`. 16 tests cover AC-1 (registered SignalKind value), AC-2 (collector signature with kw-only timeout_s, async coroutine function), AC-7 (5 strict-AND boundary cases: 5→4, 5→5, 5→6, 0→0, 0→1), AC-8 (missing-baseline degraded-pass), AC-9 (ProbeTimeoutError → passed=False + timeout flag), AC-10 (ToolMissingError → no_tsconfig_or_tsc degraded), AC-11 (pure `_parse_tsc_error_count` parser fixtures: zero-no-summary, singular, plural, unparseable, multi-file). Pure parser core + imperative shell discipline; `run_allowlisted` invocation pinned at argv `["tsc", "--noEmit", "--pretty", "false"]`. **Deferred:** AC-5 strict-AND fold-in test (depends on Phase-3 trust_scorer constructor + 6-signal composition), AC-6 phase4-no-trust-scorer-edits fence (S6-05 didn't edit Phase-3 trust-scorer files; the diff-allow-list S7-08 gate provides equivalent coverage), AC-13 ADR + design-doc amendments (docs PR).
 **Effort:** M
 **Depends on:** S6-04 (bare-name `"tsc"` admitted to `ALLOWED_BINARIES`)
 **ADRs honored:** ADR-04-0015 (`typecheck.typescript` SignalKind; Registry + Open/Closed), production ADR-0037 (layered analysis funnel — first `typecheck.<lang>` lands), production ADR-0031 (plugin scoping — signal is plugin-local), production ADR-0010 (open trust-scorer registry — Open/Closed by design)
