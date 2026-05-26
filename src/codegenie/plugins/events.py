@@ -60,6 +60,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 from codegenie.hashing import content_hash_bytes
 from codegenie.plugins.cache_gc import CacheGcCompletedEvent
 from codegenie.types.identifiers import (
+    AttemptId,
     BlobDigest,
     BranchName,
     BudgetTokenId,
@@ -1037,6 +1038,24 @@ class PlanOutcomeEmitted(BaseModel):
     outcome_payload: JsonValue
 
 
+class AttemptAnchorRecorded(BaseModel):
+    """S6-08 — terminal joined per-attempt anchor (ADR-04-0017).
+
+    Carries the :class:`~codegenie.fallback.attempt_anchor.AttemptAnchor`
+    instance as the eleventh and final event in S6-01's per-step tape,
+    emitted *after* :class:`PlanOutcomeEmitted`. The same anchor is
+    persisted to JSONL by :mod:`codegenie.fallback.anchor_writer`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["attempt_anchor_recorded"] = "attempt_anchor_recorded"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    attempt_id: AttemptId
+    anchor: JsonValue
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -1196,7 +1215,8 @@ WorkflowInternalEvent = Annotated[
     | TransformBuilt
     | HarvestSkipped
     | RagSkippedOnRetry
-    | PlanOutcomeEmitted,
+    | PlanOutcomeEmitted
+    | AttemptAnchorRecorded,
     Field(discriminator="event_type"),
 ]
 
@@ -1265,6 +1285,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     HarvestSkipped,
     RagSkippedOnRetry,
     PlanOutcomeEmitted,
+    AttemptAnchorRecorded,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1645,6 +1666,7 @@ __all__ = [
     "BudgetPrechecked",
     "ProvenanceClassified",
     "PlanOutcomeEmitted",
+    "AttemptAnchorRecorded",
     "TransformBuilt",
     "QueryBuiltEvent",
     "RagSkippedOnRetry",

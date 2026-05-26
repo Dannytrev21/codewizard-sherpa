@@ -162,6 +162,17 @@ CassetteId = NewType("CassetteId", str)
 HexNonce = NewType("HexNonce", str)
 # BLAKE3-rolled manifest chain head. S4-04/S4-05 consume.
 ChainHead = NewType("ChainHead", str)
+# Per-attempt identifier (UUID4 hex) for the S6-08 ``AttemptAnchor``. Third
+# call site is the rule-of-three threshold per CLAUDE.md "Newtype identifiers"
+# commitment (anchor module + builder + ``FallbackTier._pending_anchors`` key).
+AttemptId = NewType("AttemptId", str)
+# BLAKE3 hex digest of the canonical prompt bytes assembled by S2-04's
+# ``PromptBuilder``. ``S6-08 AttemptAnchor.prompt_digest_blake3``; ``None``
+# on early-refusal paths that short-circuit before prompt assembly.
+PromptDigest = NewType("PromptDigest", str)
+# BLAKE3 hex digest of the canonical leaf-LLM response bytes. ``S6-08
+# AttemptAnchor.response_digest_blake3``; ``None`` on early-refusal paths.
+ResponseDigest = NewType("ResponseDigest", str)
 
 # --- Phase-6 catalog (S1-01 — VulnRemediationSut contract substrate) ------
 
@@ -241,6 +252,7 @@ ProvenanceAdapterId: TypeAlias = tuple["_PhVnLayer", "_PhVnEcosystem"]
 
 
 __all__ = [
+    "AttemptId",
     "AttemptNumber",
     "BlobDigest",
     "BranchName",
@@ -270,10 +282,12 @@ __all__ = [
     "PluginId",
     "PrimitiveName",
     "ProbeId",
+    "PromptDigest",
     "ProvenanceAdapterId",
     "RecipeId",
     "RegistryUrl",
     "RepoFixtureRef",
+    "ResponseDigest",
     "RuntimeId",
     "SemverVersion",
     "SignalKind",
@@ -356,6 +370,18 @@ _NEWTYPE_REGISTRY: Final[Mapping[str, str]] = {
     "CassetteId": "Phase-4 cassette lock id (ADR-0014); S3-04/S3-05 cassette discipline.",
     "HexNonce": "Phase-4 canary nonce (ADR-0013); S2-03 injection guard.",
     "ChainHead": "Phase-4 manifest chain head (ADR-0016); S4-04/S4-05 provenance verify.",
+    "AttemptId": (
+        "Phase-4 per-attempt UUID4-hex id (ADR-0017); "
+        "S6-08 AttemptAnchor.attempt_id + FallbackTier._pending_anchors key."
+    ),
+    "PromptDigest": (
+        "Phase-4 BLAKE3 hex of canonical prompt bytes (ADR-0017); "
+        "S6-08 AttemptAnchor.prompt_digest_blake3 (None on early-refusal paths)."
+    ),
+    "ResponseDigest": (
+        "Phase-4 BLAKE3 hex of canonical leaf-LLM response bytes (ADR-0017); "
+        "S6-08 AttemptAnchor.response_digest_blake3 (None on early-refusal paths)."
+    ),
     # Phase-7 (S1-01 — vuln.provenance newtype catalog).
     "ImageRef": "Phase-7 OCI image reference (ADR-0004); BaseImageStage.ref + Dockerfile recipes.",
     "ImageDigest": (

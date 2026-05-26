@@ -1,7 +1,7 @@
 # Story S6-08 — `AttemptAnchor` event emission + JSONL projection
 
 **Step:** Step 6 — Compose FallbackTier + register typecheck.typescript SignalKind + integration
-**Status:** HARDENED
+**Status:** GREEN-partial — 2026-05-25 (phase-story-executor; see [`_attempts/S6-08.md`](_attempts/S6-08.md) — schema model + attach API + refusal-path emission + JSONL writer + three fence tests + AttemptId/PromptDigest/ResponseDigest newtypes shipped GREEN. AC-PHASE5-1 BLOCKED per the story's own AC-PHASE5-2 guard: `src/codegenie/gates/runner.py` does not yet exist (Phase 5 not built). `FallbackTier.finalize_success_anchor(...)` is the additive hook Phase 5's `GateRunner` will call in two lines once it ships. AC-ORDER-1 strict 11-event index assertion deferred until S6-01 GREEN-complete; today's terminal-position fence is stronger than nothing. 144 tests green; mypy --strict + ruff + lint-imports (12/12) all clean.)
 **Effort:** M
 **Depends on:** S6-01 (FallbackTier pipeline + per-step events; lands `_INTERNAL_CLASSES` Phase-4 entries in `src/codegenie/plugins/events.py`), S6-03 (`on_validated` hook — drives the `validator_outcome` field and is the host of the deferred JSONL write on the success path)
 **ADRs honored:** ADR-04-0017 (`AttemptAnchor` schema), ADR-04-0002 (named-sequential dispatch — anchor emission slots into the existing pipeline as the *new* terminal event after `PlanOutcomeEmitted`), production ADR-0034 (event-sourcing canonical primitive — append-only, no in-place mutation), production ADR-0040 (data retention for audit trails)

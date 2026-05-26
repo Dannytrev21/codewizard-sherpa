@@ -259,6 +259,7 @@ PHASE7_NEWTYPE_NAMES = {
 }
 PHASE7_TYPE_ALIAS_NAMES = {"ProvenanceAdapterId"}
 PHASE4_NAMES = {
+    "AttemptId",
     "BudgetTokenId",
     "CassetteId",
     "ChainHead",
@@ -266,6 +267,8 @@ PHASE4_NAMES = {
     "HexNonce",
     "LeafResponseId",
     "ModelId",
+    "PromptDigest",
+    "ResponseDigest",
     "Similarity",
     "SolvedExampleId",
     "StoreDigest",

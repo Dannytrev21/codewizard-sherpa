@@ -45,8 +45,11 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import assert_never
 
+from codegenie.fallback import anchor_writer
+from codegenie.fallback.attempt_anchor import AttemptAnchor
 from codegenie.fallback.budget import LlmInvocationGuard
 from codegenie.fallback.confidence_gate import ConfidenceGate
 from codegenie.fallback.contracts import (
@@ -75,6 +78,7 @@ from codegenie.fallback.plan_proposal import (
 from codegenie.fallback.post_validation_context import PostValidationContext
 from codegenie.fallback.provenance_gate import ProvenanceGate
 from codegenie.plugins.events import (
+    AttemptAnchorRecorded,
     EventLog,
     HarvestSkipped,
     PlanOutcomeEmitted,
@@ -86,7 +90,13 @@ from codegenie.rag.ingest import ValidatedPlanOutcome, ingest_solved_example
 from codegenie.rag.store import SolvedExampleStore
 from codegenie.transforms.apply_context import AttemptSummary
 from codegenie.transforms.outcomes import TrustOutcome
-from codegenie.types.identifiers import EventId, LeafResponseId, ModelId
+from codegenie.types.identifiers import (
+    AttemptId,
+    CveId,
+    EventId,
+    LeafResponseId,
+    ModelId,
+)
 
 __all__ = [
     "FallbackTier",
@@ -102,6 +112,11 @@ __all__ = [
 
 def _new_event_id() -> EventId:
     return EventId("01HFTR" + uuid.uuid4().hex[:20].upper())
+
+
+def _new_attempt_id() -> AttemptId:
+    """Mint a fresh per-attempt :data:`AttemptId` (UUID4 hex)."""
+    return AttemptId(uuid.uuid4().hex)
 
 
 def _now_utc() -> datetime:
@@ -261,6 +276,17 @@ class FallbackTier:
     confidence_gate: ConfidenceGate = field(kw_only=True)
     store: SolvedExampleStore = field(kw_only=True)  # S6-03 — for harvest
     embedder: Embedder = field(kw_only=True)  # S6-03 — for harvest
+    # S6-08 — JSONL anchor output root + per-attempt anchor parking lot.
+    # ``frozen=True`` freezes attribute *rebinding*; the dict itself remains
+    # mutable so :meth:`run` can stash a pending anchor for ``on_validated``
+    # to recover on the success path.
+    anchor_output_dir: Path = field(
+        default_factory=lambda: Path(".codegenie/fallback/anchors"),
+        kw_only=True,
+    )
+    _pending_anchors: dict[AttemptId, AttemptAnchor] = field(
+        default_factory=dict, kw_only=True, repr=False, compare=False
+    )
 
     async def run(
         self,
@@ -282,10 +308,27 @@ class FallbackTier:
         shape contract is testable. The full 9-step dispatch lands in
         a focused S6-01-completion session — see module docstring
         deferrals.
+
+        **S6-08 wiring:** ``AttemptAnchorRecorded`` is the *new* terminal
+        event of the per-attempt tape (emitted after
+        :class:`PlanOutcomeEmitted`); refusal-path anchors additionally
+        write the JSONL projection inline via
+        :func:`anchor_writer.write`. Success-path anchors are parked in
+        :attr:`_pending_anchors` for :meth:`on_validated` to attach
+        trust + write deferredly (AC-WRITER-3).
         """
-        del advisory, repo_ctx, recipe_selection, prior_attempts
+        del repo_ctx, recipe_selection
+        attempt_id = _new_attempt_id()
         outcome: PlanOutcome = Refused(reason="PROVENANCE_NOT_APP_LAYER")
         self._emit_plan_outcome(outcome)
+        anchor = self._build_refusal_anchor(
+            attempt_id=attempt_id,
+            cve_id=advisory.cve_id,
+            reason="PROVENANCE_NOT_APP_LAYER",
+            attempt_index=len(prior_attempts),
+        )
+        self._emit_attempt_anchor(anchor)
+        anchor_writer.write(anchor, output_dir=self.anchor_output_dir)
         return outcome
 
     async def on_validated(
@@ -314,9 +357,7 @@ class FallbackTier:
         """
         eligibility = harvest_eligibility(outcome)
         if not eligibility.eligible:
-            self._emit_harvest_skipped(
-                reason="outcome_not_harvestable", outcome_kind=outcome.kind
-            )
+            self._emit_harvest_skipped(reason="outcome_not_harvestable", outcome_kind=outcome.kind)
             return
         if not self.confidence_gate.passes(trust):
             self._emit_harvest_skipped(
@@ -360,6 +401,69 @@ class FallbackTier:
                 timestamp=_now_utc(),
                 outcome_kind=outcome.kind,
                 outcome_payload=outcome.model_dump(mode="json"),
+            )
+        )
+
+    def finalize_success_anchor(
+        self,
+        attempt_id: AttemptId,
+        trust: TrustOutcome,
+    ) -> None:
+        """S6-08 deferred-attach hook (AC-WRITER-3 / AC-PHASE5-1).
+
+        Recovers the pending anchor stashed at :meth:`run` entry, attaches
+        the post-validation :class:`TrustOutcome`, and writes the JSONL
+        projection. Called by:
+
+        * Phase 5's ``GateRunner`` success-path validator block once that
+          file (``src/codegenie/gates/runner.py``) lands (AC-PHASE5-1),
+          **OR**
+        * The eventual S6-01 GREEN-complete ``on_validated`` body — once
+          the success path stores anchors in ``_pending_anchors``.
+
+        Both call sites are purely additive over today's Phase-5 / S6-01
+        partial-builds. ``finalize_success_anchor`` is a no-op when the
+        anchor was never parked (defensive — refusal-path anchors are
+        written inline in :meth:`run` and never reach here).
+        """
+        anchor = self._pending_anchors.pop(attempt_id, None)
+        if anchor is None:
+            return
+        attached = anchor.attach_trust_outcome(trust)
+        anchor_writer.write(attached, output_dir=self.anchor_output_dir)
+
+    def _build_refusal_anchor(
+        self,
+        *,
+        attempt_id: AttemptId,
+        cve_id: CveId,
+        reason: str,
+        attempt_index: int,
+    ) -> AttemptAnchor:
+        """Construct a refusal-path :class:`AttemptAnchor` — the five LLM-
+        derived fields stay ``None`` (early-refusal paths short-circuit
+        before any prompt is built; AC-SCHEMA-1)."""
+        return AttemptAnchor(
+            attempt_id=attempt_id,
+            workflow_id=self.event_log.workflow_id,
+            cve_id=cve_id,
+            timestamp_utc=_now_utc(),
+            attempt_index=attempt_index,
+            plan_proposal_kind="refuse",
+            validator_outcome="Refused",
+            refusal_reason=reason,  # type: ignore[arg-type]
+        )
+
+    def _emit_attempt_anchor(self, anchor: AttemptAnchor) -> None:
+        """Emit the terminal :class:`AttemptAnchorRecorded` event
+        (eleventh event of S6-01's per-step tape; ADR-04-0017)."""
+        self.event_log.emit_internal(
+            AttemptAnchorRecorded(
+                event_id=_new_event_id(),
+                workflow_id=self.event_log.workflow_id,
+                timestamp=_now_utc(),
+                attempt_id=anchor.attempt_id,
+                anchor=anchor.model_dump(mode="json"),
             )
         )
 
