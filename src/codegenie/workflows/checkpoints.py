@@ -218,6 +218,24 @@ class CheckpointStore(Protocol):
         """Yield every :class:`TransitionEvent` for ``workflow_id`` in monotonic append order."""
         ...
 
+    def iter_persisted_chain(
+        self, workflow_id: WorkflowId
+    ) -> Iterator[tuple[TransitionEvent, ChainHead]]:
+        """Yield ``(event, persisted_next_head)`` pairs in monotonic append order.
+
+        Phase-6 S2-02 — substrate for the replay verifier. The
+        ``persisted_next_head`` is whatever the adapter wrote at append
+        time; the verifier compares it row-by-row to a fresh
+        re-computation to find the first divergence index. **No
+        recomputation in the substrate** (S2-01 AC-11 detection-only
+        contract); the persisted bytes are what they are.
+
+        Additive Protocol extension (ADR-0003 amendment 2026-05-25): does
+        NOT replace :meth:`read_all_for_workflow` or
+        :meth:`tail_chain_head`; complements them.
+        """
+        ...
+
     def tail_chain_head(self, workflow_id: WorkflowId) -> ChainHead:
         """Return the latest chain head for ``workflow_id``, or :data:`_GENESIS_CHAIN_HEAD` if none.
 

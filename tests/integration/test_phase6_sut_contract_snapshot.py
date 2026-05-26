@@ -48,6 +48,18 @@ from codegenie.workflows.checkpoints import (
     _SEMANTIC_BOUNDARY_KINDS,
     CheckpointStore,
 )
+from codegenie.workflows.replay import (
+    _INTEGRITY_ERROR_ID,
+    ChainMismatch,
+    EmptyWorkflow,
+    Hydrated,
+    HydrationResult,
+    ReplayVerdict,
+    ReplayVerifier,
+    TornWrite,
+    Verified,
+    hydrate_or_fail,
+)
 from codegenie.workflows.sqlite_checkpoints import _CHECKPOINT_SCHEMA_SQL
 from codegenie.workflows.vuln_ledger import _LEGAL_TRANSITIONS
 
@@ -88,6 +100,30 @@ def _serialize_checkpoint_store_signature() -> dict[str, Any]:
     return methods
 
 
+def _serialize_replay_verifier_signature() -> dict[str, Any]:
+    """Phase 6 S2-02 AC-14 — structural snapshot for the verifier API."""
+    methods: dict[str, Any] = {}
+    for name in sorted(("__init__", "verify")):
+        attr = getattr(ReplayVerifier, name)
+        sig = inspect.signature(attr)
+        methods[name] = {
+            "signature": str(sig),
+            "is_coroutine_function": inspect.iscoroutinefunction(attr),
+        }
+    return methods
+
+
+def _serialize_module_function_signatures() -> dict[str, Any]:
+    """Phase 6 S2-02 AC-14 — top-level functions in the verifier module."""
+    out: dict[str, Any] = {}
+    for fn in (hydrate_or_fail,):
+        out[fn.__name__] = {
+            "signature": str(inspect.signature(fn)),
+            "is_coroutine_function": inspect.iscoroutinefunction(fn),
+        }
+    return out
+
+
 def build_snapshot() -> dict[str, Any]:
     """Construct the canonical snapshot dict.
 
@@ -97,8 +133,15 @@ def build_snapshot() -> dict[str, Any]:
     additive-vs-breaking classifier inherits S1-01's logic; the meta-test
     exercises it on ledger-shaped deltas (new transition edge = additive;
     removed variant or rename = breaking).
+
+    Phase-6 S2-02 AC-14 extension: includes the four-variant
+    :data:`ReplayVerdict` schema, the :data:`HydrationResult` schema, the
+    :class:`ReplayVerifier` method signatures, the :func:`hydrate_or_fail`
+    function signature, and the ``_INTEGRITY_ERROR_ID`` constant value.
     """
     ledger_adapter = TypeAdapter(VulnLedgerState)
+    verdict_adapter = TypeAdapter(ReplayVerdict)
+    hydration_adapter = TypeAdapter(HydrationResult)
     return {
         "all": sorted(workflows_pkg.__all__),
         "is_runtime_protocol": bool(getattr(VulnRemediationSut, "_is_runtime_protocol", False)),
@@ -116,6 +159,19 @@ def build_snapshot() -> dict[str, Any]:
         "semantic_boundary_kinds": sorted(_SEMANTIC_BOUNDARY_KINDS),
         "max_event_bytes": _MAX_EVENT_BYTES,
         "checkpoint_sqlite_schema": _CHECKPOINT_SCHEMA_SQL,
+        # Phase-6 S2-02 AC-14 — replay-verifier contract.
+        "replay_verdict_schema": verdict_adapter.json_schema(by_alias=True),
+        "hydration_result_schema": hydration_adapter.json_schema(by_alias=True),
+        "replay_verifier_methods": _serialize_replay_verifier_signature(),
+        "replay_module_functions": _serialize_module_function_signatures(),
+        "replay_verdict_kinds": sorted(
+            v.model_fields["kind"].default
+            for v in (Verified, ChainMismatch, TornWrite, EmptyWorkflow)
+        ),
+        "hydration_result_kinds": sorted(
+            [Hydrated.model_fields["kind"].default, "failed_unrecoverable"]
+        ),
+        "integrity_error_id": str(_INTEGRITY_ERROR_ID),
     }
 
 
@@ -243,6 +299,44 @@ def classify_snapshot_diff(old: dict[str, Any], new: dict[str, Any]) -> str:
         old.get("checkpoint_sqlite_schema") is not None
         and new.get("checkpoint_sqlite_schema") is not None
         and old["checkpoint_sqlite_schema"] != new["checkpoint_sqlite_schema"]
+    ):
+        return "breaking"
+
+    # Phase-6 S2-02 AC-14 — replay-verifier contract diffs.
+    # Removed verdict kind → breaking; added → additive.
+    old_verdicts = set(old.get("replay_verdict_kinds", []) or [])
+    new_verdicts = set(new.get("replay_verdict_kinds", []) or [])
+    if old_verdicts - new_verdicts:
+        return "breaking"
+    old_hydration = set(old.get("hydration_result_kinds", []) or [])
+    new_hydration = set(new.get("hydration_result_kinds", []) or [])
+    if old_hydration - new_hydration:
+        return "breaking"
+    # Verifier method removal / signature change → breaking.
+    old_methods = old.get("replay_verifier_methods", {}) or {}
+    new_methods = new.get("replay_verifier_methods", {}) or {}
+    if set(old_methods) - set(new_methods):
+        return "breaking"
+    for name, meta in old_methods.items():
+        if name not in new_methods or meta.get("signature") != new_methods[name].get("signature"):
+            return "breaking"
+    # Module-level function removal / signature change → breaking.
+    old_fns = old.get("replay_module_functions", {}) or {}
+    new_fns = new.get("replay_module_functions", {}) or {}
+    if set(old_fns) - set(new_fns):
+        return "breaking"
+    for name, meta in old_fns.items():
+        if name not in new_fns or meta.get("signature") != new_fns[name].get("signature"):
+            return "breaking"
+    # Verdict / hydration schema breaking-diff rules.
+    for schema_key in ("replay_verdict_schema", "hydration_result_schema"):
+        if _schema_diff_is_breaking(old.get(schema_key, {}), new.get(schema_key, {})):
+            return "breaking"
+    # error_id slug change → breaking (downstream consumers may dispatch).
+    if (
+        old.get("integrity_error_id") is not None
+        and new.get("integrity_error_id") is not None
+        and old["integrity_error_id"] != new["integrity_error_id"]
     ):
         return "breaking"
 

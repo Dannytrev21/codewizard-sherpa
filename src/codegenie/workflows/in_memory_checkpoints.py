@@ -71,17 +71,25 @@ class InMemoryCheckpointStore:
         # tests/fence/test_checkpoint_sanitizer_imports.py.
         stored = sanitize_for_persistence(payload)
         prior = self.tail_chain_head(event.workflow_id)
-        # Chain head is computed over the LIVE event (not the stored
-        # bytes) — sanitization is a write-time defense, not a
-        # chain-input transformation. The S1-02 chain-head purity
-        # fence guards the input shape.
-        next_head = _compute_chain_head(prior, event)
+        # Phase-6 S2-02 AC-3 sanitization-aware chain discipline: chain
+        # head protects the BYTES ON DISK so the verifier can reproduce
+        # the rolling head from the persisted (possibly redacted)
+        # payload. For non-secret-shaped events the reconstructed event
+        # is byte-equal to the live event (sanitize is a no-op).
+        chain_input_event = TransitionEvent.model_validate_json(stored)
+        next_head = _compute_chain_head(prior, chain_input_event)
         self._log.setdefault(event.workflow_id, []).append((next_head, stored))
         return next_head
 
     def read_all_for_workflow(self, workflow_id: WorkflowId) -> Iterator[TransitionEvent]:
         for _head, stored in self._log.get(workflow_id, []):
             yield TransitionEvent.model_validate_json(stored)
+
+    def iter_persisted_chain(
+        self, workflow_id: WorkflowId
+    ) -> Iterator[tuple[TransitionEvent, ChainHead]]:
+        for head, stored in self._log.get(workflow_id, []):
+            yield TransitionEvent.model_validate_json(stored), head
 
     def tail_chain_head(self, workflow_id: WorkflowId) -> ChainHead:
         rows = self._log.get(workflow_id)

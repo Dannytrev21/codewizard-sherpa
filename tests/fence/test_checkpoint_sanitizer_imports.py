@@ -25,11 +25,17 @@ from codegenie.types.identifiers import (
     TransitionId,
     WorkflowId,
 )
-from codegenie.workflows import in_memory_checkpoints, sqlite_checkpoints
+from codegenie.workflows import (
+    _replay,
+    in_memory_checkpoints,
+    replay,
+    sqlite_checkpoints,
+)
 from codegenie.workflows.sqlite_checkpoints import SqliteCheckpointStore
 from codegenie.workflows.vuln_ledger import TransitionEvent
 
 _ADAPTER_MODULES = (in_memory_checkpoints, sqlite_checkpoints)
+_REPLAY_MODULES = (replay, _replay)
 
 
 def _walk_imports(module: object) -> set[tuple[str, str]]:
@@ -70,6 +76,26 @@ def test_ac12_no_local_regex_in_checkpoint_adapters() -> None:
             assert not mod.startswith("regex"), (
                 f"{module.__name__} imports {mod!r} — third-party regex fork "
                 "is forbidden; use sanitize_for_persistence."
+            )
+            assert name != "re", f"{module.__name__} imports the 're' module directly."
+
+
+def test_s202_no_local_regex_in_replay_modules() -> None:
+    """Phase-6 S2-02 AC-12 — verifier modules MUST NOT fork the regex set.
+
+    Defends against an executor "improving" the verifier with ad-hoc
+    regex parsing of persisted bytes (which would re-introduce
+    primitive-obsession over the typed ``TransitionEvent`` shape).
+    """
+    for module in _REPLAY_MODULES:
+        pairs = _walk_imports(module)
+        for mod, name in pairs:
+            assert not mod.startswith("re"), (
+                f"{module.__name__} imports {mod!r}; canonical regex set lives in "
+                "codegenie.output.sanitizer (S2-02 AC-12)."
+            )
+            assert not mod.startswith("regex"), (
+                f"{module.__name__} imports {mod!r} — third-party regex fork is forbidden."
             )
             assert name != "re", f"{module.__name__} imports the 're' module directly."
 

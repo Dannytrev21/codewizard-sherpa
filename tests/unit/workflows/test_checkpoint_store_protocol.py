@@ -25,8 +25,20 @@ def test_checkpoint_store_is_runtime_checkable_protocol() -> None:
     assert getattr(CheckpointStore, "_is_runtime_protocol", False) is True
 
 
-def test_checkpoint_store_exposes_exactly_five_methods() -> None:
-    expected = {"append", "read_all_for_workflow", "tail_chain_head", "lock", "close"}
+def test_checkpoint_store_exposes_exactly_six_methods() -> None:
+    """Phase-6 S2-02 additive Protocol extension (ADR-0003 amendment 2026-05-25):
+    sixth method ``iter_persisted_chain`` joined the surface so the replay
+    verifier can read per-row persisted heads through the Protocol — no
+    substrate-specific shortcut. Existing five methods unchanged.
+    """
+    expected = {
+        "append",
+        "read_all_for_workflow",
+        "iter_persisted_chain",
+        "tail_chain_head",
+        "lock",
+        "close",
+    }
     declared = {
         name
         for name in vars(CheckpointStore)
@@ -41,7 +53,14 @@ def test_checkpoint_store_method_annotations_are_typed() -> None:
     """Every method has a fully-typed signature — no implicit ``Any``."""
     hints = {
         name: get_type_hints(getattr(CheckpointStore, name))
-        for name in ("append", "read_all_for_workflow", "tail_chain_head", "lock", "close")
+        for name in (
+            "append",
+            "read_all_for_workflow",
+            "iter_persisted_chain",
+            "tail_chain_head",
+            "lock",
+            "close",
+        )
     }
     for name, h in hints.items():
         assert "return" in h, f"{name} missing return annotation"

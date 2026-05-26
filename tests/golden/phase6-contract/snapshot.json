@@ -80,6 +80,218 @@
       "signature": "(self, workflow_id: 'WorkflowId') -> 'ChainHead'"
     }
   },
+  "hydration_result_kinds": [
+    "failed_unrecoverable",
+    "hydrated"
+  ],
+  "hydration_result_schema": {
+    "$defs": {
+      "FailedUnrecoverable": {
+        "additionalProperties": false,
+        "description": "Terminal: an unrecoverable failure. ``reason`` is the closed-set\nfailure-mode key from ``phase-arch-design.md \u00a7\"Failure modes\"``.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RemediationError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "kind": {
+            "const": "failed_unrecoverable",
+            "default": "failed_unrecoverable",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "checkpoint_integrity",
+              "subgraph_aborted",
+              "manifest_rejected",
+              "policy_violation",
+              "internal_invariant_violated"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "FailedUnrecoverable",
+        "type": "object"
+      },
+      "Hydrated": {
+        "additionalProperties": false,
+        "description": "Successful hydration \u2014 verified events + the latest legal state kind.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/$defs/TransitionEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "kind": {
+            "const": "hydrated",
+            "default": "hydrated",
+            "title": "Kind",
+            "type": "string"
+          },
+          "latest_state_kind": {
+            "enum": [
+              "needs_plan",
+              "plan_ready",
+              "patch_applied",
+              "gate_failed_retryable",
+              "awaiting_human_review",
+              "completed",
+              "failed_unrecoverable"
+            ],
+            "title": "Latest State Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "events",
+          "latest_state_kind"
+        ],
+        "title": "Hydrated",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "RemediationError": {
+        "additionalProperties": false,
+        "description": "Failure payload carried by :class:`RemediationFailed`. Same shape as\n:class:`RecipeError` but a distinct type \u2014 the discriminator + Pydantic\ncan't tell two structurally-identical models apart at the umbrella, but\nthe field annotation on the Failed variants is type-time enforced.",
+        "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Details"
+          },
+          "error_id": {
+            "title": "Error Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_id",
+          "message"
+        ],
+        "title": "RemediationError",
+        "type": "object"
+      },
+      "TransitionEvent": {
+        "additionalProperties": false,
+        "description": "A single transition record \u2014 chained for replay-determinism (ADR-0003).\n\n``triggering_outcome`` is a :data:`~pydantic.JsonValue` rather than a\ndiscriminated union of ``RecipeOutcome | NodeTransition | TrustOutcome``:\nthe substrate doesn't need to dispatch on the upstream typed shape \u2014\nonly to serialise it deterministically into the chain-head computation.\nThe producer (Phase-6 S3-01 subgraph nodes) serialises via\n``outcome.model_dump(mode='json')`` before constructing this event.\nSee module docstring for the rationale (deferred coupling to\n``codegenie.plugins.subgraph``).",
+        "properties": {
+          "chain_head": {
+            "title": "Chain Head",
+            "type": "string"
+          },
+          "evidence_digest": {
+            "title": "Evidence Digest",
+            "type": "string"
+          },
+          "next_state_id": {
+            "enum": [
+              "needs_plan",
+              "plan_ready",
+              "patch_applied",
+              "gate_failed_retryable",
+              "awaiting_human_review",
+              "completed",
+              "failed_unrecoverable"
+            ],
+            "title": "Next State Id",
+            "type": "string"
+          },
+          "prior_state_id": {
+            "enum": [
+              "needs_plan",
+              "plan_ready",
+              "patch_applied",
+              "gate_failed_retryable",
+              "awaiting_human_review",
+              "completed",
+              "failed_unrecoverable"
+            ],
+            "title": "Prior State Id",
+            "type": "string"
+          },
+          "transition_id": {
+            "title": "Transition Id",
+            "type": "string"
+          },
+          "triggering_outcome": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transition_id",
+          "prior_state_id",
+          "next_state_id",
+          "triggering_outcome",
+          "evidence_digest",
+          "chain_head",
+          "workflow_id"
+        ],
+        "title": "TransitionEvent",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "failed_unrecoverable": "#/$defs/FailedUnrecoverable",
+        "hydrated": "#/$defs/Hydrated"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/Hydrated"
+      },
+      {
+        "$ref": "#/$defs/FailedUnrecoverable"
+      }
+    ]
+  },
+  "integrity_error_id": "workflows.checkpoint_integrity_violation",
   "is_runtime_protocol": true,
   "ledger_state_schema": {
     "$defs": {
@@ -389,6 +601,237 @@
       },
       "is_coroutine_function": true,
       "signature": "(self, request: 'VulnRemediationCase') -> 'VulnRemediationResult'"
+    }
+  },
+  "replay_module_functions": {
+    "hydrate_or_fail": {
+      "is_coroutine_function": false,
+      "signature": "(store: 'CheckpointStore', workflow_id: 'WorkflowId') -> 'HydrationResult'"
+    }
+  },
+  "replay_verdict_kinds": [
+    "chain_mismatch",
+    "empty_workflow",
+    "torn_write",
+    "verified"
+  ],
+  "replay_verdict_schema": {
+    "$defs": {
+      "ChainMismatch": {
+        "additionalProperties": false,
+        "description": "The recomputed chain differs from the persisted chain at some row.\n\n``divergence_index`` is the 0-based index of the FIRST row where the\nrecomputed head differs from the persisted head (the verifier walks\nfront-to-back and reports the earliest divergence).",
+        "properties": {
+          "divergence_index": {
+            "minimum": 0,
+            "title": "Divergence Index",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "chain_mismatch",
+            "default": "chain_mismatch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "offending_transition_id": {
+            "title": "Offending Transition Id",
+            "type": "string"
+          },
+          "persisted_tail": {
+            "title": "Persisted Tail",
+            "type": "string"
+          },
+          "recomputed_tail": {
+            "title": "Recomputed Tail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "persisted_tail",
+          "recomputed_tail",
+          "divergence_index",
+          "offending_transition_id"
+        ],
+        "title": "ChainMismatch",
+        "type": "object"
+      },
+      "EmptyWorkflow": {
+        "additionalProperties": false,
+        "description": "The workflow has zero persisted rows \u2014 trivially verified at genesis.",
+        "properties": {
+          "genesis_chain_head": {
+            "title": "Genesis Chain Head",
+            "type": "string"
+          },
+          "kind": {
+            "const": "empty_workflow",
+            "default": "empty_workflow",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "genesis_chain_head"
+        ],
+        "title": "EmptyWorkflow",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "TornWrite": {
+        "additionalProperties": false,
+        "description": "A persisted row is structurally damaged (parse failure or duplicate link).",
+        "properties": {
+          "kind": {
+            "const": "torn_write",
+            "default": "torn_write",
+            "title": "Kind",
+            "type": "string"
+          },
+          "offending_sequence": {
+            "minimum": 0,
+            "title": "Offending Sequence",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "unparseable_event",
+              "null_event_bytes",
+              "duplicate_chain_link"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "offending_sequence"
+        ],
+        "title": "TornWrite",
+        "type": "object"
+      },
+      "TransitionEvent": {
+        "additionalProperties": false,
+        "description": "A single transition record \u2014 chained for replay-determinism (ADR-0003).\n\n``triggering_outcome`` is a :data:`~pydantic.JsonValue` rather than a\ndiscriminated union of ``RecipeOutcome | NodeTransition | TrustOutcome``:\nthe substrate doesn't need to dispatch on the upstream typed shape \u2014\nonly to serialise it deterministically into the chain-head computation.\nThe producer (Phase-6 S3-01 subgraph nodes) serialises via\n``outcome.model_dump(mode='json')`` before constructing this event.\nSee module docstring for the rationale (deferred coupling to\n``codegenie.plugins.subgraph``).",
+        "properties": {
+          "chain_head": {
+            "title": "Chain Head",
+            "type": "string"
+          },
+          "evidence_digest": {
+            "title": "Evidence Digest",
+            "type": "string"
+          },
+          "next_state_id": {
+            "enum": [
+              "needs_plan",
+              "plan_ready",
+              "patch_applied",
+              "gate_failed_retryable",
+              "awaiting_human_review",
+              "completed",
+              "failed_unrecoverable"
+            ],
+            "title": "Next State Id",
+            "type": "string"
+          },
+          "prior_state_id": {
+            "enum": [
+              "needs_plan",
+              "plan_ready",
+              "patch_applied",
+              "gate_failed_retryable",
+              "awaiting_human_review",
+              "completed",
+              "failed_unrecoverable"
+            ],
+            "title": "Prior State Id",
+            "type": "string"
+          },
+          "transition_id": {
+            "title": "Transition Id",
+            "type": "string"
+          },
+          "triggering_outcome": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transition_id",
+          "prior_state_id",
+          "next_state_id",
+          "triggering_outcome",
+          "evidence_digest",
+          "chain_head",
+          "workflow_id"
+        ],
+        "title": "TransitionEvent",
+        "type": "object"
+      },
+      "Verified": {
+        "additionalProperties": false,
+        "description": "Successful verification \u2014 the chain folds match the persisted tail.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/$defs/TransitionEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "kind": {
+            "const": "verified",
+            "default": "verified",
+            "title": "Kind",
+            "type": "string"
+          },
+          "tail_chain_head": {
+            "title": "Tail Chain Head",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tail_chain_head",
+          "events"
+        ],
+        "title": "Verified",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "chain_mismatch": "#/$defs/ChainMismatch",
+        "empty_workflow": "#/$defs/EmptyWorkflow",
+        "torn_write": "#/$defs/TornWrite",
+        "verified": "#/$defs/Verified"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/Verified"
+      },
+      {
+        "$ref": "#/$defs/ChainMismatch"
+      },
+      {
+        "$ref": "#/$defs/TornWrite"
+      },
+      {
+        "$ref": "#/$defs/EmptyWorkflow"
+      }
+    ]
+  },
+  "replay_verifier_methods": {
+    "__init__": {
+      "is_coroutine_function": false,
+      "signature": "(self, store: 'CheckpointStore') -> 'None'"
+    },
+    "verify": {
+      "is_coroutine_function": false,
+      "signature": "(self, workflow_id: 'WorkflowId') -> 'ReplayVerdict'"
     }
   },
   "result_schema": {

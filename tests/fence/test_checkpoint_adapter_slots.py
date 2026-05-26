@@ -58,6 +58,24 @@ def test_ac14_sqlite_adapter_declares_slots() -> None:
     assert len(slots) > 0
 
 
+def test_s202_replay_verifier_declares_slots() -> None:
+    """Phase-6 S2-02 AC-4 — ``ReplayVerifier`` declares ``__slots__ = ('_store',)``."""
+    from codegenie.workflows import replay as replay_module
+
+    slots = _slots_for("ReplayVerifier", replay_module)
+    assert slots is not None, (
+        "ReplayVerifier must declare __slots__ — S2-02 AC-4 typo-defense + "
+        "memory discipline. Without __slots__, an executor accidentally "
+        "adds self._cache: dict = {} for ad-hoc memoization, but caching "
+        "verification results across verify() calls is dangerous (the "
+        "underlying chain can be re-tampered between calls)."
+    )
+    assert slots == ("_store",), (
+        f"ReplayVerifier __slots__ drift — got {slots!r}, want ('_store',). "
+        "Any added slot must surface in PR review."
+    )
+
+
 def test_ac14_runtime_slots_enforce_attribute_set() -> None:
     """Runtime check — assigning an undeclared attribute raises AttributeError."""
     from pathlib import Path

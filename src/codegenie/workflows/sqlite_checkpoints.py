@@ -116,14 +116,19 @@ class SqliteCheckpointStore:
         # site; forking ``re`` into this file would trip the AST fence
         # at tests/fence/test_checkpoint_sanitizer_imports.py.
         stored = sanitize_for_persistence(payload)
+        # Phase-6 S2-02 AC-3 sanitization-aware chain discipline: the
+        # chain head protects the BYTES ON DISK (the persisted, possibly
+        # redacted payload), NOT the in-memory live event. This is the
+        # invariant the replay verifier (S2-02) reproduces by reading
+        # the persisted bytes and re-folding. For events with no
+        # secret-shaped content the reconstructed event is byte-equal to
+        # the live event, so chain heads are unchanged (existing
+        # goldens valid).
+        chain_input_event = TransitionEvent.model_validate_json(stored)
         with self.lock(event.workflow_id):
             conn = self._connection_for(event.workflow_id)
             prior = self._tail_chain_head_locked(conn)
-            # Chain head is computed over the LIVE event (not the
-            # sanitized bytes) — sanitization is a write-time defense,
-            # not a chain-input transformation. S1-02 chain-head
-            # purity fence is unchanged.
-            next_head = _compute_chain_head(prior, event)
+            next_head = _compute_chain_head(prior, chain_input_event)
             written_at = self._clock().isoformat()
             conn.execute(
                 "INSERT INTO checkpoint_chain "
@@ -145,6 +150,16 @@ class SqliteCheckpointStore:
         cursor = conn.execute("SELECT event_bytes FROM checkpoint_chain ORDER BY sequence ASC")
         for (row,) in cursor:
             yield TransitionEvent.model_validate_json(row)
+
+    def iter_persisted_chain(
+        self, workflow_id: WorkflowId
+    ) -> Iterator[tuple[TransitionEvent, ChainHead]]:
+        conn = self._connection_for(workflow_id)
+        cursor = conn.execute(
+            "SELECT event_bytes, next_head FROM checkpoint_chain ORDER BY sequence ASC"
+        )
+        for event_bytes, next_head in cursor:
+            yield TransitionEvent.model_validate_json(event_bytes), ChainHead(next_head)
 
     def tail_chain_head(self, workflow_id: WorkflowId) -> ChainHead:
         conn = self._connection_for(workflow_id)

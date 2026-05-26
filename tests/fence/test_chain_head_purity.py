@@ -26,6 +26,9 @@ import ast
 from pathlib import Path
 
 import codegenie.workflows._chain as chain_module
+import codegenie.workflows._replay as replay_module
+
+_PURE_CORE_MODULES = (chain_module, replay_module)
 
 _FORBIDDEN_NAMES = {
     "open",
@@ -44,8 +47,8 @@ _FORBIDDEN_ATTRS = {
 }
 
 
-def test_chain_module_has_no_impure_names() -> None:
-    src = Path(chain_module.__file__).read_text()
+def _scan_module_for_impurity(module: object) -> list[str]:
+    src = Path(module.__file__).read_text()
     tree = ast.parse(src)
     bad: list[str] = []
     for node in ast.walk(tree):
@@ -65,7 +68,11 @@ def test_chain_module_has_no_impure_names() -> None:
             base = node.value.id
             if base in _FORBIDDEN_ATTRS and node.attr in _FORBIDDEN_ATTRS[base]:
                 bad.append(f"{base}.{node.attr} @ line {node.lineno}")
+    return bad
 
+
+def test_chain_module_has_no_impure_names() -> None:
+    bad = _scan_module_for_impurity(chain_module)
     assert not bad, (
         "AC-8: _chain.py contains impure-name references that would break "
         "the Phase-9 byte-equality replay invariance:\n  - "
@@ -73,4 +80,22 @@ def test_chain_module_has_no_impure_names() -> None:
         + "\n\nThe chain-head computation MUST stay purely functional — see "
         "ADR-0003 §Consequences. If a new dependency is genuinely needed, "
         "amend ADR-0003 first."
+    )
+
+
+def test_replay_module_has_no_impure_names() -> None:
+    """Phase-6 S2-02 AC-3 — the pure-core replay fold inherits the same fence.
+
+    A ``time.time()`` call inside the fold would make the verifier flaky
+    on slow CI; a ``sqlite3`` import would re-couple the pure core to
+    SQLite, breaking the Phase-9 Postgres parity. Either regression is
+    surfaced by this fence.
+    """
+    bad = _scan_module_for_impurity(replay_module)
+    assert not bad, (
+        "S2-02 AC-3: _replay.py contains impure-name references that "
+        "would break the verifier's substrate-agnostic property:\n  - "
+        + "\n  - ".join(sorted(set(bad)))
+        + "\n\nThe replay fold MUST stay purely functional — same "
+        "rationale as _chain.py."
     )
