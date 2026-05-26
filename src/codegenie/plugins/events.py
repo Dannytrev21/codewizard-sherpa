@@ -784,6 +784,149 @@ class RagRecordChainOrphan(BaseModel):
     spanning_log_head: ChainHead
 
 
+# --- Phase-4 S5-01 — retriever dispatch + outcome events --------------------
+#
+# Eleven variants land here as part of the SolvedExampleRetriever's audit
+# trail. Six are step-audit events (query built/rendered, records embedded/
+# store queried/chain verified/fenced); three are outcome events
+# (hit/degraded/miss); two are exclusion/handoff events (model mismatch,
+# candidate selected). All are workflow-internal — they describe a single
+# retrieval query, not a workflow-spanning state transition.
+
+
+class QueryBuiltEvent(BaseModel):
+    """S5-01 — ``Query`` constructed via the injected ``query_builder``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_query_built"] = "rag_query_built"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+
+
+class QueryRenderedEvent(BaseModel):
+    """S5-01 — ``Query`` rendered to embedding text via ``query_text_builder``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_query_rendered"] = "rag_query_rendered"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+
+
+class RecordsEmbeddedEvent(BaseModel):
+    """S5-01 — query text embedded via the injected ``Embedder``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_records_embedded"] = "rag_records_embedded"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+
+
+class StoreQueriedEvent(BaseModel):
+    """S5-01 — ``SolvedExampleStore.query_candidates`` returned ``count`` rows."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_store_queried"] = "rag_store_queried"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    count: int
+
+
+class RecordsChainVerifiedEvent(BaseModel):
+    """S5-01 — chain-verification step completed; ``surviving_count`` records
+    pass the spanning-log integrity check, ``excluded_count`` are orphans."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_records_chain_verified"] = "rag_records_chain_verified"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    surviving_count: int
+    excluded_count: int
+
+
+class RecordsFencedEvent(BaseModel):
+    """S5-01 — surviving candidates fenced as ``source_kind='rag_retrieved'``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_records_fenced"] = "rag_records_fenced"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    count: int
+
+
+class RagRecordModelMismatch(BaseModel):
+    """S5-01 / S5-03 — ``count`` records were excluded by the model-digest
+    filter (their embedding model digest does not match the live embedder).
+    Adversary-resistance: a model bump invalidates prior records' vectors;
+    this event surfaces the gap so the operator can trigger a re-embed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_record_model_mismatch"] = "rag_record_model_mismatch"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    count: int
+
+
+class RagHitEvent(BaseModel):
+    """S5-01 — the band classifier returned :class:`RagHit`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_hit"] = "rag_hit"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    record_id: SolvedExampleId
+
+
+class RagDegradedEvent(BaseModel):
+    """S5-01 — the band classifier returned :class:`RagDegraded`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_degraded"] = "rag_degraded"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    record_id: SolvedExampleId
+
+
+class RagMissEvent(BaseModel):
+    """S5-01 — the retriever returned :class:`RagMiss`. ``reason`` is the
+    closed-set miss cause (replaces the rejected ``RagMiss.reason`` field
+    — see S5-01 validation §F-bare-RagMiss)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_miss"] = "rag_miss"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    reason: Literal[
+        "empty_store",
+        "all_candidates_chain_orphan",
+        "all_candidates_model_mismatch",
+        "top1_below_floor",
+    ]
+
+
+class RagCandidateSelectedEvent(BaseModel):
+    """S5-01 — load-bearing audit anchor for the fenced-segment handoff to
+    S6-01's prompt assembly. The ``fenced_digest`` lets a later replay or
+    audit confirm the prompt-bound bytes were the ones the classifier saw."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_candidate_selected"] = "rag_candidate_selected"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    record_id: SolvedExampleId
+    fenced_digest: BlobDigest
+
+
 # --- Workflow-spanning event variants (9; Phase 9 → Postgres ``events``) ----
 # The eight native variants carry ``prev_hash``; ``CacheGcCompleted`` is the
 # re-imported 9th variant and is chained at the on-disk envelope level instead
@@ -927,7 +1070,18 @@ WorkflowInternalEvent = Annotated[
     | LeafReturned
     | LeafProtocolViolationEvent
     | RagRecordChainOrphan
-    | SolvedExampleHarvested,
+    | SolvedExampleHarvested
+    | QueryBuiltEvent
+    | QueryRenderedEvent
+    | RecordsEmbeddedEvent
+    | StoreQueriedEvent
+    | RecordsChainVerifiedEvent
+    | RecordsFencedEvent
+    | RagRecordModelMismatch
+    | RagHitEvent
+    | RagDegradedEvent
+    | RagMissEvent
+    | RagCandidateSelectedEvent,
     Field(discriminator="event_type"),
 ]
 
@@ -980,6 +1134,17 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     LeafProtocolViolationEvent,
     RagRecordChainOrphan,
     SolvedExampleHarvested,
+    QueryBuiltEvent,
+    QueryRenderedEvent,
+    RecordsEmbeddedEvent,
+    StoreQueriedEvent,
+    RecordsChainVerifiedEvent,
+    RecordsFencedEvent,
+    RagRecordModelMismatch,
+    RagHitEvent,
+    RagDegradedEvent,
+    RagMissEvent,
+    RagCandidateSelectedEvent,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     WorkflowStarted,
@@ -1357,8 +1522,18 @@ __all__ = [
     "PluginsLoaded",
     "PromptAssembled",
     "ProvenanceClassified",
+    "QueryBuiltEvent",
+    "QueryRenderedEvent",
+    "RagCandidateSelectedEvent",
+    "RagDegradedEvent",
+    "RagHitEvent",
+    "RagMissEvent",
     "RagRecordChainOrphan",
+    "RagRecordModelMismatch",
     "RecipeApplied",
+    "RecordsChainVerifiedEvent",
+    "RecordsEmbeddedEvent",
+    "RecordsFencedEvent",
     "RecipeFailed",
     "RecipeMatched",
     "RecipeSkipped",
@@ -1366,6 +1541,7 @@ __all__ = [
     "SegmentCountTruncated",
     "SolvedExampleHarvested",
     "StageOutcome",
+    "StoreQueriedEvent",
     "StaleVulnIndex",
     "TestStageOutcome",
     "WorkflowCompleted",

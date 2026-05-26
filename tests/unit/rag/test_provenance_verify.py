@@ -157,23 +157,33 @@ def test_verify_signature_module_level_function() -> None:
     assert sig.return_annotation in (bool, "bool")
 
 
-def test_spanning_chain_log_protocol_has_one_method() -> None:
-    """AC-2: do not extend the surface to ``get_chain_segment`` /
-    ``current_head`` / ``iter_events`` / ``record_id_for_head``."""
+def test_spanning_chain_log_protocol_has_exactly_two_methods() -> None:
+    """S4-05 AC-2 + Phase-4 S5-01 ``head()`` extension: the surface stays
+    bounded to two methods. ``contains_chain_head`` (S4-05) +
+    ``head()`` (S5-01 — the RagRecordChainOrphan needs the current
+    spanning-log head for triage). Do **not** extend to
+    ``get_chain_segment`` / ``iter_events`` / ``record_id_for_head``."""
     members = {
         name
         for name in dir(SpanningChainLog)
         if not name.startswith("_") and callable(getattr(SpanningChainLog, name))
     }
-    assert members == {"contains_chain_head"}, members
+    assert members == {"contains_chain_head", "head"}, members
 
 
 def test_spanning_chain_log_is_runtime_checkable() -> None:
-    """AC-2: a duck-typed fake satisfies isinstance() at runtime."""
+    """S4-05 AC-2: a duck-typed fake satisfies isinstance() at runtime.
+
+    With the Phase-4 S5-01 extension, the fake now needs both
+    ``contains_chain_head`` AND ``head``."""
 
     class _FakeLog:
         def contains_chain_head(self, head: ChainHead) -> bool:
+            del head
             return False
+
+        def head(self) -> ChainHead:
+            return ChainHead("0" * 64)
 
     assert isinstance(_FakeLog(), SpanningChainLog)
 

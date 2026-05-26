@@ -45,15 +45,26 @@ from codegenie.types.identifiers import ChainHead
 
 @runtime_checkable
 class SpanningChainLog(Protocol):
-    """Minimal read-only view of spanning event-log chain heads.
+    """Read-only view of the spanning event-log chain.
 
     Phase-3's event-log infrastructure (or a Phase-4 adapter over it,
     landed by S5-01 if translation is needed) satisfies this Protocol
-    implicitly. The surface is intentionally one method: final-design
-    §Component 11 chose appearance-in-log, not segment proof.
+    implicitly. Two methods:
+
+    * :meth:`contains_chain_head` — appearance-in-log predicate
+      (final-design §Component 11 chose appearance-in-log, not segment
+      proof). The :func:`verify` chain-orphan check folds through it.
+    * :meth:`head` — Phase-4 S5-01 retriever extension; returns the
+      *current* spanning-log head so an emitted
+      :class:`~codegenie.plugins.events.RagRecordChainOrphan` can name
+      both the record's claimed head AND the live log head for triage.
+      Additive — no caller of the original `contains_chain_head`-only
+      shape is broken.
     """
 
     def contains_chain_head(self, head: ChainHead) -> bool: ...
+
+    def head(self) -> ChainHead: ...
 
 
 def verify(record: SolvedExample, spanning_log: SpanningChainLog) -> bool:
