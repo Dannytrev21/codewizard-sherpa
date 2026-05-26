@@ -968,6 +968,28 @@ class TransformBuilt(BaseModel):
     plan_kind: Literal["dep_bump", "override", "callsite_rewrite", "refuse"]
 
 
+class RagSkippedOnRetry(BaseModel):
+    """Phase-4 S6-02 — :class:`FallbackTier.run` short-circuited the RAG
+    retrieval step because ``prior_attempts`` was non-empty (ADR-04-0011
+    §Decision: retries do not re-query the store; the failing-signal
+    summary already encodes what went wrong on the prior attempt).
+
+    Payload fields capture the retry context for replay forensics:
+    how many prior attempts have happened, the last attempt's number
+    (for orderly retry-count auditing), and the last attempt's
+    failing-signal set (for diagnosing whether the gate or the
+    transform was at fault)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["rag_skipped_on_retry"] = "rag_skipped_on_retry"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    attempt_count: int
+    last_attempt_number: int
+    last_failing_signals: tuple[SignalKind, ...]
+
+
 class HarvestSkipped(BaseModel):
     """Phase-4 S6-03 — auto-harvest path declined to ingest a solved
     example. ``reason`` is a closed four-member ``Literal``: the
@@ -1173,6 +1195,7 @@ WorkflowInternalEvent = Annotated[
     | BudgetPrechecked
     | TransformBuilt
     | HarvestSkipped
+    | RagSkippedOnRetry
     | PlanOutcomeEmitted,
     Field(discriminator="event_type"),
 ]
@@ -1240,6 +1263,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     BudgetPrechecked,
     TransformBuilt,
     HarvestSkipped,
+    RagSkippedOnRetry,
     PlanOutcomeEmitted,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
@@ -1623,6 +1647,7 @@ __all__ = [
     "PlanOutcomeEmitted",
     "TransformBuilt",
     "QueryBuiltEvent",
+    "RagSkippedOnRetry",
     "QueryRenderedEvent",
     "RagCandidateSelectedEvent",
     "RagDegradedEvent",
