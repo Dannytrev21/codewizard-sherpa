@@ -57,7 +57,13 @@ from codegenie.fallback.fence.canary import CanaryGuard
 from codegenie.fallback.fence.prompt_builder import PromptBuilder
 from codegenie.fallback.fence.wrapper import FenceWrapper
 from codegenie.fallback.leaf.port import LeafLlm
-from codegenie.fallback.plan_outcome import PlanOutcome, Refused
+from codegenie.fallback.plan_outcome import (
+    AppliedFromLlm,
+    AppliedFromRecipe,
+    PlanOutcome,
+    RagOnlyApplicable,
+    Refused,
+)
 from codegenie.fallback.plan_proposal import (
     PlanProposal,
     PlanProposalCallsiteRewrite,
@@ -65,13 +71,19 @@ from codegenie.fallback.plan_proposal import (
     PlanProposalOverride,
     PlanProposalRefuse,
 )
+from codegenie.fallback.post_validation_context import PostValidationContext
 from codegenie.fallback.provenance_gate import ProvenanceGate
 from codegenie.plugins.events import EventLog, PlanOutcomeEmitted
+from codegenie.rag.ingest import ValidatedPlanOutcome
 from codegenie.transforms.apply_context import AttemptSummary
-from codegenie.types.identifiers import EventId
+from codegenie.transforms.outcomes import TrustOutcome
+from codegenie.types.identifiers import EventId, LeafResponseId
 
 __all__ = [
     "FallbackTier",
+    "HarvestEligibility",
+    "harvest_eligibility",
+    "skip_reason_for",
     "transform_from_plan",
 ]
 
@@ -97,6 +109,93 @@ class _TransformProjection:
     """
 
     plan_kind: str
+
+
+# --- S6-03 pure helpers ---------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class HarvestEligibility:
+    """Sum-type tag indicating whether a :data:`PlanOutcome` is
+    harvestable.
+
+    Only :class:`AppliedFromLlm` is harvestable today — the auto-
+    harvester ingests LLM-validated examples so the RAG store grows
+    with real fix evidence. ``AppliedFromRecipe`` outcomes already
+    have a recipe; ``RagOnlyApplicable`` and ``Refused`` carry no
+    proposed plan worth re-using.
+    """
+
+    eligible: bool
+    """``True`` iff the outcome is :class:`AppliedFromLlm`."""
+
+
+def harvest_eligibility(outcome: PlanOutcome) -> HarvestEligibility:
+    """Pure projection: is ``outcome`` harvestable?
+
+    ``match`` exhaustiveness over the four-variant :data:`PlanOutcome`
+    union (S1-03): only :class:`AppliedFromLlm` is eligible. The
+    ``case _: assert_never(outcome)`` arm catches a future widening.
+    """
+    match outcome:
+        case AppliedFromLlm():
+            return HarvestEligibility(eligible=True)
+        case AppliedFromRecipe():
+            return HarvestEligibility(eligible=False)
+        case RagOnlyApplicable():
+            return HarvestEligibility(eligible=False)
+        case Refused():
+            return HarvestEligibility(eligible=False)
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def skip_reason_for(
+    trust: TrustOutcome,
+) -> str:
+    """Project a failing :class:`TrustOutcome` into the
+    :class:`HarvestSkipped.reason` closed-set Literal.
+
+    Called only when :meth:`ConfidenceGate.passes(trust)` returned
+    ``False`` — at least one clause failed:
+
+    * ``trust.passed is False`` → ``"trust_failed"`` (clause 1 failed)
+    * ``trust.confidence != "high"`` → ``"low_confidence"`` (clause 2)
+
+    If both clauses fail, ``"trust_failed"`` takes precedence (the
+    more fundamental failure).
+    """
+    if not trust.passed:
+        return "trust_failed"
+    return "low_confidence"
+
+
+def _validated_outcome_from(
+    *,
+    outcome: AppliedFromLlm,
+    context: PostValidationContext,
+) -> ValidatedPlanOutcome:
+    """Pure projection (``AppliedFromLlm``, ``PostValidationContext``) →
+    :class:`ValidatedPlanOutcome`.
+
+    AC-9 type guard: only ``AppliedFromLlm`` is accepted. Callers
+    prove they passed the eligibility filter before invoking; a
+    caller passing a different :data:`PlanOutcome` variant is a
+    mypy --strict error.
+    """
+    return ValidatedPlanOutcome(
+        query_text=context.query_text,
+        plan_proposal=context.plan_proposal,
+        transform_digest=context.transform_digest,
+        trust_outcome_digest=context.trust_outcome_digest,
+        task_class=context.task_class,
+        language=context.language,
+        build_system=context.build_system,
+        cve_id=context.cve_id,
+        advisory_digest=context.advisory_digest,
+        response_id=LeafResponseId(str(outcome.response_id)),
+        chain_head=context.chain_head,
+    )
 
 
 def transform_from_plan(plan: PlanProposal) -> _TransformProjection:

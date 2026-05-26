@@ -968,6 +968,31 @@ class TransformBuilt(BaseModel):
     plan_kind: Literal["dep_bump", "override", "callsite_rewrite", "refuse"]
 
 
+class HarvestSkipped(BaseModel):
+    """Phase-4 S6-03 — auto-harvest path declined to ingest a solved
+    example. ``reason`` is a closed four-member ``Literal``: the
+    confidence gate rejected, the outcome was not harvestable, the
+    deterministic-id pre-check found an existing record, or the trust
+    outcome itself failed.
+
+    ``plan_outcome_kind`` echoes the gate's
+    :data:`~codegenie.fallback.plan_outcome.PlanOutcome` discriminator
+    for triage forensics."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_type: Literal["harvest_skipped"] = "harvest_skipped"
+    event_id: EventId
+    workflow_id: WorkflowId
+    timestamp: datetime
+    reason: Literal[
+        "low_confidence",
+        "trust_failed",
+        "outcome_not_harvestable",
+        "already_harvested",
+    ]
+    plan_outcome_kind: Literal["llm", "recipe", "rag_only", "refused"]
+
+
 class PlanOutcomeEmitted(BaseModel):
     """S6-01 — terminal event emitted by :meth:`FallbackTier.run`. Carries
     the typed :data:`PlanOutcome` discriminated union (NOT a ``dict[str,
@@ -1147,6 +1172,7 @@ WorkflowInternalEvent = Annotated[
     | RagCandidateSelectedEvent
     | BudgetPrechecked
     | TransformBuilt
+    | HarvestSkipped
     | PlanOutcomeEmitted,
     Field(discriminator="event_type"),
 ]
@@ -1213,6 +1239,7 @@ _INTERNAL_CLASSES: Final[tuple[type[BaseModel], ...]] = (
     RagCandidateSelectedEvent,
     BudgetPrechecked,
     TransformBuilt,
+    HarvestSkipped,
     PlanOutcomeEmitted,
 )
 _SPANNING_CLASSES: Final[tuple[type[BaseModel], ...]] = (
@@ -1579,6 +1606,7 @@ __all__ = [
     "FenceApplied",
     "FilesystemRaceDetected",
     "GitHooksDisabledForRun",
+    "HarvestSkipped",
     "InMemorySink",
     "InstallStageOutcome",
     "LeafInvoked",
