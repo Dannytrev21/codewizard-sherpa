@@ -1,7 +1,7 @@
 # Story S7-04 — `phase4-config.yaml` + skill templates
 
 **Step:** Step 7 — Ship plugin wiring: FallbackTierPlanRecipeEngine + harvest + E2E exit criteria
-**Status:** HARDENED (2026-05-24 — phase-story-validator)
+**Status:** GREEN-partial — 2026-05-26 (phase-story-executor; see [`_attempts/S7-04.md`](_attempts/S7-04.md)). Shipped `plugins/vulnerability-remediation--node--npm/phase4-config.yaml` (arch-default values) + plugin-local `Phase4Config` Pydantic model + tagged-union `Phase4ConfigError` + `load_phase4_config(path) -> Result[Phase4Config, Phase4ConfigError]` loader + 9-named-validator Specification table covering 12 rejection rules + two skill templates parsing cleanly through kernel `_load_one_skill`. 22 schema-rejection + 3 skill-parse + 5 no-defaults + 2 Hypothesis-property + 2 integration smoke = 34 tests green; mypy --strict, ruff, lint-imports (12/12 KEPT). **Deferred (BLOCKED):** AC-2 (api.py declarations + tsc external_tools — Phase-3 S7-01 hasn't shipped plugin.yaml/api.py), AC-8a (runtime witness — depends on api.py construction site), AC-8b (AST walk — same), AC-8c BandClassifier+LlmInvocationGuard half (Rule 7 conflict surfaced — shipped S5-02 + S2-05 carry arch-literal defaults; honoring AC-8c there is out-of-scope edit of those modules; Phase4Config sub-models DO honor AC-8c — every field required, no Pydantic defaults).
 **Effort:** M (was S — schema-rewrite, AST + runtime-witness tests, and dependency on Phase-3 S7-01 raise the effort one notch)
 **Depends on:**
 - Phase-4 S7-01 — `FallbackTierPlanRecipeEngine` registered as `transforms()['plan']`; this is the wiring site that reads the `Phase4Config` and constructs the `BandClassifier` + `LlmInvocationGuard` with the loaded values (AC-8a runtime witness drives through it).
