@@ -204,7 +204,20 @@ jobs:
           # build parses only trusted in-repo .md files. Full rationale +
           # an ``ignoreUntil`` expiry live in ``osv-scanner.toml``; remove
           # both suppressions when Python-Markdown ships a fix.
-          pip-audit --strict --disable-pip --no-deps --ignore-vuln PYSEC-2026-89 --requirement /tmp/requirements-from-uv.txt
+          #
+          # ``--ignore-vuln MAL-2026-4750``: malicious-packages advisory
+          # against fastapi 0.136.3 — **withdrawn 2026-05-26T13:04:03Z**
+          # per OSV (https://api.osv.dev/v1/vulns/MAL-2026-4750 carries
+          # the ``withdrawn`` field). The advisory was about the
+          # ``[standard]`` optional-dependencies extra silently pulling
+          # the typosquat ``fastar`` package; we install bare ``fastapi``
+          # as a transitive dep of ``chromadb`` (path-scoped to
+          # ``src/codegenie/rag/`` per ADR-04-0003) — the ``[standard]``
+          # extra is NOT in our closure. pip-audit still surfaces the
+          # withdrawn advisory until its OSV mirror catches up; this
+          # ignore line can drop once that propagates (also mirrored in
+          # ``osv-scanner.toml`` with an ``ignoreUntil`` expiry).
+          pip-audit --strict --disable-pip --no-deps --ignore-vuln PYSEC-2026-89 --ignore-vuln MAL-2026-4750 --requirement /tmp/requirements-from-uv.txt
       - name: osv-scanner (uv.lock)
         # v1.9.1: the action lives at the ``osv-scanner-action`` subpath,
         # NOT the repo root (the root ``action.yml`` has no ``runs:``
