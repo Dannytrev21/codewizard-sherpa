@@ -1,10 +1,26 @@
 # Story S3-05 — Deterministic BCa bootstrap for `lower_bound_95`
 
 **Step:** Step 3 — Implement the runner: asyncio fan-out, subprocess rubric, aggregator with BCa bootstrap
-**Status:** Ready
+**Status:** Ready (HARDENED 2026-05-27)
 **Effort:** M
-**Depends on:** S3-02 (aggregator scaffolding — fills the `lower_bound_95=0.0` placeholder)
-**ADRs honored:** **ADR-0002 (load-bearing — promotion gate keys on `lower_bound_95`)**, ADR-0006 (curation-class held-out floor reinforces small-N caution)
+**Depends on:** S3-01 HARDENED (`RunId = NewType("RunId", str)`; 16-hex content-addressed; `run_id[:8]` is always valid hex by construction); S3-02 HARDENED (module-level `_aggregate(queue, plan, on_score, started_at)` helper owns the `lower_bound_95=0.0` placeholder; per-case items are `tuple[str, BenchScore]`; canonical test helper `make_stub_plan(tmp_path, *, case_ids=...)`)
+**ADRs honored:** **ADR-0002 (load-bearing — promotion gate keys on `lower_bound_95`; seed derivation pinned at `int(run_id[:8], 16)`; revisit trigger for Wilson switch deferred)**, ADR-0006 (curation-class held-out floor reinforces small-N caution)
+
+## Validation notes
+
+**Validated 2026-05-27** (`phase-story-validator`). Full audit: `_validation/S3-05-deterministic-bca-bootstrap.md`.
+
+Material changes from the writer's first draft:
+
+1. **Contract drift fixed (3 blocks):** `run_id: str` → `run_id: RunId` (HARDENED S3-01 newtype); "S3-02's aggregator" → `_aggregate(queue, plan, on_score, started_at)` module-level helper (HARDENED S3-02 name); fictional `make_plan_with_varied_scores(stub_bench)` → canonical `make_stub_plan(tmp_path, *, case_ids=..., scores=...)` (additively widened from S3-02 HARDENED's helper).
+2. **Test-quality bugs fixed (2 blocks):** `caplog` → `structlog.testing.capture_logs()` — `caplog` is a silent false-pass under the project's structlog processor chain (precedent: `tests/unit/test_audit_anchors.py:172`); `np.percentile(..., method="linear")` is now pinned explicitly — load-bearing for cross-Python-version byte-identical determinism.
+3. **Scipy-or-Acklam ambiguity collapsed (Rule 7 — surface conflicts, don't average):** Acklam-only is now pinned. Keeps the closure to numpy-only (no transitive BLAS-stack pressure); cross-version byte-stability is easier to certify; scipy can be revisited in a future ADR amendment.
+4. **Five pure helpers AC-mandated** (was: refactor-tier only): `_derive_seed`, `_norm_ppf`, `_bias_correction`, `_acceleration`, `_bca_alpha_lower` — each with its own Efron §14.3 worked-example unit tests in `tests/unit/test_bootstrap_helpers.py`. Makes the load-bearing BCa math mutation-vulnerable at the unit-test boundary. Mirrors S3-01's `_compose_run_id` / `_compose_rubric_digest` / `_compose_cassette_corpus_digest` pure-helper pattern.
+5. **Module-level `Final` constants** (was: magic numbers inline): `_N_RESAMPLES_DEFAULT = 1000`, `_SMALL_N_FLOOR = 5`, `_ALPHA_LOWER = 0.025`. Codebase precedent: `_GENERATOR_HEADER_MARKERS`, `_LOCKFILE_PRECEDENCE`.
+6. **New ACs:** N=0 (empty list) explicit test (distinct from N=4); order-invariance Hypothesis property (`compute_lower_bound_95(reversed(scores), ...) == compute_lower_bound_95(scores, ...)`); numpy version pin (`numpy>=1.22,<3.0`) in `pyproject.toml`; snapshot regen flow documented (executor runs once → pins literal → future regen requires ADR amendment).
+7. **Future Wilson-switch surfaced as Note-for-implementer (NOT AC):** Rule 2 says "three similar lines is better than premature abstraction" — we have ONE implementation today. A `ConfidenceBoundStrategy` Protocol / Strategy pattern is the natural extension shape when ADR-0002's revisit trigger fires (per-case `score ∈ {0.0, 1.0}` rate > 80% over 50+ cases). Documented as a precedent in Notes; not introduced now.
+
+The TDD plan now expresses 7 mutation-resistant unit/integration tests + 3 Hypothesis properties (mean-stddev window, order-invariance, monotone-shift) + 4 Efron-worked-example helper unit tests + 1 snapshot test + 1 aggregator regression. Together they constrain a correct BCa implementation tightly; the executor's Validator pass has concrete runtime evidence to check.
 
 ## Context
 
@@ -29,7 +45,7 @@ The BCa (bias-corrected and accelerated) variant matters because `BenchScore.sco
 
 ## Goal
 
-Implement `compute_lower_bound_95(per_case_scores: Sequence[float], *, run_id: str, n_resamples: int = 1000) -> float` that returns a deterministic, seeded BCa-bootstrap 95% one-sided lower bound on the mean of `per_case_scores`, and wire it into S3-02's aggregator.
+Implement `compute_lower_bound_95(scores: Sequence[float], *, run_id: RunId, n_resamples: int = _N_RESAMPLES_DEFAULT) -> float` in `src/codegenie/eval/bootstrap.py` that returns a deterministic, seeded BCa-bootstrap 95% one-sided lower bound on the mean of `scores`. Wire it into HARDENED S3-02's `_aggregate(queue, plan, on_score, started_at)` module-level helper — replacing the `lower_bound_95=0.0` placeholder, after the sentinel-driven loop terminates and `per_case` is sorted by `case_id`. The closure stays numpy-only (no scipy); `_norm_ppf` is implemented via Acklam's algorithm. Five pure helpers (`_derive_seed`, `_norm_ppf`, `_bias_correction`, `_acceleration`, `_bca_alpha_lower`) carry the BCa math under direct unit-test scrutiny against Efron §14.3 worked examples.
 
 ## Acceptance criteria
 
