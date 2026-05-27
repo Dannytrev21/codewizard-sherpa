@@ -1,0 +1,1134 @@
+{
+  "_missing_from_canonical_reexport": [
+    "RemediationOrchestrator"
+  ],
+  "captured": {
+    "ApplyContext": {
+      "kind": "pydantic_model",
+      "schema": {
+        "$defs": {
+          "AttemptSummary": {
+            "additionalProperties": false,
+            "description": "One row in :attr:`ApplyContext.prior_attempts`.\n\n``transform_id`` is ``None`` when the failure occurred *before* a\ntransform was produced (e.g., recipe-match failure, sandbox setup\nfailure). Phase 5 distinguishes these via the discriminator-on-``None``\npattern in its retry classifier.",
+            "properties": {
+              "attempt": {
+                "title": "Attempt",
+                "type": "integer"
+              },
+              "evidence_paths": {
+                "items": {
+                  "$ref": "#/$defs/SandboxedPath"
+                },
+                "title": "Evidence Paths",
+                "type": "array"
+              },
+              "failing_signals": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Failing Signals",
+                "type": "array"
+              },
+              "prior_failure_summary": {
+                "title": "Prior Failure Summary",
+                "type": "string"
+              },
+              "transform_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Transform Id"
+              }
+            },
+            "required": [
+              "attempt",
+              "failing_signals",
+              "prior_failure_summary",
+              "evidence_paths",
+              "transform_id"
+            ],
+            "title": "AttemptSummary",
+            "type": "object"
+          },
+          "CapabilityBundle": {
+            "additionalProperties": false,
+            "description": "Aggregator returned by :func:`mint`. Exactly one of ``npm``, ``fs``,\n``git`` is non-None per bundle \u2014 one mint call serves one scope, so the\naggregator represents *the* minted capability, not a set.\n\nConstructing :class:`CapabilityBundle` with zero or two non-None fields\nraises ``ValidationError`` (the ``_validate_exactly_one`` validator).\nWhen the design needs to mint multiple capabilities at once, the bundle\nbecomes a ``tuple[Capability, ...]`` and this validator is replaced \u2014\nuntil then the constrained shape catches accidental over-construction.",
+            "properties": {
+              "fs": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FsReadWriteCapability"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "git": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/GitLocalOpsCapability"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "npm": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NpmInstallCapability"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "title": "CapabilityBundle",
+            "type": "object"
+          },
+          "FsReadWriteCapability": {
+            "additionalProperties": false,
+            "description": "Permission to read + write under ``scope`` (an in-jail\n:class:`SandboxedPath`).\n\nHonest framing per 03-ADR-0011: audit + lint enforcement. The\n:class:`SandboxedPath` is itself in-jail-at-construction only \u2014 TOCTOU\nis acknowledged and the second-line defence lives at\n:meth:`SandboxedPath.open` time via ``O_NOFOLLOW``.",
+            "properties": {
+              "_minted_by": {
+                "title": "Minted By",
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/$defs/SandboxedPath"
+              }
+            },
+            "required": [
+              "scope",
+              "_minted_by"
+            ],
+            "title": "FsReadWriteCapability",
+            "type": "object"
+          },
+          "GitLocalOpsCapability": {
+            "additionalProperties": false,
+            "description": "Permission to perform local git operations under ``repo`` and within\n``branch_namespace``.\n\nThis capability has no push field \u2014 minting a push capability is\ntype-impossible. The framing pins production ADR-0009 (humans always\nmerge) at the type level: 03-ADR-0011 names this the one real\ntype-level invariant in the capability surface.\n\nSee:\n\n* 03-ADR-0011 \u00a7Decision \u00a7Capability tokens \u2014 type-level invariant.\n* production ADR-0009 (humans always merge) \u2014 the autonomy boundary.",
+            "properties": {
+              "_minted_by": {
+                "title": "Minted By",
+                "type": "string"
+              },
+              "branch_namespace": {
+                "title": "Branch Namespace",
+                "type": "string"
+              },
+              "repo": {
+                "$ref": "#/$defs/SandboxedPath"
+              }
+            },
+            "required": [
+              "repo",
+              "branch_namespace",
+              "_minted_by"
+            ],
+            "title": "GitLocalOpsCapability",
+            "type": "object"
+          },
+          "NpmInstallCapability": {
+            "additionalProperties": false,
+            "description": "Permission to invoke ``npm install`` against ``registry``.\n\nHonest framing per 03-ADR-0011: audit + lint enforcement, NOT runtime\nunforgeability. ``mint()`` is the only legal constructor; the\n:mod:`codegenie._capability_fence` walker reports any construction\noutside :mod:`codegenie.plugins.capabilities` and ``tests/``.",
+            "properties": {
+              "_minted_by": {
+                "title": "Minted By",
+                "type": "string"
+              },
+              "registry": {
+                "title": "Registry",
+                "type": "string"
+              }
+            },
+            "required": [
+              "registry",
+              "_minted_by"
+            ],
+            "title": "NpmInstallCapability",
+            "type": "object"
+          },
+          "SandboxedPath": {
+            "additionalProperties": false,
+            "description": "In-jail-at-construction value type with ``O_NOFOLLOW`` ``open()``.\n\nConstruct via :meth:`create` (smart constructor returning ``Result``).\nDirect ``SandboxedPath(absolute=...)`` is permitted today (the\ncapability-construction lint rule is deferred to S4-05 / AC-17) but\nbypasses the resolve + jail check and is conventionally reserved for\nthis module + ``tests/``.\n\nSee module docstring for the honest framing and known limitations.",
+            "properties": {
+              "absolute": {
+                "format": "path",
+                "title": "Absolute",
+                "type": "string"
+              }
+            },
+            "required": [
+              "absolute"
+            ],
+            "title": "SandboxedPath",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Per-workflow context passed to every recipe-engine ``apply()`` call.\n\n``prior_attempts`` is **truly immutable** (``tuple[AttemptSummary, ...]``)\nso ``frozen=True``'s reassignment-only freeze isn't quietly bypassed by\n``ctx.prior_attempts.append(x)``. Phase 5's retry envelope grows the\nfield via ``ctx.model_copy(update={\"prior_attempts\": ctx.prior_attempts +\n(new,)})``.",
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capabilities": {
+            "$ref": "#/$defs/CapabilityBundle"
+          },
+          "prior_attempts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/AttemptSummary"
+            },
+            "title": "Prior Attempts",
+            "type": "array"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "capabilities"
+        ],
+        "title": "ApplyContext",
+        "type": "object"
+      }
+    },
+    "AttemptSummary": {
+      "kind": "pydantic_model",
+      "schema": {
+        "$defs": {
+          "SandboxedPath": {
+            "additionalProperties": false,
+            "description": "In-jail-at-construction value type with ``O_NOFOLLOW`` ``open()``.\n\nConstruct via :meth:`create` (smart constructor returning ``Result``).\nDirect ``SandboxedPath(absolute=...)`` is permitted today (the\ncapability-construction lint rule is deferred to S4-05 / AC-17) but\nbypasses the resolve + jail check and is conventionally reserved for\nthis module + ``tests/``.\n\nSee module docstring for the honest framing and known limitations.",
+            "properties": {
+              "absolute": {
+                "format": "path",
+                "title": "Absolute",
+                "type": "string"
+              }
+            },
+            "required": [
+              "absolute"
+            ],
+            "title": "SandboxedPath",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One row in :attr:`ApplyContext.prior_attempts`.\n\n``transform_id`` is ``None`` when the failure occurred *before* a\ntransform was produced (e.g., recipe-match failure, sandbox setup\nfailure). Phase 5 distinguishes these via the discriminator-on-``None``\npattern in its retry classifier.",
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "evidence_paths": {
+            "items": {
+              "$ref": "#/$defs/SandboxedPath"
+            },
+            "title": "Evidence Paths",
+            "type": "array"
+          },
+          "failing_signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failing Signals",
+            "type": "array"
+          },
+          "prior_failure_summary": {
+            "title": "Prior Failure Summary",
+            "type": "string"
+          },
+          "transform_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transform Id"
+          }
+        },
+        "required": [
+          "attempt",
+          "failing_signals",
+          "prior_failure_summary",
+          "evidence_paths",
+          "transform_id"
+        ],
+        "title": "AttemptSummary",
+        "type": "object"
+      }
+    },
+    "RecipeEngine": {
+      "kind": "protocol",
+      "methods": {
+        "apply": {
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "self"
+            },
+            {
+              "annotation": "SandboxedPath",
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "repo"
+            },
+            {
+              "annotation": "ApplicationPlan",
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "plan"
+            },
+            {
+              "annotation": "NpmInstallCapability",
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "capability"
+            }
+          ],
+          "return_annotation": "RecipeOutcome"
+        }
+      },
+      "runtime_checkable": true
+    },
+    "RemediationReport": {
+      "kind": "pydantic_model",
+      "schema": {
+        "$defs": {
+          "PluginSnapshot": {
+            "additionalProperties": false,
+            "description": "Plugin and optional recipe identity captured in the report.",
+            "properties": {
+              "plugin_id": {
+                "title": "Plugin Id",
+                "type": "string"
+              },
+              "plugin_version": {
+                "title": "Plugin Version",
+                "type": "string"
+              },
+              "recipe_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Recipe Id"
+              },
+              "recipe_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Recipe Version"
+              }
+            },
+            "required": [
+              "plugin_id",
+              "plugin_version"
+            ],
+            "title": "PluginSnapshot",
+            "type": "object"
+          },
+          "RemediationError": {
+            "additionalProperties": false,
+            "description": "Failure payload carried by :class:`RemediationFailed`. Same shape as\n:class:`RecipeError` but a distinct type \u2014 the discriminator + Pydantic\ncan't tell two structurally-identical models apart at the umbrella, but\nthe field annotation on the Failed variants is type-time enforced.",
+            "properties": {
+              "details": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Details"
+              },
+              "error_id": {
+                "title": "Error Id",
+                "type": "string"
+              },
+              "message": {
+                "title": "Message",
+                "type": "string"
+              }
+            },
+            "required": [
+              "error_id",
+              "message"
+            ],
+            "title": "RemediationError",
+            "type": "object"
+          },
+          "RemediationFailed": {
+            "additionalProperties": false,
+            "description": "``RemediationFailed`` \u2014 orchestrator caught an unrecoverable error.\n``partial_report_path`` is ``None`` if failure occurred before the\nreport path was allocated; the orchestrator writes a partial\n``remediation-report.yaml`` whenever the path exists (arch line 452).",
+            "properties": {
+              "error": {
+                "$ref": "#/$defs/RemediationError"
+              },
+              "kind": {
+                "const": "failed",
+                "default": "failed",
+                "title": "Kind",
+                "type": "string"
+              },
+              "partial_report_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Partial Report Path"
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "title": "RemediationFailed",
+            "type": "object"
+          },
+          "RemediationNotApplicable": {
+            "additionalProperties": false,
+            "description": "``RemediationNotApplicable`` \u2014 every plugin's recipe catalog declined\n(all recipes returned ``NotApplies``). Distinct class from\n:class:`RecipeNotApplicable` (different umbrella) but shares the\n``reason`` Literal \u2014 see AC-8g identity test.",
+            "properties": {
+              "kind": {
+                "const": "not_applicable",
+                "default": "not_applicable",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "PEER_DEP_CONFLICT",
+                  "MAJOR_BUMP_REFUSE",
+                  "OVERRIDES_AMBIGUOUS",
+                  "RECIPE_CATALOG_MISS",
+                  "ALL_RECIPES_NOT_APPLICABLE",
+                  "NO_RECIPES_REGISTERED",
+                  "CVE_NOT_IN_DEPENDENCY_SET"
+                ],
+                "title": "Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "title": "RemediationNotApplicable",
+            "type": "object"
+          },
+          "ReportMetadata": {
+            "additionalProperties": false,
+            "description": "Stable report metadata. Datetimes must carry timezone information.",
+            "properties": {
+              "codegenie_version": {
+                "title": "Codegenie Version",
+                "type": "string"
+              },
+              "completed_at": {
+                "format": "date-time",
+                "title": "Completed At",
+                "type": "string"
+              },
+              "cve": {
+                "title": "Cve",
+                "type": "string"
+              },
+              "repo_path": {
+                "title": "Repo Path",
+                "type": "string"
+              },
+              "started_at": {
+                "format": "date-time",
+                "title": "Started At",
+                "type": "string"
+              },
+              "workflow_id": {
+                "title": "Workflow Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "workflow_id",
+              "cve",
+              "repo_path",
+              "started_at",
+              "completed_at",
+              "codegenie_version"
+            ],
+            "title": "ReportMetadata",
+            "type": "object"
+          },
+          "RequiresHumanReview": {
+            "additionalProperties": false,
+            "description": "``RequiresHumanReview`` \u2014 universal-fallback exhausted. ``reason``\npins the why; ``handoff_path`` is the path to the human-readable handoff\nartifact (``None`` if the orchestrator failed before allocating it).",
+            "properties": {
+              "handoff_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Handoff Path"
+              },
+              "kind": {
+                "const": "requires_human_review",
+                "default": "requires_human_review",
+                "title": "Kind",
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "no_concrete_match",
+                  "trust_outcome_failed",
+                  "policy_violation_unrecoverable",
+                  "MULTI_PACKAGE_CVE"
+                ],
+                "title": "Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "title": "RequiresHumanReview",
+            "type": "object"
+          },
+          "TransformSnapshot": {
+            "additionalProperties": false,
+            "description": "Post-apply transform summary consumed by Phase 5 and humans.",
+            "properties": {
+              "diff_bytes_sha256": {
+                "title": "Diff Bytes Sha256",
+                "type": "string"
+              },
+              "files_changed": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Files Changed",
+                "type": "array"
+              },
+              "transform_id": {
+                "title": "Transform Id",
+                "type": "string"
+              },
+              "transform_kind": {
+                "title": "Transform Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "transform_id",
+              "transform_kind",
+              "files_changed",
+              "diff_bytes_sha256"
+            ],
+            "title": "TransformSnapshot",
+            "type": "object"
+          },
+          "TrustOutcome": {
+            "additionalProperties": false,
+            "description": "Strict-AND validation result consumed by Phase 5 gates.\n\n``passed`` is true exactly when ``failing`` is empty. The invariant mirrors\n:class:`Validated` so a report cannot claim a successful trust outcome while\ncarrying failed signal names, or the reverse.",
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "high",
+                  "degraded"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              },
+              "failing": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Failing",
+                "type": "array"
+              },
+              "passed": {
+                "title": "Passed",
+                "type": "boolean"
+              },
+              "signals": {
+                "items": {
+                  "$ref": "#/$defs/TrustSignal"
+                },
+                "title": "Signals",
+                "type": "array"
+              }
+            },
+            "required": [
+              "passed",
+              "failing",
+              "signals",
+              "confidence"
+            ],
+            "title": "TrustOutcome",
+            "type": "object"
+          },
+          "TrustSignal": {
+            "additionalProperties": false,
+            "description": "One objective validation signal emitted by Stage 6.\n\n``kind`` is an open-registry :class:`SignalKind`; ``details`` is restricted\nto primitive values so the report artifact stays YAML/JSON portable and the\nno-``Any`` transform fence remains meaningful.",
+            "properties": {
+              "details": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "title": "Details",
+                "type": "object"
+              },
+              "kind": {
+                "title": "Kind",
+                "type": "string"
+              },
+              "passed": {
+                "title": "Passed",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "passed"
+            ],
+            "title": "TrustSignal",
+            "type": "object"
+          },
+          "UnauthorizedRegistry": {
+            "additionalProperties": false,
+            "description": "A lockfile entry resolved against a registry not on the allow-list.",
+            "properties": {
+              "kind": {
+                "const": "unauthorized_registry",
+                "default": "unauthorized_registry",
+                "title": "Kind",
+                "type": "string"
+              },
+              "package": {
+                "title": "Package",
+                "type": "string"
+              },
+              "registry": {
+                "title": "Registry",
+                "type": "string"
+              }
+            },
+            "required": [
+              "registry",
+              "package"
+            ],
+            "title": "UnauthorizedRegistry",
+            "type": "object"
+          },
+          "Validated": {
+            "additionalProperties": false,
+            "description": "``Validated`` \u2014 orchestrator finished a remediation cycle and the\nsandbox + trust scorer produced a verdict. ``passed`` / ``failing`` are\nthe flat denormalisation of S6-02's ``TrustOutcome``; S6-02 widens\nadditively (ADR-0001 forbids rename). ``report_path`` is ``str`` in\nPhase 3 \u2014 S4-01 widens to ``SandboxedPath`` via a ``field_validator``.",
+            "properties": {
+              "branch": {
+                "title": "Branch",
+                "type": "string"
+              },
+              "failing": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Failing",
+                "type": "array"
+              },
+              "kind": {
+                "const": "validated",
+                "default": "validated",
+                "title": "Kind",
+                "type": "string"
+              },
+              "passed": {
+                "title": "Passed",
+                "type": "boolean"
+              },
+              "report_path": {
+                "title": "Report Path",
+                "type": "string"
+              }
+            },
+            "required": [
+              "branch",
+              "report_path",
+              "passed",
+              "failing"
+            ],
+            "title": "Validated",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Frozen schema for ``remediation-report.yaml``.\n\nVersion bump policy: additive variants inside nested discriminated unions do\nnot bump ``schema_version``; adding/removing/reordering top-level fields\ndoes, because Phase 5 reads this field surface by name.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "event_log_internal_path": {
+            "title": "Event Log Internal Path",
+            "type": "string"
+          },
+          "event_log_spanning_path": {
+            "title": "Event Log Spanning Path",
+            "type": "string"
+          },
+          "lockfile_policy_violations": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "unauthorized_registry": "#/$defs/UnauthorizedRegistry"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/UnauthorizedRegistry"
+                }
+              ]
+            },
+            "title": "Lockfile Policy Violations",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/$defs/ReportMetadata"
+          },
+          "outcome": {
+            "discriminator": {
+              "mapping": {
+                "failed": "#/$defs/RemediationFailed",
+                "not_applicable": "#/$defs/RemediationNotApplicable",
+                "requires_human_review": "#/$defs/RequiresHumanReview",
+                "validated": "#/$defs/Validated"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Validated"
+              },
+              {
+                "$ref": "#/$defs/RequiresHumanReview"
+              },
+              {
+                "$ref": "#/$defs/RemediationNotApplicable"
+              },
+              {
+                "$ref": "#/$defs/RemediationFailed"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "plugin": {
+            "$ref": "#/$defs/PluginSnapshot"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "spanning_chain_head": {
+            "title": "Spanning Chain Head",
+            "type": "string"
+          },
+          "transform": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TransformSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust_outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TrustOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "metadata",
+          "plugin",
+          "transform",
+          "outcome",
+          "trust_outcome",
+          "branch",
+          "event_log_internal_path",
+          "event_log_spanning_path",
+          "spanning_chain_head"
+        ],
+        "title": "RemediationReport",
+        "type": "object"
+      }
+    },
+    "StageOutcome": {
+      "kind": "pydantic_model",
+      "schema": {
+        "$defs": {
+          "TrustSignal": {
+            "additionalProperties": false,
+            "description": "One objective validation signal emitted by Stage 6.\n\n``kind`` is an open-registry :class:`SignalKind`; ``details`` is restricted\nto primitive values so the report artifact stays YAML/JSON portable and the\nno-``Any`` transform fence remains meaningful.",
+            "properties": {
+              "details": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "title": "Details",
+                "type": "object"
+              },
+              "kind": {
+                "title": "Kind",
+                "type": "string"
+              },
+              "passed": {
+                "title": "Passed",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "passed"
+            ],
+            "title": "TrustSignal",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Strict-AND validation result consumed by Phase 5 gates.\n\n``passed`` is true exactly when ``failing`` is empty. The invariant mirrors\n:class:`Validated` so a report cannot claim a successful trust outcome while\ncarrying failed signal names, or the reverse.",
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "degraded"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "failing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failing",
+            "type": "array"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/$defs/TrustSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "passed",
+          "failing",
+          "signals",
+          "confidence"
+        ],
+        "title": "TrustOutcome",
+        "type": "object"
+      }
+    },
+    "Transform": {
+      "__init__": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_ONLY",
+            "name": "self"
+          },
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "VAR_POSITIONAL",
+            "name": "args"
+          },
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "VAR_KEYWORD",
+            "name": "kwargs"
+          }
+        ],
+        "return_annotation": null
+      },
+      "kind": "class",
+      "methods": {},
+      "name": "Transform"
+    },
+    "TrustOutcome": {
+      "kind": "pydantic_model",
+      "schema": {
+        "$defs": {
+          "TrustSignal": {
+            "additionalProperties": false,
+            "description": "One objective validation signal emitted by Stage 6.\n\n``kind`` is an open-registry :class:`SignalKind`; ``details`` is restricted\nto primitive values so the report artifact stays YAML/JSON portable and the\nno-``Any`` transform fence remains meaningful.",
+            "properties": {
+              "details": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "title": "Details",
+                "type": "object"
+              },
+              "kind": {
+                "title": "Kind",
+                "type": "string"
+              },
+              "passed": {
+                "title": "Passed",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "passed"
+            ],
+            "title": "TrustSignal",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Strict-AND validation result consumed by Phase 5 gates.\n\n``passed`` is true exactly when ``failing`` is empty. The invariant mirrors\n:class:`Validated` so a report cannot claim a successful trust outcome while\ncarrying failed signal names, or the reverse.",
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "degraded"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "failing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failing",
+            "type": "array"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/$defs/TrustSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "passed",
+          "failing",
+          "signals",
+          "confidence"
+        ],
+        "title": "TrustOutcome",
+        "type": "object"
+      }
+    },
+    "TrustScorer": {
+      "__init__": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "self"
+          },
+          {
+            "annotation": "EventLog",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "event_log"
+          }
+        ],
+        "return_annotation": "None"
+      },
+      "kind": "class",
+      "methods": {
+        "score": {
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "self"
+            },
+            {
+              "annotation": "list[TrustSignal]",
+              "default": null,
+              "kind": "POSITIONAL_OR_KEYWORD",
+              "name": "signals"
+            }
+          ],
+          "return_annotation": "TrustOutcome"
+        }
+      },
+      "name": "TrustScorer"
+    },
+    "TrustSignal": {
+      "kind": "pydantic_model",
+      "schema": {
+        "additionalProperties": false,
+        "description": "One objective validation signal emitted by Stage 6.\n\n``kind`` is an open-registry :class:`SignalKind`; ``details`` is restricted\nto primitive values so the report artifact stays YAML/JSON portable and the\nno-``Any`` transform fence remains meaningful.",
+        "properties": {
+          "details": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Details",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "passed"
+        ],
+        "title": "TrustSignal",
+        "type": "object"
+      }
+    }
+  },
+  "schema_version": 1
+}
