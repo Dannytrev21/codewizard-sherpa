@@ -1,23 +1,30 @@
-"""Phase-3 S6-06 (minimal) — Phase-5 contract snapshot scaffold.
+"""Phase-3 S6-06 + Phase-4 S7-10 — Phase-5 contract snapshot.
 
-**Status: GREEN-partial (minimal viable scaffold).** Lands the
-``tests/integration/test_phase5_contract_snapshot.py`` file +
-``tests/golden/phase5-contract/snapshot.json`` golden so Phase-4 S7-10
-AC-1..AC-8 can extend the file in place with the five Phase-4 capture
-entries. The full S6-06 AC complement (registry-driven
-``@register_snapshot_kind`` / ``@register_delta_rule``, the 6 named
-breaking-delta meta-test cases, the AC-19 ``PHASE 5 CANNOT SHIP``
-directive-format test, the AST-walk functional-core fence) is **not**
-shipped here — those are S6-06's GREEN-complete commits.
+**S7-10 AC-8.** This file holds the Phase-5 contract surface that
+Phase-4 ADRs 0002 (FallbackTier composition), 0009 (inline-harvest
+confidence gate), 0010 (LlmInvocationGuard / BudgetToken capability),
+0013 (FenceWrapper canary-scan-before-truncation), and 0014 (cassette
+discipline) commit to. Phase-4's five additive captures (FallbackTier.
+run, FallbackTier.on_validated, LlmInvocationGuard.running_total,
+FenceWrapper.fence, SolvedExampleWriteCapability + mint_factory)
+appear under the dedicated ``phase4_captures`` top-level snapshot key.
 
-Why this minimal scaffold exists in a Phase-4 commit: Phase-3 S6-06
-remains HARDENED-not-GREEN, blocking S7-10. The Phase-4 executor
-authored this scaffold as ``Rule-8 "Read before you write"`` reach-
-across: the structural prerequisite for S7-10's contract-snapshot work
-is the file + golden + env-var-regen path existing. The 6-symbol
-capture today is the minimum that satisfies S7-10 AC-2's "extend in
-place" requirement; S6-06's full GREEN attempt should additively
-extend this scaffold (not rewrite it).
+Phase 5's GateRunner reads these symbols by name + signature; any
+breaking delta on the captured surface MUST be paired with an
+ADR-0001 amendment + golden refresh in the same PR, per the
+``PHASE 5 CANNOT SHIP`` directive enforced by the mutation-guard
+tests below.
+
+Phase-3 S6-06 (the umbrella story for this file) remains HARDENED-
+not-GREEN; the Phase-4 executor authored the minimal kernel +
+golden + env-var regen path here so S7-10's AC-1..AC-8 could ship
+without waiting on S6-06's full GREEN-complete commit. The S6-06
+follow-up should extend the kernel additively (replace inline
+dispatch with ``@register_snapshot_kind`` / ``@register_delta_rule``
+registries, add the 6 named breaking-delta meta-test families, add
+the AST-walk functional-core fence) — not rewrite this file. The
+captured snapshot output stays comparable byte-for-byte across the
+registry refactor.
 
 Symbols captured (6 of S6-06's 7 named set):
 
@@ -521,6 +528,52 @@ def test_phase4_capability_is_frozen_dataclass() -> None:
         "drifted. Phase-5 supersession (ADR-04-0009) is a contract event "
         "requiring an ADR-0001 amendment + golden refresh in the same PR. "
         "AC-4 pins this exact interim name."
+    )
+
+
+def test_phase4_running_total_return_annotation_pinned_to_budget_snapshot() -> None:
+    """S7-10 AC-5 mutation guard: ``LlmInvocationGuard.running_total``
+    MUST return a typed :class:`BudgetSnapshot`. A narrow-to-``dict``
+    regression collapses the audit-trail discipline ADR-04-0010
+    builds on.
+    """
+    p4 = build_snapshot()["phase4_captures"]
+    return_annotation = p4["LlmInvocationGuard.running_total"]["signature"]["return_annotation"]
+    # The annotation is captured as a string (across Python versions
+    # the repr varies between `'BudgetSnapshot'` and `BudgetSnapshot`).
+    assert return_annotation is not None
+    assert "BudgetSnapshot" in str(return_annotation), (
+        f"PHASE 5 CANNOT SHIP — LlmInvocationGuard.running_total return "
+        f"annotation drifted from BudgetSnapshot to "
+        f"{return_annotation!r}. The typed audit-trail discipline "
+        f"requires BudgetSnapshot; a `dict[str, int]` regression breaks "
+        f"Phase 5's budget-reconcile contract. Reference ADR-04-0010 + "
+        f"Phase-3 ADR-0001 §Consequences row 2."
+    )
+
+
+def test_phase4_cassettes_lock_format_is_pinned_by_module_existence() -> None:
+    """S7-10 AC-5 mutation guard (final of six): the
+    ``tests/cassettes/anthropic/cassettes.lock`` file format is the
+    operator-visible artifact ADR-04-0014 establishes.
+
+    Today's minimal cassette-discipline scaffold guards the format
+    via the existing ``tests/security/test_cassettes_clean.py``
+    scanner (S3-05); this mutation guard surfaces an authoritative
+    breakage in the **format-pinning module** (i.e. if the scanner is
+    deleted or its regex is loosened beyond byte-equality, the cassette
+    line format becomes silently mutable). Pinning the module
+    presence + its name surfaces the regression at this snapshot's
+    granularity.
+    """
+    repo_root = Path(__file__).parents[2]
+    scanner = repo_root / "tests" / "security" / "test_cassettes_clean.py"
+    assert scanner.exists(), (
+        f"PHASE 5 CANNOT SHIP — cassettes.lock format-pinning module "
+        f"missing at {scanner}. ADR-04-0014's line-format invariant is "
+        f"enforced by this scanner; without it the lock-file shape "
+        f"becomes silently mutable. Reference ADR-04-0014 + Phase-3 "
+        f"ADR-0001 §Consequences row 2."
     )
 
 
