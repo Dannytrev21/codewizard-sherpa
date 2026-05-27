@@ -1,10 +1,29 @@
 # Story S2-05 — Canary seed thread-local shim + Phase 4 `Canary.mint(seed=...)` amendment
 
 **Step:** Step 2 — Build harness internals: loader, cache, audit chain extension, canary + cost-tag shims
-**Status:** Ready
+**Status:** BLOCKED
 **Effort:** S
 **Depends on:** S1-02
 **ADRs honored:** ADR-0005 (cassette canary-seed parameterization), Phase 4 final-design `ADR-P4-006` (additive `Canary.mint(seed=...)` kwarg)
+
+## Validation notes
+
+Validated: 2026-05-26
+Verdict: **RESCUE** (story body left unedited per validator skill policy)
+Status flipped to: **BLOCKED**
+Full audit log: [`_validation/S2-05-canary-seed-shim.md`](_validation/S2-05-canary-seed-shim.md)
+
+**Why blocked.** The four critics (Coverage, Test-Quality, Consistency, Design-Patterns) independently converged on the same structural finding: the story is built on a phantom Phase 4 API.
+
+- `Canary.mint(seed=...)` and `src/codegenie/engines/canary.py` — **do not exist** in the shipped codebase as of 2026-05-26.
+- Phase 4 actually ships `FenceWrapper(nonce_source: Callable[[], HexNonce] = _default_nonce_source)` in `src/codegenie/fallback/fence/wrapper.py:258` — a textbook DI seam already documented as "seam for deterministic-nonce tests."
+- Phase 4's cassette key does NOT include `canary_seed`. `final-design.md:37` lists the determinism tuple as `(repo_snapshot_sha, cve_record_digest, plugin_version, recipe_version, vuln_index_digest, store_digest, embedding_model_digest, cassette_blake3)`. `grep -rn canary_seed docs/phases/04-vuln-llm-fallback-rag/` returns zero hits.
+- AC-7's "S1-02 enforces 32-hex at Pydantic construction" is wrong: S1-02 explicitly **deferred** the format check to "S2-02 (loader) or S5-07 cassette-seed-shim." S2-02 does not check the in-`case.toml` `cassette_canary_pin` shape.
+- The proposed `ADR-P4-006` path collides with existing `docs/phases/04-vuln-llm-fallback-rag/ADRs/0006-egress-guard-no-production-loopback-carveout.md`. Next free Phase 4 ADR slot is 0018.
+
+**Recommended rescue path** (independently surfaced by the Consistency and Design-Patterns critics): drop the Phase 4 amendment entirely; expose a pure `pinned_nonce_source(case: BenchCase) -> Callable[[], HexNonce]` factory in `codegenie.eval.canary`; the bench runner constructs `FenceWrapper(..., nonce_source=pinned_nonce_source(case))` per case. Zero Phase 4 edits, zero cross-phase ADR amendment, zero ContextVar action-at-a-distance, zero asyncio-task-propagation hazard.
+
+**Owner of unblock** (phase architect): amend ADR-0005 to reflect the actual shipped Phase 4 surface, decide where the 32-hex `cassette_canary_pin` validator lands (amend S1-02 / S2-02, or carry the deferral to S5-07 and have the rescued S2-05 depend on S5-07), then re-run `phase-story-writer` for S2-05 against the corrected ADR. The 24 findings (block + harden) cataloged in the validation report enumerate which concerns dissolve under the rescue and which carry to the rewrite.
 
 ## Context
 
