@@ -94,9 +94,23 @@ jobs:
     # 1fa6d4e was 9m57s — at the budget cliff. S4-02 added ~70 unit + 6
     # integration tests + two Hypothesis property suites + a second
     # subprocess-mypy negative; the lane was being cancelled at the 10-min
-    # mark. 15 minutes restores the ~5-min headroom future stories will
+    # mark. 15 minutes restored the ~5-min headroom future stories will
     # consume.
-    timeout-minutes: 15
+    #
+    # 2026-05-26 (S6-03 Attempt #2): bumped 15 → 20. Run 26485357343
+    # was cancelled at 15:00 — same "budget cliff" pattern: the
+    # accumulated Phase-4 surface (S5-01..S5-04 retriever + band
+    # classifier, S6-01..S6-08 fallback tier scaffold + retry-bypass +
+    # idempotence + property tests, S7-01..S7-04 plugin assembly +
+    # config) plus growing Phase-6.5 stories tipped the serial sweep
+    # past 15m. Matrix lanes (unit / integration / portfolio /
+    # adv-phase02 × Python 3.11/3.12) ran fine in parallel; this
+    # aggregator is the only job that produces coverage.json and
+    # exercises per-module carve-outs (S4-04 AC-1/AC-10) so it must
+    # remain serial. 20 minutes restores ~5m headroom; a follow-up
+    # story should consider dropping this aggregator once a parallel
+    # coverage-merge path lands.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
