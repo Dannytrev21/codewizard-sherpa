@@ -58,6 +58,18 @@ from typing import Any
 
 from codegenie import transforms as transforms_pkg
 
+# Phase-4 S7-10 AC-1 capture imports — five additive entries that
+# Phase 5's GateRunner reads. Deep-imports here are deliberate: these
+# symbols don't have a canonical `codegenie.transforms` re-export
+# (they're Phase-4-internal); the snapshot pins them by qualified
+# module path so a Phase-5 swap-in sees an explicit ADR-0001 amendment
+# event rather than a silent rename.
+from codegenie.fallback.budget import LlmInvocationGuard
+from codegenie.fallback.fence.wrapper import FenceWrapper
+from codegenie.fallback.tier import FallbackTier
+from codegenie.rag._capability_mint import _phase4_local_capability_mint
+from codegenie.rag.store import SolvedExampleWriteCapability
+
 _GOLDEN_PATH = Path(__file__).parent.parent / "golden" / "phase5-contract" / "snapshot.json"
 _REWRITE_ENV_VAR = "PHASE5_CONTRACT_GOLDEN_REWRITE"
 
@@ -246,6 +258,65 @@ def snapshot_symbol(name: str, obj: Any) -> dict[str, Any]:
     return _snapshot_typealias(name, obj)
 
 
+def _snapshot_phase4_captures() -> dict[str, Any]:
+    """Phase-4 S7-10 AC-1 — the five additive captures.
+
+    Each entry pins the load-bearing shape Phase 5's GateRunner reads.
+    Per AC-2 the comparison is golden-file based (not inline string
+    assertion); the captures emit dict structures that participate in
+    the same top-level ``sort_keys=True`` serialization as the
+    canonical re-export captures.
+
+    Per AC-4 ``_phase4_local_capability_mint``'s name is pinned
+    exactly — Phase-5 supersession is a contract event requiring an
+    ADR-0001 amendment + golden refresh in the same PR.
+    """
+    return {
+        "FallbackTier.run": {
+            "kind": "method",
+            "qualified_name": f"{FallbackTier.__module__}.{FallbackTier.__qualname__}.run",
+            "signature": _signature_repr(FallbackTier, "run"),
+        },
+        "FallbackTier.on_validated": {
+            "kind": "method",
+            "qualified_name": f"{FallbackTier.__module__}.{FallbackTier.__qualname__}.on_validated",
+            "signature": _signature_repr(FallbackTier, "on_validated"),
+        },
+        "LlmInvocationGuard.running_total": {
+            "kind": "method",
+            "qualified_name": (
+                f"{LlmInvocationGuard.__module__}.{LlmInvocationGuard.__qualname__}.running_total"
+            ),
+            "signature": _signature_repr(LlmInvocationGuard, "running_total"),
+        },
+        "FenceWrapper.fence": {
+            "kind": "method",
+            "qualified_name": f"{FenceWrapper.__module__}.{FenceWrapper.__qualname__}.fence",
+            "signature": _signature_repr(FenceWrapper, "fence"),
+        },
+        "SolvedExampleWriteCapability": {
+            "kind": "dataclass",
+            "qualified_name": (
+                f"{SolvedExampleWriteCapability.__module__}."
+                f"{SolvedExampleWriteCapability.__qualname__}"
+            ),
+            "frozen": getattr(SolvedExampleWriteCapability.__dataclass_params__, "frozen", False),
+            "slots": bool(getattr(SolvedExampleWriteCapability, "__slots__", ())),
+            "fields": sorted(
+                f.name for f in SolvedExampleWriteCapability.__dataclass_fields__.values()
+            ),
+            # AC-4 — pin the mint factory's interim name + signature.
+            "mint_factory": {
+                "qualified_name": (
+                    f"{_phase4_local_capability_mint.__module__}."
+                    f"{_phase4_local_capability_mint.__qualname__}"
+                ),
+                "signature": _signature_repr(_phase4_local_capability_mint),
+            },
+        },
+    }
+
+
 def build_snapshot() -> dict[str, Any]:
     """Compose the full Phase-5 contract snapshot."""
     symbols = _resolve_symbols()
@@ -253,9 +324,14 @@ def build_snapshot() -> dict[str, Any]:
     captured: dict[str, Any] = {}
     for name in sorted(symbols):
         captured[name] = snapshot_symbol(name, symbols[name])
+    # Phase-4 S7-10 AC-1 captures — additive entries under a separate
+    # top-level key so a Phase-4 widening doesn't perturb the Phase-3
+    # captured set's golden bytes.
+    phase4 = _snapshot_phase4_captures()
     return {
         "schema_version": 1,
         "captured": captured,
+        "phase4_captures": phase4,
         "_missing_from_canonical_reexport": missing,
     }
 
@@ -354,3 +430,108 @@ def test_captured_set_contains_six_phase3_symbols_at_minimum() -> None:
     }
     missing = expected_subset - set(captured)
     assert not missing, f"expected Phase-3 contract symbols missing from snapshot: {missing}"
+
+
+# --- Phase-4 S7-10 AC-1 — the five additive Phase-4 captures ---------------
+
+
+def test_phase4_captures_block_present_in_snapshot() -> None:
+    """S7-10 AC-1 — the five named Phase-4 captures live under a
+    ``phase4_captures`` top-level key (kept distinct from the Phase-3
+    re-export captures so Phase-4 widenings don't perturb Phase-3
+    golden bytes)."""
+    snapshot = build_snapshot()
+    assert "phase4_captures" in snapshot
+    p4 = snapshot["phase4_captures"]
+    expected = {
+        "FallbackTier.run",
+        "FallbackTier.on_validated",
+        "LlmInvocationGuard.running_total",
+        "FenceWrapper.fence",
+        "SolvedExampleWriteCapability",
+    }
+    missing = expected - set(p4)
+    assert not missing, f"S7-10 AC-1: missing Phase-4 captures: {missing}"
+
+
+def test_phase4_fallback_tier_run_signature_pins_prior_attempts_default() -> None:
+    """S7-10 AC-1 + AC-5 mutation guard: the ``prior_attempts`` default
+    is the immutable empty tuple ``()``. A regression that flips this
+    to required (no default) would break Phase 5's retry envelope
+    composition."""
+    p4 = build_snapshot()["phase4_captures"]
+    params = p4["FallbackTier.run"]["signature"]["parameters"]
+    prior_attempts = next(p for p in params if p["name"] == "prior_attempts")
+    assert prior_attempts["kind"] == "KEYWORD_ONLY", (
+        "PHASE 5 CANNOT SHIP — FallbackTier.run.prior_attempts must remain "
+        "keyword-only; positional-arg drift breaks Phase 5's GateRunner retry "
+        "envelope. Reference ADR-04-0002 + Phase-3 ADR-0001 §Consequences row 2."
+    )
+    assert prior_attempts["default"] == "()", (
+        "PHASE 5 CANNOT SHIP — FallbackTier.run.prior_attempts default flipped "
+        "from `()` to `" + str(prior_attempts["default"]) + "`. A required "
+        "prior_attempts arg breaks Phase 5's first-call shape. Reference "
+        "ADR-04-0011 + Phase-3 ADR-0001 §Consequences row 2."
+    )
+
+
+def test_phase4_fence_wrapper_fence_carries_source_kind_kwarg() -> None:
+    """S7-10 AC-5 mutation guard: ``FenceWrapper.fence`` MUST keep its
+    ``source_kind`` parameter — losing it breaks the SourceKind
+    discrimination Phase 5 + Phase 4 retrieval both depend on."""
+    p4 = build_snapshot()["phase4_captures"]
+    params = p4["FenceWrapper.fence"]["signature"]["parameters"]
+    param_names = {p["name"] for p in params}
+    assert "source_kind" in param_names, (
+        "PHASE 5 CANNOT SHIP — FenceWrapper.fence lost its source_kind "
+        "parameter. The SourceKind Literal discrimination is load-bearing "
+        "across S2-02 / S2-04 / ADR-04-0013. Reference ADR-04-0013 + Phase-3 "
+        "ADR-0001 §Consequences row 2."
+    )
+
+
+def test_phase4_on_validated_keeps_trust_parameter() -> None:
+    """S7-10 AC-5 mutation guard: ``FallbackTier.on_validated`` must
+    carry the ``trust: TrustOutcome`` parameter — the confidence gate
+    + harvest-skip-reason dispatch reads it."""
+    p4 = build_snapshot()["phase4_captures"]
+    params = p4["FallbackTier.on_validated"]["signature"]["parameters"]
+    param_names = {p["name"] for p in params}
+    assert "trust" in param_names, (
+        "PHASE 5 CANNOT SHIP — FallbackTier.on_validated lost its `trust` "
+        "parameter; the ConfidenceGate dispatch can't fire without it. "
+        "Reference ADR-04-0009 + Phase-3 ADR-0001 §Consequences row 2."
+    )
+
+
+def test_phase4_capability_is_frozen_dataclass() -> None:
+    """S7-10 AC-5 mutation guard: ``SolvedExampleWriteCapability`` is
+    a frozen dataclass — flipping to mutable breaks the mint-once-
+    consume-many invariant ADR-04-0010 establishes."""
+    p4 = build_snapshot()["phase4_captures"]
+    cap = p4["SolvedExampleWriteCapability"]
+    assert cap["frozen"] is True, (
+        "PHASE 5 CANNOT SHIP — SolvedExampleWriteCapability.__dataclass_params__"
+        ".frozen flipped from True to False. The mint-once-consume-many "
+        "invariant requires immutability. Reference ADR-04-0010 + Phase-3 "
+        "ADR-0001 §Consequences row 2."
+    )
+    assert cap["mint_factory"]["qualified_name"].endswith("_phase4_local_capability_mint"), (
+        "PHASE 5 CANNOT SHIP — _phase4_local_capability_mint interim name "
+        "drifted. Phase-5 supersession (ADR-04-0009) is a contract event "
+        "requiring an ADR-0001 amendment + golden refresh in the same PR. "
+        "AC-4 pins this exact interim name."
+    )
+
+
+def test_phase4_captures_round_trip_through_json_deterministically() -> None:
+    """S7-10 AC-6 — Phase-4 captures share the determinism property
+    with the Phase-3 captures: 10 invocations produce byte-identical
+    JSON for the ``phase4_captures`` block."""
+    first = json.dumps(build_snapshot()["phase4_captures"], indent=2, sort_keys=True)
+    for _ in range(10):
+        repeat = json.dumps(build_snapshot()["phase4_captures"], indent=2, sort_keys=True)
+        assert repeat == first, (
+            "non-deterministic Phase-4 captures — dict iteration order leaked "
+            "into the output for at least one of the five captures."
+        )

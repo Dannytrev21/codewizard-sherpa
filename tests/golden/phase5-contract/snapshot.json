@@ -1130,5 +1130,150 @@
       }
     }
   },
+  "phase4_captures": {
+    "FallbackTier.on_validated": {
+      "kind": "method",
+      "qualified_name": "codegenie.fallback.tier.FallbackTier.on_validated",
+      "signature": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "self"
+          },
+          {
+            "annotation": "PlanOutcome",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "outcome"
+          },
+          {
+            "annotation": "TrustOutcome",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "trust"
+          },
+          {
+            "annotation": "PostValidationContext",
+            "default": null,
+            "kind": "KEYWORD_ONLY",
+            "name": "context"
+          }
+        ],
+        "return_annotation": "None"
+      }
+    },
+    "FallbackTier.run": {
+      "kind": "method",
+      "qualified_name": "codegenie.fallback.tier.FallbackTier.run",
+      "signature": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "self"
+          },
+          {
+            "annotation": "CveAdvisory",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "advisory"
+          },
+          {
+            "annotation": "RepoContext",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "repo_ctx"
+          },
+          {
+            "annotation": "RecipeSelection",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "recipe_selection"
+          },
+          {
+            "annotation": "Sequence[AttemptSummary]",
+            "default": "()",
+            "kind": "KEYWORD_ONLY",
+            "name": "prior_attempts"
+          }
+        ],
+        "return_annotation": "PlanOutcome"
+      }
+    },
+    "FenceWrapper.fence": {
+      "kind": "method",
+      "qualified_name": "codegenie.fallback.fence.wrapper.FenceWrapper.fence",
+      "signature": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "self"
+          },
+          {
+            "annotation": "str",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "payload"
+          },
+          {
+            "annotation": "SourceKind",
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "source_kind"
+          }
+        ],
+        "return_annotation": "FencedSegment"
+      }
+    },
+    "LlmInvocationGuard.running_total": {
+      "kind": "method",
+      "qualified_name": "codegenie.fallback.budget.LlmInvocationGuard.running_total",
+      "signature": {
+        "parameters": [
+          {
+            "annotation": null,
+            "default": null,
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "name": "self"
+          }
+        ],
+        "return_annotation": "BudgetSnapshot"
+      }
+    },
+    "SolvedExampleWriteCapability": {
+      "fields": [
+        "workflow_id"
+      ],
+      "frozen": true,
+      "kind": "dataclass",
+      "mint_factory": {
+        "qualified_name": "codegenie.rag._capability_mint._phase4_local_capability_mint",
+        "signature": {
+          "parameters": [
+            {
+              "annotation": "WorkflowId",
+              "default": null,
+              "kind": "KEYWORD_ONLY",
+              "name": "workflow_id"
+            },
+            {
+              "annotation": "ChainHead",
+              "default": null,
+              "kind": "KEYWORD_ONLY",
+              "name": "chain_head"
+            }
+          ],
+          "return_annotation": "SolvedExampleWriteCapability"
+        }
+      },
+      "qualified_name": "codegenie.rag.store.SolvedExampleWriteCapability",
+      "slots": true
+    }
+  },
   "schema_version": 1
 }
