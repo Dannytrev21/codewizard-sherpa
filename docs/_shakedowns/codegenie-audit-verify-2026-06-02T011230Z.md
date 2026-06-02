@@ -178,3 +178,38 @@ not inflate `run_records_walked`).
 
 - Wall-clock: ~6 minutes (gather + 7 verify runs + source read + doc + report).
 - Token consumption: within the per-session budget; surfaced here per Rule 6.
+
+## Post-run addendum — CI-health fix (separate from the capability)
+
+Pushing this report's commit surfaced a **pre-existing red master unrelated
+to `audit verify`** — the last *completed* CI before this run was S4-02
+(green, 2026-05-28); the intervening validator-pass pushes were all
+superseded/cancelled, so the regression had gone unobserved.
+
+- **Root cause (dependency drift):** `aiohttp 3.14.0` (published after
+  2026-05-28) removed `aiohttp.streams.AsyncStreamReaderMixin`, which
+  `vcrpy 8.1.1`'s aiohttp stub imports at module load. CI installs via
+  unpinned `pip install -e ".[dev]"` (not `uv sync --frozen`), so it
+  fresh-resolved 3.14.0 and the cassette integration test
+  `tests/integration/fallback/test_cassette_sanitizer_real_vcr.py` failed
+  with `AttributeError` on Python 3.11 **and** 3.12 (`test` + both
+  `integration` jobs). `vcrpy 8.1.1` is the latest release.
+- **Fix:** capped `aiohttp<3.14` in `pyproject.toml [dev]` (the 3.13.x line
+  vcrpy supports; `uv.lock` already pinned 3.13.5) + regenerated `uv.lock`.
+  aiohttp is a transitive runtime dep (chromadb/fastembed) but only the
+  dev-only vcrpy stub touches the removed symbol; `FORBIDDEN_LLM_SDKS` is
+  unaffected. Commit `e0aba57`.
+- **Failing-first proof:** installed aiohttp 3.14.0 locally → cassette test
+  red with the exact CI `AttributeError`; applied cap → aiohttp 3.13.5 →
+  full integration lane **217 passed / 0 failed**; fence + packaging +
+  uv.lock-lockstep tests green.
+- **CI verification:** ci run `26793204462` is `completed/success` — **all
+  jobs green** on Python 3.11 + 3.12 (one transient `unit (3.12)`
+  finalization-cancel whose test step had passed was re-run clean).
+- **Deeper issue (flagged, not fixed here):** CI's test environment is
+  resolved by unpinned `pip install -e ".[dev]"` rather than the committed
+  `uv.lock`. This lets transitive deps drift between green runs (exactly
+  what bit here). A future change to install from the lockfile in the
+  test/integration/unit jobs would make CI reproducible and prevent this
+  class of silent drift — worth an ADR amendment (the security job already
+  reads `uv.lock`).
