@@ -87,7 +87,7 @@ dependencies = [
   # retriever. Admitted closure-wide but **path-scoped** — only modules under
   # `src/codegenie/rag/` may import it (enforced by
   # `tests/fence/test_pyproject_fence_phase4.py`). Not in `FORBIDDEN_LLM_SDKS`.
-  "chromadb>=0.5,<1.0",
+  "chromadb>=0.5,<2.0",
   # Phase 4 S1-05 / ADR-0003: ONNX-runtime embeddings backend used by the RAG
   # ingest path. Admitted closure-wide but **path-scoped** — only modules under
   # `src/codegenie/rag/` may import it. Not in `FORBIDDEN_LLM_SDKS`; the
