@@ -736,6 +736,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "aiohttp" },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "mkdocs-material" },
@@ -755,6 +756,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", marker = "extra == 'dev'", specifier = "<3.14" },
     { name = "alembic", specifier = ">=1.13" },
     { name = "anthropic", specifier = ">=0.40.0,<1.0.0" },
     { name = "blake3" },
