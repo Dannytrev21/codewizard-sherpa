@@ -92,6 +92,14 @@ $ python -m codegenie cache gc           # Phase-1+ cache cleanup (stub today)
 | `5` | Output directory is a symlink — refused |
 | `6` | Secret-shaped field detected in output — refused |
 
+> **`audit verify` on an empty `--runs-dir` exits `0`.** Verifying an empty
+> set of audit anchors is a vacuous pass — there is nothing to mismatch. If
+> you point `--runs-dir` at the wrong (but existing) directory, you will get
+> a green exit `0` with nothing actually checked. Confirm the run actually
+> walked anchors by reading the `audit.verify.ok` summary event's
+> `run_records_walked` / `probes_walked` / `yaml_anchors_walked` counters —
+> a real verification reports non-zero counts.
+
 ## What's actually in `repo-context.yaml`?
 
 Each probe owns a disjoint slice of the schema. After Phase 0 ships `LanguageDetectionProbe`, a small Python repo's artifact looks like:
