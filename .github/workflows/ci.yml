@@ -231,7 +231,26 @@ jobs:
           # withdrawn advisory until its OSV mirror catches up; this
           # ignore line can drop once that propagates (also mirrored in
           # ``osv-scanner.toml`` with an ``ignoreUntil`` expiry).
-          pip-audit --strict --disable-pip --no-deps --ignore-vuln PYSEC-2026-89 --ignore-vuln MAL-2026-4750 --requirement /tmp/requirements-from-uv.txt
+          #
+          # ``--ignore-vuln CVE-2026-34993`` (GHSA-jg22-mg44-37j8) +
+          # ``--ignore-vuln CVE-2026-47265`` (GHSA-hg6j-4rv6-33pg): two
+          # aiohttp advisories fixed in 3.14.0. We are pinned to aiohttp
+          # 3.13.5 because the dev-only cassette tool ``vcrpy`` (8.1.1, the
+          # latest release — no newer one exists) imports
+          # ``aiohttp.streams.AsyncStreamReaderMixin``, which aiohttp 3.14.0
+          # removed; lifting the ``aiohttp<3.14`` cap breaks the cassette
+          # integration tests at import time. Neither advisory is reachable
+          # in our usage: aiohttp is a transitive dep only (chromadb /
+          # fastembed, path-scoped to ``src/codegenie/rag/`` per ADR-04-0003,
+          # plus the kubernetes client) — ``grep -r 'import aiohttp' src/``
+          # is empty. CVE-2026-34993 requires ``CookieJar.load()`` on
+          # attacker-controlled input (codegenie never calls it);
+          # CVE-2026-47265 requires per-request ``cookies=`` plus an
+          # attacker-controlled cross-origin redirect (codegenie issues no
+          # such requests). Full rationale + ``ignoreUntil`` expiry live in
+          # ``osv-scanner.toml``; remove all four flags here once vcrpy ships
+          # aiohttp-3.14 compatibility and the ``aiohttp<3.14`` cap is lifted.
+          pip-audit --strict --disable-pip --no-deps --ignore-vuln PYSEC-2026-89 --ignore-vuln MAL-2026-4750 --ignore-vuln CVE-2026-34993 --ignore-vuln CVE-2026-47265 --requirement /tmp/requirements-from-uv.txt
       - name: osv-scanner (uv.lock)
         # v1.9.1: the action lives at the ``osv-scanner-action`` subpath,
         # NOT the repo root (the root ``action.yml`` has no ``runs:``
