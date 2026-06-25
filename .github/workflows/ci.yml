@@ -261,7 +261,7 @@ jobs:
         # repo root (see that file for the PYSEC-2026-89 rationale +
         # expiry). Without it, the un-fixable markdown DoS advisory would
         # trip ``--fail-on-severity=HIGH``.
-        uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638  # v1.9.2
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2  # v2.3.8
         with:
           scan-args: |-
             --config=osv-scanner.toml
