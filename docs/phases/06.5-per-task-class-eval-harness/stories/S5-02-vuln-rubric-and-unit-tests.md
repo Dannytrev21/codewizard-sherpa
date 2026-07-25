@@ -1,18 +1,32 @@
 # Story S5-02 — vuln-remediation rubric (subprocess entrypoint) + bench-author unit tests
 
 **Step:** Step 5 — Backfill `bench/vuln-remediation/` with ≥10 cases + rubric + taxonomies
-**Status:** HARDENED (phase-story-validator, 2026-06-05 — second pass: body-vs-validation-notes sync)
+**Status:** HARDENED (phase-story-validator, 2026-07-25 — third pass: full body-vs-validation-notes sync + AC-4/AC-1..AC-11 test-file-routing reconciliation)
 **Effort:** M
 **Depends on:** S5-01 HARDENED (ships the `VulnRemediationRubric` stub class, `BreakdownKey` StrEnum with exactly four members, `failure_modes.yaml` with 11 block + 3 warn + 2 info codes; S5-02 replaces the stub's `score` method body byte-for-byte), S1-02 HARDENED (`BenchScore` / `BenchCase` / `FailureMode` Pydantic wire-type shapes — `score: float [0,1]`, `wall_clock_ms: int >= 0`, `breakdown: dict[str, float]` typed-at-the-edge, `failure_modes: tuple[FailureMode, ...]`, `FailureMode.severity: Literal["block","warn","info"]`, `FailureMode.detail: str | None`), S1-04 (`Rubric` Protocol — class with one `score(self, case, harness_output) -> BenchScore` method; mypy --strict structural check), S2-01 HARDENED (`load_task_class` + autouse conftest is the import surface for the hyphenated `bench/vuln-remediation/` directory). Transitively: S3-03 (the runner that subprocess-invokes this rubric; produces the envelope shape).
 **ADRs honored:** ADR-0001 (subprocess entrypoint; `if __name__ == "__main__"` JSON-in/JSON-out; ≤ 60 s budget; SCRUBBED_ENV mirrors Phase 5 ADR-0012; in-process bench-author tests bypass the boundary), ADR-0004 (every emitted `failure_mode.code` is constrained by the taxonomy; unknown codes resolve at the runner to `rubric.unknown_failure_mode`; severities are the rubric's responsibility at emit time, taken from `failure_modes.yaml`), ADR-0008 (every emitted `BenchScore.breakdown` key must be a `BreakdownKey` *value*; runner rejects unknown keys as `rubric.unknown_breakdown_key`), Phase 5 ADR-0012 (env-allowlist `SCRUBBED_ENV` pattern reused for the subprocess invocation), Phase 5 ADR-0014 (banned-substring source-of-truth for `breakdown` keys — shared with ADR-0008)
 
 ## Validation notes
 
-Validated: 2026-06-04
+Validated: 2026-06-04 (initial), 2026-06-05 (second pass sync — incomplete), 2026-07-25 (third pass — full sync)
 Verdict: HARDENED
-Findings addressed: 23 total — 7 blocks, 13 hardens, 3 nits
+Findings addressed: 23 initial + 9 third-pass sync = 32 total
 
-Changes applied (full audit log: `_validation/S5-02-vuln-rubric-and-unit-tests.md`):
+Third-pass changes (2026-07-25 — full audit log: `_validation/S5-02-vuln-rubric-and-unit-tests.md`):
+
+- **F-CON-SYNC-1 (BLOCK)** — Implementation outline §4 rewritten to ship `bench/vuln-remediation/tests/conftest.py` (autouse `load_task_class(...)` fixture) instead of the previously-still-referenced `tests/__init__.py`. The 2026-06-05 second pass claimed to make this edit but §4 still said `tests/__init__.py`.
+- **F-CON-SYNC-2 (BLOCK)** — Files-to-touch table row for `tests/__init__.py` removed; replaced with `tests/conftest.py` row. Second pass's Validation-notes bullet said this had happened but the table still had the `__init__.py` row.
+- **F-CON-SYNC-3 (BLOCK)** — Red-section TDD-plan code block replaced with the six tightened tests matching AC-4 exactly (`result.score == 1.0`, `result.failure_modes == ()`, exact set equality, `== declared` not `<=`). The 2026-06-05 pass tightened the ACs but left the Red block using the pre-hardening thin assertions — an executor following §Red verbatim would commit a red marker that trivially passes and then re-tighten under §Green with no traceable red→green delta.
+- **F-CON-SYNC-4 (BLOCK)** — Green §1 and Refactor §2 rewritten to declare `_SEVERITY_FOR_EMITTED_CODE: Final[Mapping[str, Literal["block","warn","info"]]]` per AC-10 / F-DP-1. Previously §1 said "read the YAML at module load" and §2 said "Lift the YAML severity load to module import time" — both directly contradicted the AC-10 hardcoded-severity pin the second pass added.
+- **F-CON-SYNC-5 (HARDEN)** — Implementation outline §3 (`__main__` entrypoint) rewritten to instantiate `_HarnessOutput.model_validate(payload["harness_output"])` per AC-2 / F-DP-2. The `_HarnessOutput`, `_ValidatorSignals`, `_RecipeSignals` model shapes are now pinned inline in §3. Previously §3 showed only raw-dict access, contradicting AC-2's Pydantic-validation requirement.
+- **F-CON-SYNC-6 (BLOCK)** — Implementation outline §5 (subprocess-test) expanded to pin the parent-process sentinel protocol AC-3 requires (`ANTHROPIC_API_KEY=parent-sentinel`, `AWS_ACCESS_KEY_ID=parent-sentinel`, `HOME=/parent-home`, `USER=parent-user`) and the stderr debug-line assertion path. Previously §5 said only "mirror the runner's contract."
+- **F-COV-SYNC-1 (BLOCK) — AC-4 "exactly six" reconciled with AC-1/AC-2/AC-5..AC-11.** AC-4 rewritten to say **exactly six *core-condition* tests** in `bench/vuln-remediation/tests/test_rubric_unit.py`. AC-1/AC-2/AC-5/AC-6/AC-7/AC-8/AC-9/AC-10/AC-11 tests are explicitly file-routed: (a) AC-1/AC-5/AC-6/AC-7/AC-8/AC-10/AC-11 → same `test_rubric_unit.py` file *as additional tests beyond the six core-condition set*; (b) AC-2's `test_main_exits_nonzero_on_malformed_envelope_json` and AC-3's subprocess-SCRUBBED_ENV tests → `tests/integration/test_rubric_subprocess_vuln.py`; (c) AC-9's AST test → `bench/vuln-remediation/tests/test_rubric_static.py` (mirrors S5-01's `test_breakdown_keys_static.py` pattern); (d) AC-12 extends the existing `tests/unit/test_eval_package_imports_no_llm_sdk.py`. AC-4 wording changed from "exactly the following six (no fewer, no extras for this story's red→green window)" to "the following six *core-condition* tests (plus the additional tests pinned by AC-1/AC-5..AC-11 in the same file, and the tests pinned by AC-2/AC-3/AC-9/AC-12 in the files named in those ACs)."
+- **F-CON-SYNC-7 (HARDEN)** — Files-to-touch table extended with three rows: `bench/vuln-remediation/tests/test_rubric_static.py` (AC-9), `tests/unit/test_eval_package_imports_no_llm_sdk.py` (AC-12 glob extension — *modify existing file, not new*), and moved AC-2/AC-3 subprocess entrypoint tests explicitly to `tests/integration/test_rubric_subprocess_vuln.py`.
+- **F-TQ-SYNC-1 (HARDEN)** — Notes-for-implementer pins the `passed`-derivation rule: `passed = (score == 1.0)`, computed post-mean, NOT derived directly from `harness_output` sub-conditions. Prevents an implementation that flips `passed = all(harness_output_conditions)` — indistinguishable observably from the correct form for the AC-1/AC-6 rows tested here, but silently divergent under future extension.
+
+Second-pass claim-vs-body drift diagnosis (root cause): the 2026-06-05 pass tightened ACs and appended detailed Validation-notes bullets but the corresponding Implementation-outline / Red-TDD / Refactor / Files-to-touch edits were skipped. This third pass forcibly reconciles: **body IS notes** now.
+
+Initial-pass changes (2026-06-04):
 
 - **Status line** updated to `HARDENED (phase-story-validator, 2026-06-04)` (F-CON-9).
 - **Depends-on** rewritten to name S5-01 HARDENED, S1-02 HARDENED (wire-type shapes), S1-04 (Rubric Protocol), S2-01 HARDENED (loader is the import surface) (F-CON-8).
@@ -77,7 +91,7 @@ Implement `bench/vuln-remediation/rubric.py` as a deterministic subprocess entry
 
 - [ ] **AC-3 (subprocess SCRUBBED_ENV + ≤60 s wall-clock).** `tests/integration/test_rubric_subprocess_vuln.py` runs `python bench/vuln-remediation/rubric.py` via `subprocess.run` with `env=SCRUBBED_ENV` (containing only `PYTHONPATH`, `PYTHONHASHSEED=0`, minimal `PATH` per ADR-0001 §Decision and Phase 5 ADR-0012 env-allowlist precedent) and `cwd=tempfile.TemporaryDirectory()`. The parent process sets `ANTHROPIC_API_KEY=parent-sentinel`, `AWS_ACCESS_KEY_ID=parent-sentinel`, `HOME=/parent-home`, `USER=parent-user` before spawn; the rubric writes a debug line to **stderr** (stdout is reserved for the `BenchScore`) reporting `os.environ.get("ANTHROPIC_API_KEY")`, `os.environ.get("AWS_ACCESS_KEY_ID")`, `os.environ.get("HOME")`, `os.environ.get("USER")`; the test asserts each is `None` in the rubric's environment. Wall-clock ≤ 60 s on a representative envelope (the four-positive-condition envelope from AC-4(a)).
 
-- [ ] **AC-4 (six in-process unit tests — pinned, named, tightened).** `bench/vuln-remediation/tests/test_rubric_unit.py` exists and contains **exactly the following six** named tests (no fewer, no extras for this story's red→green window):
+- [ ] **AC-4 (six core-condition in-process unit tests — pinned, named, tightened).** `bench/vuln-remediation/tests/test_rubric_unit.py` exists and contains **the following six *core-condition* tests** (plus the additional tests pinned by AC-1, AC-5, AC-6, AC-7, AC-8, AC-10, AC-11 in the *same* file — see §Test-file routing below — and the tests pinned by AC-2, AC-3, AC-9, AC-12 in the files named in those ACs). **Test-file routing (executor discipline):** `bench/vuln-remediation/tests/test_rubric_unit.py` holds AC-1 + AC-4(a–f) + AC-5 + AC-6 + AC-7 + AC-8 + AC-10 + AC-11 (unit-level, in-process). `tests/integration/test_rubric_subprocess_vuln.py` holds AC-2 (`test_main_exits_nonzero_on_malformed_envelope_json`) + AC-3 (SCRUBBED_ENV subprocess tests). `bench/vuln-remediation/tests/test_rubric_static.py` holds AC-9 (`test_rubric_module_has_no_nondeterministic_imports_or_calls`) — mirrors S5-01's `test_breakdown_keys_static.py` sibling pattern. `tests/unit/test_eval_package_imports_no_llm_sdk.py` is extended (not new) per AC-12. The six *core-condition* tests are:
     - (a) `test_full_pass_yields_score_one_passed_true_no_failure_modes` — when all four sub-conditions are `True`: `result.passed is True`, `result.score == 1.0` (exact, not `>= 0.95`), `result.failure_modes == ()` (exact, not "no block-severity").
     - (b) `test_tests_failed_emits_exactly_validator_tests_failed_block` — when only `validator.tests_passed=False`: `result.passed is False`, `{fm.code for fm in result.failure_modes} == {"validator.tests_failed"}` (exact set), and that one `FailureMode.severity == "block"`.
     - (c) `test_cve_not_dropped_emits_exactly_validator_cve_not_dropped_block` — when only `validator.cve_dropped=False`: `{fm.code for fm in result.failure_modes} == {"validator.cve_not_dropped"}`, that one severity is `"block"`.
@@ -106,21 +120,60 @@ Implement `bench/vuln-remediation/rubric.py` as a deterministic subprocess entry
 ## Implementation outline
 
 1. Write the red test `bench/vuln-remediation/tests/test_rubric_unit.py` first — see §TDD plan.
-2. Implement `score(case, harness_output)` as a pure function. Read scoring signals from `harness_output` (e.g., `harness_output["validator"]["build_passed"]: bool`, `harness_output["validator"]["tests_passed"]: bool`, `harness_output["validator"]["cve_dropped"]: bool`, `harness_output["recipe"]["applied"]: bool`). Compute `breakdown` as `{BreakdownKey.X.value: 1.0 if condition else 0.0, ...}`. Compute `passed = all(condition_set)`. Compute `score = mean(breakdown.values())`. Compute `failure_modes` by mapping each failing condition to the corresponding declared code from `failure_modes.yaml`.
+2. Implement `score(case, harness_output)` as a pure function AND the `VulnRemediationRubric` class per AC-1 (dual-surface contract). Parse `harness_output` via a file-local `_HarnessOutput(BaseModel, frozen=True, extra="forbid")` with sub-models `_ValidatorSignals(build_passed: bool, tests_passed: bool, cve_dropped: bool)` and `_RecipeSignals(applied: bool)` — surfaces SUT contract drift at the envelope-parse layer instead of `KeyError` deep in scoring. Compute `breakdown` as `{BreakdownKey.X.value: 1.0 if condition else 0.0, ...}` producing **all four** BreakdownKey values (AC-4(d) equality). Compute `score = mean(breakdown.values())`; compute `passed = (score == 1.0)` (derived post-mean, NOT `all(harness_output_conditions)` — see Notes-for-implementer). Compute `failure_modes` by mapping each falsy condition to its paired failure code via `_CONDITION_FAILURE_PAIRS: Final[tuple[tuple[BreakdownKey, str], ...]]` and looking up severity from `_SEVERITY_FOR_EMITTED_CODE: Final[Mapping[str, Literal["block","warn","info"]]]` (hardcoded — the four codes the rubric can emit: `validator.build_failed`, `validator.tests_failed`, `validator.cve_not_dropped`, `recipe.semantic_drift`, all `"block"`). Sort the emitted `failure_modes` tuple lexicographically by `fm.code` per AC-7. `VulnRemediationRubric.score(self, case, harness_output)` body is exactly `return score(case, harness_output)` (AC-1 delegation).
 3. Implement the `if __name__ == "__main__":` entrypoint:
    ```python
+   from typing import Final, Literal, Mapping
+   from pydantic import BaseModel, ConfigDict
+
+
+   class _ValidatorSignals(BaseModel):
+       model_config = ConfigDict(frozen=True, extra="forbid")
+       build_passed: bool
+       tests_passed: bool
+       cve_dropped: bool
+
+
+   class _RecipeSignals(BaseModel):
+       model_config = ConfigDict(frozen=True, extra="forbid")
+       applied: bool
+
+
+   class _HarnessOutput(BaseModel):
+       model_config = ConfigDict(frozen=True, extra="forbid")
+       validator: _ValidatorSignals
+       recipe: _RecipeSignals
+
+
+   _SEVERITY_FOR_EMITTED_CODE: Final[Mapping[str, Literal["block", "warn", "info"]]] = {
+       "validator.build_failed": "block",
+       "validator.tests_failed": "block",
+       "validator.cve_not_dropped": "block",
+       "recipe.semantic_drift": "block",
+   }
+
+
    if __name__ == "__main__":
-       import sys, json
+       import json
+       import sys
+       from pydantic import ValidationError
        from codegenie.eval.models import BenchCase, BenchScore
-       payload = json.loads(sys.stdin.buffer.read())
-       case = BenchCase.model_validate(payload["case"])
-       harness_output = payload["harness_output"]
-       result = score(case, harness_output)
+       try:
+           payload = json.loads(sys.stdin.buffer.read())
+           case = BenchCase.model_validate(payload["case"])
+           envelope = _HarnessOutput.model_validate(payload["harness_output"])
+       except (json.JSONDecodeError, ValidationError, KeyError):
+           sys.exit(2)
+       # `wall_clock_ms` is a deterministic fixed sentinel (0) per AC-9 — no
+       # `time.perf_counter()` inside the module (breaks byte-stability).
+       result = score(case, envelope.model_dump())
        sys.stdout.buffer.write(result.model_dump_json().encode("utf-8"))
        sys.exit(0)
    ```
-4. Implement `bench/vuln-remediation/tests/__init__.py` (empty package marker) so pytest discovers the tests when invoked from the repo root.
-5. Write `tests/integration/test_rubric_subprocess_vuln.py` to exercise the subprocess path with `SCRUBBED_ENV` (mirror the runner's contract); assert wall-clock ≤ 60 s on a representative envelope.
+4. Implement `bench/vuln-remediation/tests/conftest.py` as an autouse fixture that calls `load_task_class("vuln-remediation", bench_root=REPO_ROOT / "bench")` **before** any test imports, so `from bench.vuln_remediation.rubric import score` resolves via S2-01's hyphen→underscore `spec_from_file_location` bridge. **Do NOT create `bench/vuln-remediation/tests/__init__.py`** — S5-01 F-CON-5 hard-banned it; S2-01 HARDENED uses PEP 420 implicit namespace packages. The autouse conftest is the sole import bridge for this hyphenated leaf.
+5. Write `tests/integration/test_rubric_subprocess_vuln.py` to exercise the subprocess path. Set parent-process env sentinels (`ANTHROPIC_API_KEY=parent-sentinel`, `AWS_ACCESS_KEY_ID=parent-sentinel`, `HOME=/parent-home`, `USER=parent-user`) via `monkeypatch.setenv(...)` BEFORE `subprocess.run("python", str(RUBRIC_PATH), env=SCRUBBED_ENV, cwd=tempfile.TemporaryDirectory(), input=<envelope-JSON-bytes>, capture_output=True, timeout=60)`. Rubric writes a debug line on **stderr** (stdout reserved for `BenchScore`) reporting `os.environ.get("<var>")` for each; test parses stderr and asserts each reported value is `None`. Second test in the same file: `test_main_exits_nonzero_on_malformed_envelope_json` feeds `b"not-json"` on stdin and asserts `returncode != 0` (AC-2). Assert wall-clock ≤ 60 s on the four-positive-condition envelope (AC-3 budget).
+6. Write `bench/vuln-remediation/tests/test_rubric_static.py` for AC-9: parse `bench/vuln-remediation/rubric.py` via `ast.parse`; walk for `import time`, `from time import ...`, `import random`, `from random import ...`, `import uuid`, `from uuid import ...`, `Attribute(value=Name(id="os"), attr="environ")`, `Call(func=Attribute(attr="now" | "utcnow" | "today"))`. Assert none present. Mirrors S5-01's `test_breakdown_key_values_are_ast_constant_strings` sibling pattern.
+7. Extend `tests/unit/test_eval_package_imports_no_llm_sdk.py` (existing file per S1-05) — add `bench/**/rubric.py` to its glob; the AST-walk for LLM-SDK imports is structurally identical.
 
 ## TDD plan — red / green / refactor
 
@@ -164,7 +217,9 @@ def _make_case(case_id: str = "001-cve-2025-12345-rag-corpus-derived") -> BenchC
     )
 
 
-def test_full_pass_yields_score_one_passed_true_no_block_failures():
+def test_full_pass_yields_score_one_passed_true_no_failure_modes():
+    """AC-4(a) — full-pass row. Tight assertions kill 'score=0.95 hardcoded'
+    and 'emit info-severity on full-pass' mutants."""
     case = _make_case()
     harness_output = {
         "validator": {"build_passed": True, "tests_passed": True, "cve_dropped": True},
@@ -173,11 +228,12 @@ def test_full_pass_yields_score_one_passed_true_no_block_failures():
     result = score(case, harness_output)
     assert isinstance(result, BenchScore)
     assert result.passed is True
-    assert result.score >= 0.95
-    assert all(fm.severity != "block" for fm in result.failure_modes)
+    assert result.score == 1.0  # exact, not >= 0.95 (F-TQ-1)
+    assert result.failure_modes == ()  # exact, not "no block-severity" (F-TQ-2)
 
 
-def test_tests_failed_yields_block_failure_validator_tests_failed():
+def test_tests_failed_emits_exactly_validator_tests_failed_block():
+    """AC-4(b) — exact-set kills 'also emit a spurious failure' mutant."""
     case = _make_case()
     harness_output = {
         "validator": {"build_passed": True, "tests_passed": False, "cve_dropped": True},
@@ -185,11 +241,13 @@ def test_tests_failed_yields_block_failure_validator_tests_failed():
     }
     result = score(case, harness_output)
     assert result.passed is False
-    block_codes = {fm.code for fm in result.failure_modes if fm.severity == "block"}
-    assert "validator.tests_failed" in block_codes
+    assert {fm.code for fm in result.failure_modes} == {"validator.tests_failed"}
+    only = next(iter(result.failure_modes))
+    assert only.severity == "block"
 
 
-def test_cve_not_dropped_yields_block_failure_validator_cve_not_dropped():
+def test_cve_not_dropped_emits_exactly_validator_cve_not_dropped_block():
+    """AC-4(c) — exact-set kills 'also emit a spurious failure' mutant."""
     case = _make_case()
     harness_output = {
         "validator": {"build_passed": True, "tests_passed": True, "cve_dropped": False},
@@ -197,41 +255,37 @@ def test_cve_not_dropped_yields_block_failure_validator_cve_not_dropped():
     }
     result = score(case, harness_output)
     assert result.passed is False
-    assert "validator.cve_not_dropped" in {fm.code for fm in result.failure_modes}
+    assert {fm.code for fm in result.failure_modes} == {"validator.cve_not_dropped"}
+    only = next(iter(result.failure_modes))
+    assert only.severity == "block"
 
 
-def test_breakdown_keys_are_subset_of_declared_breakdown_key_enum():
+def test_breakdown_keys_equal_full_declared_breakdown_key_set():
+    """AC-4(d) — exact equality kills 'ship only a subset' mutant. Implementation
+    outline §2 produces all four keys always regardless of condition state."""
     case = _make_case()
     harness_output = {
         "validator": {"build_passed": True, "tests_passed": False, "cve_dropped": False},
         "recipe": {"applied": True},
     }
     result = score(case, harness_output)
-    declared = {m.value for m in BreakdownKey}
-    assert set(result.breakdown.keys()) <= declared, (
-        f"unexpected breakdown keys: {set(result.breakdown.keys()) - declared}"
-    )
+    assert set(result.breakdown.keys()) == {m.value for m in BreakdownKey}  # == not <= (F-TQ-4)
 
 
 def test_score_is_deterministic_under_repeated_invocation():
-    """ADR-0006 + audit chain: the rubric must be byte-stable. If this test fails,
-    the cache hit-rate test (S5-06) and the canary-replay test will also fail."""
+    """AC-4(e) — audit chain byte-stability. Ten invocations, not two (tighter)."""
     case = _make_case()
     harness_output = {
         "validator": {"build_passed": True, "tests_passed": True, "cve_dropped": True},
         "recipe": {"applied": True},
     }
-    j1 = score(case, harness_output).model_dump_json()
-    j2 = score(case, harness_output).model_dump_json()
-    assert j1 == j2
+    dumps = [score(case, harness_output).model_dump_json() for _ in range(10)]
+    assert len(set(dumps)) == 1  # all ten byte-identical
 
 
 def test_rubric_emits_only_declared_failure_mode_codes_and_breakdown_keys():
-    """Defense-in-depth: even though the runner validates against task_class
-    taxonomies, the rubric itself must not emit drift."""
-    # Run a matrix of harness outputs and verify no failure_mode emitted
-    # is outside the YAML-declared set.
-    from importlib import resources
+    """AC-4(f) — five-row condition matrix; every emitted code ∈ YAML-declared set,
+    every breakdown key ∈ BreakdownKey values. Defense-in-depth on top of runner."""
     import yaml
     yaml_text = (Path(__file__).parent.parent / "failure_modes.yaml").read_text()
     declared_codes = set(yaml.safe_load(yaml_text).keys())
@@ -251,37 +305,54 @@ def test_rubric_emits_only_declared_failure_mode_codes_and_breakdown_keys():
         })
         for fm in result.failure_modes:
             assert fm.code in declared_codes, f"undeclared code: {fm.code}"
-        assert set(result.breakdown.keys()) <= declared_keys
+        assert set(result.breakdown.keys()) == declared_keys  # == not <= (F-TQ-4)
 ```
+
+Additional tests in the same file pinned by AC-1 / AC-5 / AC-6 / AC-7 / AC-8 / AC-10 / AC-11 (see AC bodies for full assertions; each is a distinct named test):
+
+- `test_class_score_method_delegates_to_module_level_score` (AC-1) — sweeps the five-row matrix and asserts byte-equality of `model_dump_json()` between `VulnRemediationRubric().score(case, ho)` and `score(case, ho)`.
+- `test_each_falsy_breakdown_condition_emits_its_paired_failure_code` (AC-5) — parametrized across the four semantic-symmetry inversions.
+- `test_half_pass_yields_score_exactly_half_kills_min_max_mutants` (AC-6) — `result.score == 0.5` for 2-of-4-true.
+- `test_failure_modes_tuple_is_sorted_by_code` (AC-7) — lexicographic sort on multi-failure row.
+- `test_missing_harness_output_key_propagates_keyerror` (AC-8) — `pytest.raises((KeyError, ValidationError))` on malformed envelope.
+- `test_hardcoded_severities_match_failure_modes_yaml` (AC-10) — YAML/`_SEVERITY_FOR_EMITTED_CODE` consistency.
+- `test_score_invariant_under_unrelated_case_field_mutations` (AC-11) — case-shape-invariance.
+
+Tests routed to sibling files (AC-4 §Test-file routing): `test_rubric_static.py` (AC-9 AST-ban), `tests/integration/test_rubric_subprocess_vuln.py` (AC-2 malformed-JSON + AC-3 SCRUBBED_ENV).
 
 Run it; confirm `ModuleNotFoundError: No module named 'bench.vuln_remediation.rubric'` or `ImportError: cannot import name 'score'`. Commit as red marker.
 
 ### Green — smallest impl shape
 
 1. Implement `score(case, harness_output) -> BenchScore`:
-   - Build `breakdown` by mapping each truthy condition in `harness_output` to a `BreakdownKey` value with score 1.0; falsy → 0.0.
-   - Compute `passed = all(v == 1.0 for v in breakdown.values())`.
+   - Parse `harness_output` via `_HarnessOutput.model_validate(harness_output)` (Pydantic; frozen; `extra="forbid"`). A missing sub-key surfaces as `pydantic.ValidationError`, which AC-8 pins as "let it propagate" (do NOT swallow).
+   - Build `breakdown` by iterating the fixed `_CONDITION_FAILURE_PAIRS` table — each pair `(BreakdownKey.X, failure_code)` yields `breakdown[BreakdownKey.X.value] = 1.0 if condition else 0.0`. All four BreakdownKey values appear in every result.
    - Compute `score = sum(breakdown.values()) / len(breakdown)`.
-   - For each falsy condition, emit a `FailureMode(code="<declared code>", severity="<declared severity>", detail=None)` — the declared severity comes from the YAML; the rubric **does not** hardcode it (read it once at module load).
-2. Implement the `__main__` entrypoint as in §Implementation outline.
+   - Compute `passed = (score == 1.0)` — derived from the score post-mean, NOT from `all(harness_output_conditions)`. Notes-for-implementer pins the rationale.
+   - For each falsy condition, emit `FailureMode(code=paired_code, severity=_SEVERITY_FOR_EMITTED_CODE[paired_code], detail=None)`. Severity is looked up from the **hardcoded** `_SEVERITY_FOR_EMITTED_CODE: Final[Mapping[str, Literal["block","warn","info"]]]` (four entries, all `"block"`) — AC-10's YAML-consistency test guards drift.
+   - Sort emitted `failure_modes` lexicographically by `fm.code` (AC-7 byte-stability).
+   - Return `BenchScore(passed=..., score=..., breakdown=..., failure_modes=tuple(sorted_fms), wall_clock_ms=0, cost_usd=0.0)`.
+2. Implement the `__main__` entrypoint as in §Implementation outline §3 — exit 2 on `json.JSONDecodeError | pydantic.ValidationError | KeyError`.
 3. Run the test suite; iterate until green.
 
 ### Refactor — clean up
 
-- Pull the condition-to-code mapping into a module-level `_CONDITION_MAP: Mapping[str, BreakdownKey]` for readability.
-- Lift the YAML severity load to module import time (single I/O); cache as `_TAXONOMY: Mapping[str, Literal["block","warn","info"]]`.
+- Keep the condition-to-code mapping as the module-level `_CONDITION_FAILURE_PAIRS: Final[tuple[tuple[BreakdownKey, str], ...]]` used in §Green — loop-driven, Open/Closed at the inversion table (adding a fifth breakdown key = one tuple row + one YAML entry + one `_SEVERITY_FOR_EMITTED_CODE` row; zero branching-code edits).
+- Keep `_SEVERITY_FOR_EMITTED_CODE` hardcoded at module top-level. **Do NOT** lift the YAML at import time — F-DP-1 pins the rationale (avoids brittle cwd-relative I/O under subprocess, avoids the second-loader rule-of-three trigger, keeps subprocess cold-start under the ADR-0001 spawn budget). The rule-of-three lift target (Phase 15's third task class) is `src/codegenie/eval/loader.py::_load_failure_mode_taxonomy` per arch line 564.
 - Add a module docstring naming ADR-0001, ADR-0004, ADR-0008 and the "trusted boundary distinction" between in-process bench-author tests and the runner's subprocess invocation.
-- `mypy --strict` clean: every `harness_output` access is `cast`-typed or destructure with `pydantic` BaseModel for the envelope.
-- `wall_clock_ms` and `cost_usd` in the emitted `BenchScore` are time-since-`score()`-start and 0.0 respectively (no LLM calls in the rubric).
+- `mypy --strict` clean: `harness_output` access goes through `_HarnessOutput.model_validate(...)`, not raw dict indexing. The Pydantic model IS the type contract.
+- `wall_clock_ms` is a deterministic fixed sentinel `0` (AC-9 bans `time.perf_counter()` / `time.time()`); `cost_usd = 0.0` (no LLM calls in the rubric).
 
 ## Files to touch
 
-| Path | Why |
-|---|---|
-| `bench/vuln-remediation/rubric.py` | New file — `score()` function + `__main__` subprocess entrypoint |
-| `bench/vuln-remediation/tests/__init__.py` | New file — empty package marker |
-| `bench/vuln-remediation/tests/test_rubric_unit.py` | New file — 6 in-process bench-author tests |
-| `tests/integration/test_rubric_subprocess_vuln.py` | New file — subprocess-CLI test with SCRUBBED_ENV (mirrors runner contract) |
+| Path | Why | Status |
+|---|---|---|
+| `bench/vuln-remediation/rubric.py` | **Replace S5-01 stub body byte-for-byte** — module-level `score()` function + `VulnRemediationRubric` class (Protocol-conformance delegate) + `_HarnessOutput`/`_ValidatorSignals`/`_RecipeSignals` Pydantic models + `_CONDITION_FAILURE_PAIRS` + `_SEVERITY_FOR_EMITTED_CODE` + `__main__` subprocess entrypoint | Modify (S5-01 shipped stub) |
+| `bench/vuln-remediation/tests/conftest.py` | Autouse `load_task_class("vuln-remediation", bench_root=REPO_ROOT / "bench")` fixture — the sole import bridge for the hyphenated leaf (S2-01 F-CON-8 + PEP 420). **Do NOT create `bench/vuln-remediation/tests/__init__.py`** — S5-01 F-CON-5 hard-banned it | New |
+| `bench/vuln-remediation/tests/test_rubric_unit.py` | Six core-condition tests (AC-4(a–f)) + AC-1 class-delegation + AC-5 semantic-symmetry + AC-6 half-pass + AC-7 sort + AC-8 fail-loud + AC-10 YAML consistency + AC-11 case-invariance | New |
+| `bench/vuln-remediation/tests/test_rubric_static.py` | AC-9 AST-ban on non-determinism inside `rubric.py` — mirrors S5-01's `test_breakdown_keys_static.py` sibling pattern | New |
+| `tests/integration/test_rubric_subprocess_vuln.py` | AC-2 (`test_main_exits_nonzero_on_malformed_envelope_json` — feeds `b"not-json"`, asserts `returncode != 0`) + AC-3 (subprocess-CLI test with SCRUBBED_ENV + parent-sentinel protocol; asserts wall-clock ≤ 60 s on representative envelope) | New |
+| `tests/unit/test_eval_package_imports_no_llm_sdk.py` | AC-12 — extend the existing AST-walk glob to include `bench/**/rubric.py`; the LLM-SDK ban is structurally identical across `src/codegenie/eval/**` and `bench/**/rubric.py` | Modify (existing per S1-05) |
 
 ## Out of scope
 
@@ -299,3 +370,6 @@ Run it; confirm `ModuleNotFoundError: No module named 'bench.vuln_remediation.ru
 - Coverage: `pytest --cov=bench.vuln_remediation.rubric --cov-fail-under=90` should hit ≥ 90 % line, ≥ 80 % branch. The `__main__` block is hard to cover in pytest; use `subprocess.run` in the integration test to exercise it.
 - `tests/unit/test_eval_package_imports_no_llm_sdk.py` currently walks `src/codegenie/eval/**/*.py` (per ADR-0008 / S1-05). Extend its AST walk to `bench/**/rubric.py` in this story — the ban is structurally identical, and rubrics are a logical extension of the no-LLM-SDK package boundary.
 - The "deterministic" property the audit chain depends on means: no `time.time()`, no `random.random()`, no `os.environ` reads, no `uuid.uuid4()`. If the rubric needs a per-case identifier, use `case.case_id`. If you find yourself reaching for randomness or wall-clock, you are doing something the rubric should not do.
+- **`passed` derivation:** compute `passed = (score == 1.0)` *post-mean*, NOT `passed = all(harness_output_conditions)`. The two are observably equivalent on the AC-1 (full-pass) and AC-6 (half-pass) rows tested here, but they diverge under future extension — e.g., if a fifth breakdown key with a partial-credit scoring rule is added, `all(conditions)` silently misreports `passed`. The mean-then-compare form ties `passed` to the invariant the promotion gate consumes (score ≥ 0.95 lower-bound), not to a specific condition-set shape.
+- **Adversarial mutant catalog (this §TDD kills):** (1) `score = 0.95` hardcoded return → AC-4(a) fails on exact `== 1.0`; (2) emit info-severity `FailureMode` on full-pass → AC-4(a) fails on `failure_modes == ()`; (3) emit spurious failure alongside the paired one → AC-4(b/c) + AC-5 fail on exact-set equality; (4) `set(breakdown) <= declared` allowing subset ship → AC-4(d) fails on `==`; (5) `mean` → `min` (0.0) / `max` (1.0) / `sum` (2.0) / `len(failing)` mutants → AC-6 fails on `score == 0.5`; (6) unsorted `failure_modes` tuple → AC-7 fails on lexicographic sort; (7) `harness_output.get(k, False)` swallowing missing keys → AC-8 fails on `pytest.raises`; (8) `import time` for `wall_clock_ms` → AC-9 AST-walk fails; (9) severity drift between hardcoded `_SEVERITY_FOR_EMITTED_CODE` and YAML → AC-10 consistency test fails; (10) rubric reading `case.difficulty` to modify score → AC-11 invariance fails; (11) marker-class replacing `VulnRemediationRubric` → AC-1 delegation byte-equality fails.
+- **Contract-surface decision (Phase 6 → Phase 6.5):** the `_HarnessOutput` envelope is a LOCAL Pydantic model (`bench/vuln-remediation/rubric.py`), NOT a shared model in `src/codegenie/eval/models.py`. Rule 2 — Phase 7's migration rubric will have a different SUT contract (different signals: `dockerfile_migrated`, `image_digest_matches`, etc.). Shared envelopes lock two task classes to the same shape prematurely. The contract between Phase 6's `VulnRemediationSut.run_case` and this rubric is: `_HarnessOutput` is the wire-shape validator; SUT drift surfaces as `pydantic.ValidationError` at the rubric's `__main__` boundary → `sys.exit(2)` → runner records `rubric.malformed_output` (block).
