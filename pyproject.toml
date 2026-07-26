@@ -97,18 +97,6 @@ dependencies = [
   # Phase 4 S1-05 / ADR-0003: ONNX inference session the fastembed runtime
   # depends on directly. Path-scoped to `src/codegenie/rag/` alongside fastembed.
   "onnxruntime>=1.18,<2.0",
-  # `src/codegenie/rag/embedder.py` + `embedding_cache.py` import numpy directly,
-  # so it is a real direct dependency that was previously only satisfied
-  # transitively (via chromadb/fastembed). Declared explicitly, and capped.
-  #
-  # The cap is not arbitrary: **numpy 2.5.0 raised its floor to Python >= 3.12**,
-  # while this project declares `requires-python = ">=3.11"`. Left uncapped, the
-  # CI matrix resolves *different* numpy lines per lane — 2.4.x on the 3.11 lane,
-  # 2.5.x on the 3.12 lane — and numpy 2.5's stubs use PEP 695 `type` statements,
-  # which `mypy --strict` cannot parse under our `python_version = "3.11"`
-  # setting. That reddened `mypy (3.12)` + `unit (3.12)` on an unchanged tree.
-  # Lift this cap only when `requires-python` moves to >= 3.12.
-  "numpy<2.5",
   # Phase 4 S1-05 / ADR-0003: OS keychain loader used by
   # `AnthropicLeafAdapter.__init__` to source the Anthropic API key. Admitted
   # closure-wide *without* path-scope — `keyring` is not LLM-shaped (any module
@@ -151,6 +139,24 @@ dev = [
   # through this list. `bandit` belongs to a later phase.
   "import-linter",
   "pip-audit",
+  # numpy is NOT a declared runtime dep — ADR-0006 pins `[project.dependencies]`
+  # to an exact closure (enforced by `test_runtime_dependencies_are_exactly_adr_0006_closure`),
+  # and numpy arrives transitively via chromadb/fastembed. The cap lives here
+  # because CI installs with `pip install -e ".[dev]"`, so a `[dev]` constraint
+  # governs the resolution every job actually gets — without silently widening a
+  # frozen contract.
+  #
+  # Why cap at all: **numpy 2.5.0 raised its floor to Python >= 3.12** while this
+  # project declares `requires-python = ">=3.11"`. Uncapped, the matrix resolved
+  # 2.4.x on the 3.11 lane and 2.5.x on the 3.12 lane, and numpy 2.5's stubs use
+  # PEP 695 `type` statements that `mypy --strict` cannot parse under
+  # `python_version = "3.11"` — reddening `mypy (3.12)` + `unit (3.12)` on an
+  # unchanged tree. Lift only when `requires-python` moves to >= 3.12.
+  #
+  # FOLLOW-UP: `src/codegenie/rag/embedder.py` and `embedding_cache.py` import
+  # numpy *directly*, so it arguably belongs in the runtime closure. Promoting it
+  # requires an ADR-0006 amendment and is deliberately left undone here.
+  "numpy<2.5",
   # S2-05: `codegenie.schema.validator` imports `jsonschema`; the package is
   # not py.typed so mypy --strict needs the stub distribution.
   "types-jsonschema",

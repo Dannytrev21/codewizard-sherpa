@@ -136,10 +136,22 @@ def test_runtime_deps_do_not_outrun_the_declared_python_floor() -> None:
         "This test's numpy cap reasoning is tied to a 3.11 floor. If the floor "
         "moved to >=3.12, the `numpy<2.5` cap can be lifted and this test updated."
     )
-    numpy_specs = [s for s in cfg["project"]["dependencies"] if _dist_name(s) == "numpy"]
+    # The cap lives in `[dev]`, NOT `[project.dependencies]`: ADR-0006 pins the
+    # runtime closure to an exact set (see
+    # `test_runtime_dependencies_are_exactly_adr_0006_closure`), and numpy arrives
+    # transitively via chromadb/fastembed. Since every CI job installs with
+    # `pip install -e ".[dev]"`, a `[dev]` constraint governs the resolution the
+    # jobs actually get without widening a frozen contract.
+    numpy_specs = [
+        s for s in cfg["project"]["optional-dependencies"]["dev"] if _dist_name(s) == "numpy"
+    ]
     assert len(numpy_specs) == 1, (
-        "numpy is imported directly by `codegenie.rag.embedder` / "
-        f"`embedding_cache`, so it must be declared explicitly. Got {numpy_specs}."
+        f"expected exactly one numpy constraint in [dev], got {numpy_specs}. "
+        "It must not move to [project.dependencies] without an ADR-0006 amendment."
+    )
+    assert not [s for s in cfg["project"]["dependencies"] if _dist_name(s) == "numpy"], (
+        "numpy must stay out of [project.dependencies] — ADR-0006 pins that closure "
+        "exactly. Promoting it needs an ADR amendment, not a silent edit."
     )
     assert "<2.5" in numpy_specs[0], (
         f"numpy must stay capped below 2.5 while `requires-python` is >=3.11 — "
