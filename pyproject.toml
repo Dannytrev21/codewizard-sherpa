@@ -97,6 +97,18 @@ dependencies = [
   # Phase 4 S1-05 / ADR-0003: ONNX inference session the fastembed runtime
   # depends on directly. Path-scoped to `src/codegenie/rag/` alongside fastembed.
   "onnxruntime>=1.18,<2.0",
+  # `src/codegenie/rag/embedder.py` + `embedding_cache.py` import numpy directly,
+  # so it is a real direct dependency that was previously only satisfied
+  # transitively (via chromadb/fastembed). Declared explicitly, and capped.
+  #
+  # The cap is not arbitrary: **numpy 2.5.0 raised its floor to Python >= 3.12**,
+  # while this project declares `requires-python = ">=3.11"`. Left uncapped, the
+  # CI matrix resolves *different* numpy lines per lane — 2.4.x on the 3.11 lane,
+  # 2.5.x on the 3.12 lane — and numpy 2.5's stubs use PEP 695 `type` statements,
+  # which `mypy --strict` cannot parse under our `python_version = "3.11"`
+  # setting. That reddened `mypy (3.12)` + `unit (3.12)` on an unchanged tree.
+  # Lift this cap only when `requires-python` moves to >= 3.12.
+  "numpy<2.5",
   # Phase 4 S1-05 / ADR-0003: OS keychain loader used by
   # `AnthropicLeafAdapter.__init__` to source the Anthropic API key. Admitted
   # closure-wide *without* path-scope — `keyring` is not LLM-shaped (any module

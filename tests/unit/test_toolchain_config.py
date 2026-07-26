@@ -118,6 +118,45 @@ def test_ruff_is_exact_pinned_and_matches_lockfile() -> None:
     )
 
 
+def test_runtime_deps_do_not_outrun_the_declared_python_floor() -> None:
+    # Regression guard for the 2026-07-26 `mypy (3.12)` / `unit (3.12)` break.
+    #
+    # numpy 2.5.0 raised its floor to Python >= 3.12 while this project declares
+    # `requires-python = ">=3.11"`. Uncapped, the CI matrix resolved 2.4.x on the
+    # 3.11 lane and 2.5.x on the 3.12 lane; numpy 2.5's stubs use PEP 695 `type`
+    # statements that mypy cannot parse under `python_version = "3.11"`, so the
+    # 3.12 lanes went red on an unchanged tree.
+    #
+    # The invariant is general: a dependency whose own Python floor is *above*
+    # this project's floor cannot be allowed to float, or the matrix lanes stop
+    # agreeing. numpy is the one such pin today; the assertion is written so that
+    # dropping the cap fails rather than silently re-opening the hole.
+    cfg = _load()
+    assert cfg["project"]["requires-python"] == ">=3.11", (
+        "This test's numpy cap reasoning is tied to a 3.11 floor. If the floor "
+        "moved to >=3.12, the `numpy<2.5` cap can be lifted and this test updated."
+    )
+    numpy_specs = [s for s in cfg["project"]["dependencies"] if _dist_name(s) == "numpy"]
+    assert len(numpy_specs) == 1, (
+        "numpy is imported directly by `codegenie.rag.embedder` / "
+        f"`embedding_cache`, so it must be declared explicitly. Got {numpy_specs}."
+    )
+    assert "<2.5" in numpy_specs[0], (
+        f"numpy must stay capped below 2.5 while `requires-python` is >=3.11 — "
+        f"numpy 2.5 requires Python >=3.12 and its PEP 695 stubs break "
+        f'`mypy --strict` under `python_version = "3.11"`. Got {numpy_specs[0]!r}.'
+    )
+
+    # The pre-commit mypy hook runs in its own isolated env and installs its own
+    # copy of numpy, so the cap has to be mirrored there or the hook reintroduces
+    # the identical parse failure.
+    precommit = (PROJECT_ROOT / ".pre-commit-config.yaml").read_text()
+    assert "- numpy<2.5" in precommit, (
+        "`.pre-commit-config.yaml` mypy hook must mirror the `numpy<2.5` cap in "
+        "its additional_dependencies; its isolated env resolves numpy separately."
+    )
+
+
 def test_ruff_format_excludes_markdown_and_frozen_probe_contract() -> None:
     # ADR-0007 makes `docs/localv2.md §4` the byte-for-byte source of truth for
     # the probe ABC, and `src/codegenie/probes/base.py` a byte-for-byte copy of

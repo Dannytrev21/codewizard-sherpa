@@ -76,7 +76,11 @@ repos:
           # stubs; the ``fastembed.*`` override in pyproject silences the
           # missing-stub warning since the package does not ship py.typed.
           - fastembed>=0.3,<1.0
-          - numpy
+          # Cap mirrors `[project.dependencies]` — numpy 2.5 requires Python
+          # >= 3.12 and its stubs use PEP 695 `type` statements that mypy
+          # cannot parse under `python_version = "3.11"`. Without the cap this
+          # hook's isolated 3.12 env installs 2.5.x and fails to parse the stub.
+          - numpy<2.5
           # Phase 4 S4-03: ``codegenie.rag.store`` is the sole importer of
           # ``chromadb`` (path-scoped fence — ADR-0003) for the in-tree
           # ``ChromaPersistentStore`` adapter. Mirror it here so the isolated
