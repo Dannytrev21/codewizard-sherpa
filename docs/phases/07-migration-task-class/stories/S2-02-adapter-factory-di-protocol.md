@@ -1,14 +1,18 @@
 # Story S2-02 — `AdapterFactory` Protocol + DI kwarg vocabulary
 
-**Status:** Done
+**Status:** Done — HARDENED (validator 2026-07-25)
 **Completed:** 2026-05-19
 **Attempts:** 1
 **Evidence:**
 - Files: `src/codegenie/primitives/vuln_provenance/factory.py` (new), `src/codegenie/primitives/vuln_provenance/__init__.py`, `tests/unit/primitives/vuln_provenance/test_factory.py` (new), `tests/unit/primitives/vuln_provenance/test_types_dunder_all.py`
 - Tests: `tests/unit/primitives/vuln_provenance/test_factory.py` — 10 tests, one+ per AC; `factory.py` 100% coverage
 - Gates: `ruff check` / `ruff format` clean, `mypy --strict` clean, `lint-imports` 5/5 contracts KEPT
-- Attempt log: `_attempts/S2-02-adapter-factory-di-protocol.md`
-- Commit: (pending human merge)
+- Attempt log: none — story landed in a single commit; no multi-attempt debugging occurred
+- Commit: `a6e7071 — feat(phase7/S2-02): GREEN — AdapterFactory Protocol + DI kwarg vocabulary`
+
+## Validation notes
+
+Retrospective four-critic validation on 2026-07-25 by `/phase-story-validator` (report: [`_validation/S2-02-adapter-factory-di-protocol.md`](_validation/S2-02-adapter-factory-di-protocol.md)). Verdict: **STRONG**. No blockers; all `harden`-severity findings resolved as either (a) Evidence-block corrections (missing attempt log, stale Refactor bullet) or (b) `Notes for the implementer` additions covering `**kwargs`/MRO/positional-only conventions, metamorphic-and-powerset test opportunities for the S2 family, and the "three parallel edit-sites" growth hazard that surfaces when the DI vocabulary needs to grow. Checked-off ACs are preserved — shipped evidence is authoritative (Rule 12).
 
 **Step:** Step 2 — Registry kernel, `_ADAPTER_DISPATCH_ORDER`, `assemble_provenance` free function
 **Effort:** S
@@ -218,9 +222,9 @@ def test_test_substitute_factory_satisfies_protocol_via_duck_typing() -> None:
 
 ### Refactor
 
-- Type the private DI attributes on `DefaultAdapterFactory` (`SbomReader | None`, etc.) — when S1-05's `SbomReader` shape is stable.
-- Inline comment on the `if "sbom_reader" in declared and "sbom_reader" in _DI_KWARGS` line: `# membership-check both sides → closed vocabulary discipline (ADR-0007 §Tradeoffs row 1)`.
-- Module docstring is the canonical document for "how to grow the DI vocabulary": "(1) propose an ADR amendment to 0007's closed set; (2) extend `_DI_KWARGS`; (3) extend `DefaultAdapterFactory.__init__`; (4) update this docstring; (5) update the ADR's §Consequences."
+- **Deviation accepted (validator 2026-07-25):** the private DI attributes on `DefaultAdapterFactory` stay typed `object | None` — S1-05 shipped `SyftSbom` models, not a `SbomReader` port; the module docstring commits to `object | None` on principle (the factory is a pure pass-through that never invokes a dependency). Introducing a concrete `SbomReader` Protocol is out of scope until a consumer needs one, at which point `mypy --strict` at the adapter's own `__init__` will enforce the real type where it's actually used.
+- Inline comment on the closed-vocabulary iteration: `# iterate _DI_KWARGS (the closed set) → membership check IS the vocabulary — a name outside the set is structurally unreachable (ADR-0007 §Tradeoffs row 1)`.
+- Module docstring is the canonical document for "how to grow the DI vocabulary": "(1) propose an ADR amendment to 0007's closed set; (2) extend `_DI_KWARGS`; (3) extend `DefaultAdapterFactory.__init__` **and the `available` mapping in `__call__`**; (4) update this docstring; (5) update the ADR's §Consequences." (See DP-1 in the validation report — this is currently a three-parallel-edit-site pattern.)
 
 ## Files to touch
 
@@ -248,3 +252,22 @@ def test_test_substitute_factory_satisfies_protocol_via_duck_typing() -> None:
 - **`default_adapter_factory` with all-None DI is intentional.** Production code path is: `Supervisor` constructs a real `DefaultAdapterFactory(sbom_reader=..., logger=..., image_manifest_cache=...)` and passes it to `assemble_provenance(..., adapter_factory=factory)`. The module-level singleton is for unit-test convenience and for adapters that genuinely need no dependencies (rare — even `NpmVulnProvenanceAdapter` will want a logger).
 - **The `inspect.signature` cost is paid once per `assemble_provenance` call per non-matching adapter.** S2-04's perf envelope is p99 ≤ 50 ms uncached; `inspect.signature` is sub-100 µs per adapter — negligible. Don't cache the signature inspection; the adapter classes are stable across a process lifetime, but caching adds complexity for no measurable win.
 - **Resist adding `register_adapter_factory` or `set_default_adapter_factory`.** Mutation of the module-level singleton is the toolkit's "side effects at module import time" anti-pattern. S2-04's `adapter_factory: AdapterFactory | None = None` parameter is the substitution seam — caller injects, factory is local.
+
+### Notes carried forward from validator 2026-07-25
+
+Adapter-signature conventions that the closed-vocabulary discipline relies on but the current AC set does not pin. Follow-on adapter stories (S3-01, S3-02, S4-02, S4-03) should treat these as house rules:
+
+- **Adapters declaring `**kwargs` receive NO DI.** `inspect.signature` maps `**kwargs` under key `"kwargs"`, so no `_DI_KWARGS` name matches. This is correct (closed vocabulary wins), but the convention is: adapters that want DI MUST declare each kwarg explicitly.
+- **DI kwargs MUST be keyword-accessible (declared after `*,` or as ordinary named params).** A positional-only signature like `def __init__(self, sbom_reader, /)` would `TypeError` at `cls(**kwargs)`. All shipped and planned adapters use the `*,` convention.
+- **Inherited `__init__` via MRO is honored.** A subclass that doesn't override `__init__` inherits the parent's DI declarations — the factory injects the parent's declared kwargs into the subclass. Correct today; document at the point a real adapter hierarchy emerges.
+
+Test-hardening opportunities for the S2 story family (S2-03, S2-04) — not required for S2-02 since it shipped GREEN with 100% coverage:
+
+- **Positional-only `/` marker check.** Assert `inspect.signature(AdapterFactory.__call__).parameters["cls"].kind is inspect.Parameter.POSITIONAL_ONLY`. The `/` is load-bearing for future keyword-collision immunity.
+- **Metamorphic — no aliasing / no cached state.** Two `factory(_SameClass)` calls MUST return two distinct instances. Would kill a memoizing-mutant.
+- **Powerset property test** over `{sbom_reader, logger, image_manifest_cache}` — synthesize an adapter per subset, assert received keys equal the subset. Currently four of the eight subsets are unexercised.
+- **All-positional adapter fixture.** `def __init__(self, sbom_reader, logger, image_manifest_cache):` (no `*`) works by Python's keyword-to-positional binding; pin it so future refactors can't regress silently.
+
+Growth-hazard note (design-patterns critic DP-1):
+
+- **Growing `_DI_KWARGS` today requires editing three parallel sites** — the frozenset, `DefaultAdapterFactory.__init__` params, and the `available` dict in `__call__`. Rule 2 says three sites is fine; Rule of three says when the *third* new DI kwarg lands, elevate to a `DIBundle` dataclass (or `TypedDict`) so growth becomes single-edit. Not premature-abstraction to signal; premature-abstraction to fix before a real third consumer exists.
