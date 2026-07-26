@@ -1261,8 +1261,11 @@ def vuln_index_refresh(source: str, index_path: Path | None) -> None:
 
     \b
     Exit codes (per ``_EXIT_CODE_DISPATCH``):
-    - 0 — refresh succeeded (including the empty-delta case).
-    - 4 — at least one parse error AND at least one success (partial).
+    - 0 — refresh succeeded (including the empty-delta case: zero records,
+      zero errors).
+    - 4 — at least one record failed to parse. This covers BOTH a partial
+      refresh (some records ingested, some failed) and a total parse failure
+      (nothing ingested, everything failed) — the latter used to exit 0.
     - 5 — every registered feed's ``fetch()`` raised.
     - 7 — schema is not migrated (existing path without ``alembic_version``).
     """
@@ -1331,6 +1334,20 @@ def _vuln_index_refresh_body(*, source: str, index_path: Path | None) -> None:
                 if isinstance(result, result_mod.Ok):
                     successes.append(result.value)
                 else:
+                    # Name the reason. A bare `errors=N` count in the summary
+                    # event left the operator with no way to tell a malformed
+                    # record apart from a feed that blew the payload cap — the
+                    # 2026-07-25 shakedown had to re-drive the feeds in a REPL
+                    # to learn that nvd/osv were failing `payload_too_large`.
+                    # Capped at the same budget `ingest_records` uses for its
+                    # error list so a wholly-bad feed cannot flood the log.
+                    if len(errors) < ingest_mod._MAX_ERROR_REPORT:  # noqa: SLF001
+                        log.warning(
+                            "vuln_index.parse_failed",
+                            source=src,
+                            reason=result.error.reason,
+                            details=result.error.details,
+                        )
                     errors.append(result.error)
             stats = ingest_mod.ingest_records(idx, [*successes, *errors])
             total_inserted += stats.inserted
@@ -1354,7 +1371,14 @@ def _vuln_index_refresh_body(*, source: str, index_path: Path | None) -> None:
         )
         raise VulnFeedFetchError("all feeds failed HTTP")
 
-    exit_code = 4 if (total_errors > 0 and total_inserted > 0) else 0
+    # `and total_inserted > 0` used to guard this. That made the all-records-failed
+    # case (`errors > 0`, `inserted == 0`) fall through to 0 — i.e. a refresh that
+    # ingested *nothing* and errored on *everything* reported success. That is the
+    # exact failure the real ghsa/nvd/osv feeds produce today (2026-07-25
+    # shakedown: `errors=3 inserted=0 exit_code=0`). Any parse error is now a
+    # non-zero exit; a genuinely empty delta still has `total_errors == 0` and
+    # still exits 0.
+    exit_code = 4 if total_errors > 0 else 0
     log.info(
         "vuln_index.refresh.completed",
         source=sources_to_run,

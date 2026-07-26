@@ -333,3 +333,87 @@ def test_exit_code_dispatch_table_extended() -> None:
     assert _EXIT_CODE_DISPATCH[VulnRefreshPartialError] == 4
     assert _EXIT_CODE_DISPATCH[VulnFeedFetchError] == 5
     assert _EXIT_CODE_DISPATCH[VulnIndexMigrationNotApplied] == 7
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-25 capability-shakedown regressions.
+#
+# Running `codegenie vuln-index refresh` against the three *real* feeds
+# (ghsa/nvd/osv) produced `errors=3 inserted=0 exit_code=0` — every record from
+# every feed failed to parse, and the CLI reported **success**. Root cause: the
+# exit-code expression read
+#
+#     exit_code = 4 if (total_errors > 0 and total_inserted > 0) else 0
+#
+# so the all-records-failed case (`errors > 0`, `inserted == 0`) fell through the
+# `else` into 0. `test_partial_parse_error_exits_4` above only ever exercised the
+# *mixed* feed (one good record + one malformed), so the `inserted == 0` half of
+# that conjunction was never covered — the gap that let this ship GREEN.
+#
+# These two tests pin the honest contract: a refresh that ingested nothing and
+# errored on everything is a failure, and the operator can see *why*.
+# ---------------------------------------------------------------------------
+
+
+def test_all_records_fail_to_parse_does_not_report_success(
+    register_test_feed,  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+    runner: CliRunner,
+) -> None:
+    """Every record malformed, zero inserted → MUST NOT exit 0 (Rule 12).
+
+    This is the case the real feeds hit in production. Asserting `!= 0` first
+    (rather than `== 4`) states the load-bearing intent: whatever code we pick,
+    silently claiming success on a total ingest failure is the bug.
+    """
+    register_test_feed(
+        "allbad",
+        _make_cassette_feed(
+            "allbad",
+            [
+                CASSETTES_DIR / "nvd" / "malformed-bad_cve.json",
+                CASSETTES_DIR / "nvd" / "malformed-no_tz.json",
+            ],
+        ),
+    )
+    db = tmp_path / "v.sqlite"
+    result = runner.invoke(
+        cli,
+        ["vuln-index", "refresh", "--source", "allbad", "--index-path", str(db)],
+    )
+    assert result.exit_code != 0, (
+        "refresh ingested 0 records and errored on every one, but reported "
+        f"success (exit {result.exit_code}). See docs/_shakedowns/."
+    )
+    assert result.exit_code == 4, result.output
+
+
+def test_parse_failures_are_logged_with_reason(
+    register_test_feed,  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+    runner: CliRunner,
+) -> None:
+    """A parse failure must name its reason in the log (operator diagnosability).
+
+    Before this test, `--verbose` on a run where all three real feeds failed
+    emitted exactly one line — a bare `errors=3` count — with no indication that
+    nvd/osv had blown the 1 MiB payload cap and ghsa was missing `advisory`.
+    Diagnosing it required re-driving the feeds by hand in a REPL.
+    """
+    register_test_feed(
+        "logbad",
+        _make_cassette_feed("logbad", [CASSETTES_DIR / "nvd" / "malformed-bad_cve.json"]),
+    )
+    db = tmp_path / "v.sqlite"
+    with structlog.testing.capture_logs() as caplog:
+        runner.invoke(
+            cli,
+            ["vuln-index", "refresh", "--source", "logbad", "--index-path", str(db)],
+        )
+    failures = [e for e in caplog if e.get("event") == "vuln_index.parse_failed"]
+    assert failures, (
+        "no `vuln_index.parse_failed` event emitted; a parse error is invisible "
+        f"to the operator. events seen: {sorted({e.get('event') for e in caplog})}"
+    )
+    assert failures[0]["source"] == "logbad"
+    assert failures[0]["reason"], "parse-failure event must carry the reason"

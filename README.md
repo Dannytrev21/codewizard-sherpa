@@ -107,8 +107,14 @@ $ python -m codegenie gather ./path/to/repo
 - `codegenie cache prune` — content-addressed bundle GC; emits a
   `cache_gc_completed` audit event.
 - `codegenie vuln-index refresh --source <nvd|ghsa|osv|all>` — Phase 3 S3-03.
-  Fetches + parses CVE feeds into the sqlite `VulnIndex`. Exit codes: `0` ok,
-  `4` partial refresh, `5` all feeds failed, `7` schema not migrated.
+  Fetches + parses CVE feeds into the sqlite `VulnIndex`. Exit codes: `0` ok
+  (including an empty delta), `4` at least one record failed to parse (covers
+  both a partial refresh and a total parse failure), `5` all feeds failed,
+  `7` schema not migrated.
+  **Known gap:** against the live feeds this currently exits `4` and ingests
+  nothing — each feed yields its whole response as one chunk against the 1 MiB
+  parser cap, and none paginate. See
+  [`docs/_shakedowns/codegenie-vuln-index-refresh-2026-07-26T000200Z.md`](docs/_shakedowns/codegenie-vuln-index-refresh-2026-07-26T000200Z.md).
 - `codegenie rag rebuild [--root .codegenie/rag/] [--reembed]` — Phase 4 S4-07.
   Reconstructs the chromadb derived index from the canonical YAML records +
   `manifest.yaml`. `--reembed` re-embeds each record via the current
