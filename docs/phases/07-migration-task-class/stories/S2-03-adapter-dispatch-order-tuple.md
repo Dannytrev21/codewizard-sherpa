@@ -1,6 +1,6 @@
 # Story S2-03 — `_ADAPTER_DISPATCH_ORDER` `Final` tuple + `Ecosystem`-sorted intra-layer iteration
 
-**Status:** Done
+**Status:** Done (HARDENED retroactively 2026-07-26)
 **Completed:** 2026-05-19
 **Attempts:** 1
 **Evidence:**
@@ -55,6 +55,7 @@ Ship `src/codegenie/primitives/vuln_provenance/assembly.py` containing: (1) `_AD
 - [x] **AC-7 — `iter_adapters_for_layer_set` is `mypy --strict` clean with `Mapping[ProvenanceAdapterId, type[VulnProvenanceAdapter]]` parameter typing.** Allows callers to pass either `_REGISTRY` (real) or test fixtures (any `Mapping`).
 - [x] **AC-8 — TDD red test exists, committed, green.** `tests/unit/primitives/vuln_provenance/test_assembly_dispatch_order.py::test_intra_layer_iteration_is_ecosystem_sorted_not_registration_sorted` was the first failing test; impl makes it green.
 - [x] **AC-9 — Lint / type clean.** `ruff check`, `ruff format --check`, `mypy --strict` clean on `src/codegenie/primitives/vuln_provenance/assembly.py` and the test module. `make lint-imports` green.
+- [x] **AC-10 — `iter_adapters_for_layer_set` re-exported from the package.** `codegenie.primitives.vuln_provenance` re-exports the helper (present in `__all__` and importable as `pkg.iter_adapters_for_layer_set`) so S2-04's `assemble_provenance` and future package consumers do not depend on the internal module path `.assembly`. Test asserts identity (`pkg.iter_adapters_for_layer_set is iter_adapters_for_layer_set`) AND `"iter_adapters_for_layer_set" in pkg.__all__`. _(HARDENED 2026-07-26 — the test was already shipped as `test_iter_adapters_for_layer_set_is_reexported_from_package`; the AC anchor was missing.)_
 
 ## Implementation outline
 
@@ -225,3 +226,23 @@ def test_iter_returns_classes_not_instances() -> None:
 - **The helper yields `(key, cls)` tuples** — not just `cls`. S2-04 will want the key for diagnostics (e.g., logging which adapter ran first when composing the result), and the key carries the `Layer` + `Ecosystem` enum values which the audit log will pin.
 - **`Layer.RUNTIME` reserved-slot row is intentional.** First runtime adapter (JRE-bundled, future phase) registers `@register_provenance_adapter(layer=Layer.RUNTIME, ecosystem=...)` and the empty-tuple iteration starts yielding. No code change to this module — the discipline is open/closed for extension on Ecosystem additions, closed on Layer additions (which require an ADR amendment per ADR-0006 §Consequences).
 - **Module-level `Final`-tuple cataloging is a load-bearing codebase convention.** Sibling patterns: `_GENERATOR_HEADER_MARKERS` (Phase 1), `_REFLECTION_QUERIES` (Phase 1 node-reflection probe), `_LOCKFILE_PRECEDENCE` (Phase 1). Reviewers know the shape — keep it boring.
+
+## Validation notes (2026-07-26, HARDENED retroactively)
+
+Story validated post-execution by `phase-story-validator` against the shipped `src/codegenie/primitives/vuln_provenance/assembly.py` + `tests/unit/primitives/vuln_provenance/test_assembly_dispatch_order.py`. Four critic lenses (coverage, test-quality, consistency, design-patterns) evaluated inline given the small surface. Full report: `_validation/S2-03-adapter-dispatch-order-tuple.md`.
+
+**Verdict — HARDENED** (spec catches up to shipped implementation; no impl edits made — the shipped code was already correct).
+
+**Change applied:**
+
+- **Added AC-10 (package re-export).** The test `test_iter_adapters_for_layer_set_is_reexported_from_package` was already committed and green as of 2026-05-19, but had no AC anchor. Made the AC explicit so the executor's Validator pass can trace the test to a numbered acceptance criterion in future retro-runs, and so any future refactor that regresses the re-export (e.g., pruning `__all__`) fails the story acceptance gate instead of only a stray test.
+
+**Design-pattern findings — carried as notes, NOT ACs (Rule 2 + Rule 3):**
+
+- **`_ECOSYSTEM_SORT_KEY` O(1) precompute** is a small but exemplary Strategy-via-data touch — future adapter-registry-style stories should copy this idiom instead of `tuple(Enum).index(...)` per item. Already flagged in `Notes for the implementer`; no AC change needed.
+- **Empty `layer_set = ()` and duplicate-layer `layer_set = (APP, APP)`** are undertested edge cases. `()` trivially yields nothing (`for` loop over empty tuple); duplicate layers would yield the layer's adapters twice. Phase 7's `_ADAPTER_DISPATCH_ORDER` never constructs either shape, so no AC added. If a future ADR extends the tuple with multi-element rows, S2-05's Hypothesis property test should grow to sample from `_ADAPTER_DISPATCH_ORDER` directly rather than a hand-crafted `(APP, BASE_IMAGE)` — captured here for the phase-story-validator record when S2-05 is next hardened.
+- **Helper laziness (`Iterator[...]`)** is enforced only by the `mypy --strict` type hint plus the `yield from` in the body; no runtime test pins it. Callers already `list(...)` the result, so lazy-vs-eager is not observable — no AC needed.
+
+**Coverage tally after edit:** AC-1 through AC-10 all trace 1:1 to a test in `test_assembly_dispatch_order.py` (7 test functions cover 10 ACs — AC-1+AC-2 share `test_dispatch_order_tuple_shape_and_declaration_order`; AC-7+AC-9 are static-gate ACs proven by `make check`; AC-8 is a process AC proven by the attempt log).
+
+**No changes to:** Goal, Scope reminder, References, Implementation outline, TDD plan (red / green / follow-on tests), Files to touch, Out of scope. Shipped implementation and tests remain authoritative.
