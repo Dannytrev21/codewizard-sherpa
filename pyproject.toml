@@ -122,7 +122,16 @@ dev = [
   # round-trip deliverable named in 02-ADR-0006 §Consequences.
   "hypothesis",
   "mypy",
-  "ruff",
+  # Exact-pinned. CI installs the dev extras with plain `pip install -e
+  # ".[dev]"`, which does NOT read `uv.lock` — so an unpinned `ruff` let CI
+  # silently float to a newer formatter than the one `uv.lock` and the
+  # `ruff-pre-commit` SHA (v0.15.12) agree on. ruff 0.16.0 added Markdown
+  # code-block formatting and reformatted 422 `docs/**/*.md` files, including
+  # `docs/localv2.md` — the byte-for-byte source of truth for the frozen probe
+  # contract (ADR-0007). Keep this version in lockstep with `uv.lock` and
+  # `.pre-commit-config.yaml`; `test_ruff_is_exact_pinned_and_matches_lockfile`
+  # fails if they drift apart.
+  "ruff==0.15.12",
   "pre-commit",
   "mkdocs-material",
   # S1-05: structural cold-start defense + supply-chain scanner. `osv-scanner`
@@ -130,6 +139,24 @@ dev = [
   # through this list. `bandit` belongs to a later phase.
   "import-linter",
   "pip-audit",
+  # numpy is NOT a declared runtime dep — ADR-0006 pins `[project.dependencies]`
+  # to an exact closure (enforced by `test_runtime_dependencies_are_exactly_adr_0006_closure`),
+  # and numpy arrives transitively via chromadb/fastembed. The cap lives here
+  # because CI installs with `pip install -e ".[dev]"`, so a `[dev]` constraint
+  # governs the resolution every job actually gets — without silently widening a
+  # frozen contract.
+  #
+  # Why cap at all: **numpy 2.5.0 raised its floor to Python >= 3.12** while this
+  # project declares `requires-python = ">=3.11"`. Uncapped, the matrix resolved
+  # 2.4.x on the 3.11 lane and 2.5.x on the 3.12 lane, and numpy 2.5's stubs use
+  # PEP 695 `type` statements that `mypy --strict` cannot parse under
+  # `python_version = "3.11"` — reddening `mypy (3.12)` + `unit (3.12)` on an
+  # unchanged tree. Lift only when `requires-python` moves to >= 3.12.
+  #
+  # FOLLOW-UP: `src/codegenie/rag/embedder.py` and `embedding_cache.py` import
+  # numpy *directly*, so it arguably belongs in the runtime closure. Promoting it
+  # requires an ADR-0006 amendment and is deliberately left undone here.
+  "numpy<2.5",
   # S2-05: `codegenie.schema.validator` imports `jsonschema`; the package is
   # not py.typed so mypy --strict needs the stub distribution.
   "types-jsonschema",
@@ -151,16 +178,19 @@ dev = [
   # fence (`FORBIDDEN_LLM_SDKS`) is unaffected because pytest-recording / vcrpy
   # are not in the denied set and ``[gather]`` does not import them.
   "pytest-recording",
-  # vcrpy 8.1.1 (the latest, pulled in by pytest-recording) imports
+  # The former ``aiohttp<3.14`` cap lived here. vcrpy 8.1.1 imported
   # ``aiohttp.streams.AsyncStreamReaderMixin`` at module load in its aiohttp
-  # stub; aiohttp 3.14.0 removed that symbol, so an unpinned CI resolve
-  # (``pip install -e ".[dev]"`` — not ``uv sync --frozen``) breaks the
-  # cassette integration tests with ``AttributeError`` at import time. Cap to
-  # the 3.13.x line vcrpy supports (uv.lock already pins 3.13.5). aiohttp is a
-  # transitive runtime dep (chromadb/fastembed) but only the dev-only vcrpy
-  # stub touches the removed symbol; the runtime uses aiohttp's public API.
-  # Lift this cap once vcrpy ships aiohttp-3.14 compatibility.
-  "aiohttp<3.14",
+  # stub and aiohttp 3.14.0 removed that symbol, so the cap kept the cassette
+  # integration tests importable. vcrpy 8.3.0 ships the compatibility shim
+  # (``vcr/stubs/aiohttp_stubs.py`` now version-detects the ``stream_writer``
+  # ClientResponse argument and defines the async-iteration helpers directly
+  # instead of inheriting the removed mixin), so the cap is lifted — 2026-07-25.
+  #
+  # Lifting it is a security fix, not just hygiene: the cap was pinning aiohttp
+  # to 3.13.5, which carries **nine** advisories fixed in 3.14.0/3.14.1
+  # (PYSEC-2026-237, -2106..-2113) on top of the two that CI was explicitly
+  # suppressing (CVE-2026-34993, CVE-2026-47265 — both ignore flags are now
+  # removed from `ci.yml` and `osv-scanner.toml`).
 ]
 
 # Phase 9+ slot — Temporal, Postgres clients land here.
@@ -243,7 +273,15 @@ select = ["E", "F", "I", "B", "UP", "T201"]
 # (`localv2.md §4`) is the source of truth and uses aligned trailing
 # comments + no blank line between successive `@dataclass` declarations.
 # Letting ruff reformat the file would silently drift it away from §4.
-exclude = ["src/codegenie/probes/base.py"]
+#
+# Markdown is excluded for the same reason, one level up. ruff 0.16+ formats
+# Python snippets inside fenced code blocks, and `docs/localv2.md §4` *is* the
+# doc this exclusion protects `base.py` against drifting from — letting the
+# formatter collapse §4's aligned trailing comments would rewrite the source of
+# truth itself and trip `tests/unit/test_probe_contract.py`. Docs are prose we
+# own by hand (several snippets carry `<slug>`-style placeholders that are not
+# valid Python); ruff owns `.py`, not `.md`.
+exclude = ["src/codegenie/probes/base.py", "**/*.md"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -1,10 +1,39 @@
 # Story S6-02 — `SandboxClient.spawn(role=SandboxRole.GATE)` additive parameter
 
 **Step:** Step 6 — Phase 5 `SandboxRole` additive enum + `SandboxClient.spawn(role=...)` amendment
-**Status:** Ready
+**Status:** HARDENED (phase-story-validator, 2026-08-15 — pre-executor pass; see `_validation/S6-02-sandbox-spawn-role-parameter.md`)
 **Effort:** S
-**Depends on:** S6-01 (the `SandboxRole` enum must exist), S5-01 (byte-edit allowlist row #6 must be in place)
-**ADRs honored:** Phase 7 ADR-0003 (primary), Phase 7 ADR-0009 (allowlist row #6 — second half), Phase 7 ADR-0002 (consumer), Phase 7 ADR-0001 (no parallel `probe-control` process), Phase 5 ADR-0001 (two-chokepoint sandbox seam)
+**Depends on:** S6-01 (the `SandboxRole` enum must exist), S5-01 (byte-edit allowlist row #6 must be in place); Phase 5 must have shipped `src/codegenie/sandbox/client.py` with the `spawn(...)` (or `execute(...)`) method — see Preconditions §1.
+**ADRs honored:** Phase 7 ADR-0003 (primary; see Preconditions §3 for the `capture_trace` amendment gate), Phase 7 ADR-0009 (allowlist row #6 — second half; see Preconditions §4 for the fence file's `# row 6` inline-comment coordination), Phase 7 ADR-0002 (consumer), Phase 7 ADR-0001 (no parallel `probe-control` process), Phase 5 ADR-0001 (two-chokepoint sandbox seam)
+
+## Preconditions
+
+Read before starting:
+
+1. **`src/codegenie/sandbox/client.py` must exist at execution time.** As of 2026-08-15 the directory does not exist on `main` — Phase 5's sandbox module has not shipped yet (mirrors S6-01's Preconditions §1). This story amends Phase 5's method; if `client.py` is still absent when the executor picks up this story, the story is `BLOCKED` on Phase 5's `SandboxClient` module landing. The fallback per ADR-0003 §Reversibility (route `Role.PROBE` through `Role.GATE`) is Phase 7's overall risk, not this story's execution path.
+2. **Method name reconciliation (`spawn` vs `execute`) is a Precondition, not just a Note.** Phase 5's canonical [`final-design.md §Components §1 SandboxClient`](../../05-sandbox-trust-gates/final-design.md) shows the method as `SandboxClient.execute(spec: SandboxSpec) -> SandboxRun`. Phase 7 ADR-0003 + arch design speak `spawn(...)`. Rule 7 (surface conflicts, don't average them): read `src/codegenie/sandbox/client.py` first and **use whichever name Phase 5 actually shipped**. If Phase 5 ships `execute`, then ADR-0003's `spawn` wording is architectural intent — extend `execute(...)` additively with the `role` parameter; log the resolution in `_attempts/S6-02.md`. Do NOT silently rename.
+3. **`capture_trace: bool` is a SECOND additive parameter beyond `role`. ADR-0003 §Decision says "gains exactly one new parameter."** ADR-0002 §Consequences shows the consumer calling `sandbox.spawn(role=Role.PROBE, workspace=..., command=[...], capture_trace=True)`, and phase-arch-design §Component design §9 (line 813) shows the same shape. Two paths forward, both explicit:
+   - **Path A (verify pre-existing):** Grep Phase 5's shipped `SandboxClient` for `capture_trace` — if the parameter already lives on `execute(...)` / `spawn(...)` or on `SandboxSpec`, S6-02 only adds `role` and wires dispatch to the existing `capture_trace`. Preconditions §3 is satisfied.
+   - **Path B (Phase 7 amendment):** If `capture_trace` is not pre-existing, S6-02 lands two additive parameters (`role` + `capture_trace`). ADR-0003 §Decision must be amended (either extend the "one new parameter" wording to two, or record `capture_trace` as an ADR-0002 §Consequence — it *does* trace to ADR-0002 §Decision). The executor files the amendment as `ADRs/0003-amendment-capture-trace.md` (Nygard shape) **before** landing the code edit and adds a row-#6 interpretive-comment update to S5-01's fence file. Coordinate; do not silently widen the ADR.
+4. **S5-01 fence file's `# row 6` inline comment currently reads:** `"src/codegenie/sandbox/client.py — one new role: SandboxRole = Role.GATE parameter on spawn(...) (S6-02)"`. Under Path A (§3) no fence change is needed. Under Path B, the fence file's row-#6 comment must be widened to name **both** `role` AND `capture_trace` as the coordinated pair the row covers (spirit-of-the-rule reading, mirroring S6-01's Preconditions §2 discipline for the enum block). Record the widening in `_attempts/S6-02.md`.
+5. **Phase 5's audit-event Pydantic model name is not confirmed.** The story sketches `SpawnDispatchedEvent`; Phase 5 may name it differently (e.g., `SandboxRunEvent`, `ExecuteDispatchedEvent`). Grep `src/codegenie/sandbox/` for the shipped class name and use it verbatim in the tests; the AC-D fields the tests assert on are stable, only the class name is contingent.
+6. **Grep-verification pattern for AC-B is object-scoped, not bare-name.** Phase 5's `SandboxClient` is a Protocol; unrelated `.spawn(` calls (e.g., `asyncio.subprocess.Process.spawn`, `multiprocessing.Process.spawn_context`) must not be false-positives. Use `re.compile(r"(?:sandbox|SandboxClient|sandbox_client|self\.sandbox)\.(?:spawn|execute)\(")` or equivalent AST-based check, not `spawn(` naked.
+
+## Validation notes (phase-story-validator, 2026-08-15)
+
+Hardened by the phase-story-validator pipeline; full audit in [`_validation/S6-02-sandbox-spawn-role-parameter.md`](_validation/S6-02-sandbox-spawn-role-parameter.md). Summary of edits:
+
+1. **Preconditions section added** — surfaced (a) `src/codegenie/sandbox/` does not yet exist on `main` (Phase 5 hasn't shipped), (b) the `spawn` vs `execute` method-name reconciliation was buried in Notes-for-implementer and is elevated to a blocking Precondition, (c) **`capture_trace` is a second additive parameter beyond `role`** and ADR-0003 §Decision says "exactly one new parameter" — Path A / Path B decision tree spelled out, (d) S5-01's fence file's `# row 6` inline comment interpretive load spelled out for Path B, (e) `SpawnDispatchedEvent` class-name assumption flagged as contingent, (f) grep-verification pattern for AC-B specified as object-scoped to avoid false positives on `Process.spawn(...)`.
+2. **AC-A hardening** — added positional-misuse runtime test (`spawn(spec, Role.GATE)` raises `TypeError`) to pair with the signature-shape check; specified the "signature-snapshot map" more concretely (exact `inspect.Parameter` field-by-field comparison, not just "any other diff fails").
+3. **AC-B hardening** — replaced "property-style" nomenclature with "hand-crafted 5-spec matrix" (5 hand-picked variations, not `hypothesis` — the story does not need real property-based testing here); enumerated the exact fields that get sentinel-normalized before byte-equality comparison; changed `e.role == "probe"` sketches to `e.role is SandboxRole.PROBE` (enum-identity idiom); made the grep AC name the object-scoped regex from Preconditions §6; added the redundant-identity check `client.spawn(spec) == client.spawn(spec, role=SandboxRole.GATE)` explicitly.
+4. **AC-C hardening** — pinned the exact `ValueError` message text (was `match="capture_trace requires role=SandboxRole.PROBE"` — kept but made exact-match, not substring); added the dispatch-spec assertion (`SandboxSpec` passed to backend dispatcher carries `capture_trace=True` **only** when both `role=PROBE` and `capture_trace=True` — no orthogonality leak).
+5. **AC-D hardening** — added the "audit event's only new field is `role`" assertion (`set(model_fields_post) - set(model_fields_pre) == {"role"}`); pinned the round-trip identity as `is SandboxRole.PROBE` (not `==`); added coordinated-golden-refresh AC (fence must detect a golden JSON that was refreshed with `role` field missing).
+6. **AC-E hardening** — added the "planted second additive parameter" case (already present) explicitly names `capture_trace` as the planted case under Path A (verifies Path A stayed clean); added a "planted refactor to method body outside the authorized diff" case (verifies fence catches structural drift on the method body, not just the signature).
+7. **New AC-G — Concurrency safety** — two concurrent `spawn(...)` calls with different roles emit audit events with correct role tags (no race). Cheap safety net given the story doesn't add new shared state, but pins the invariant.
+8. **TDD plan hardening** — added `test_positional_role_raises_type_error`, `test_no_other_signature_changes` (`inspect.Parameter` map diff), `test_capture_trace_dispatch_propagation` (SandboxSpec-carries-capture_trace assertion), `test_capture_trace_not_leaked_when_role_gate`, `test_audit_event_role_is_only_new_field`, `test_role_round_trip_identity_not_equality`, `test_concurrent_spawn_role_tags_correct`, `test_grep_scope_is_object_scoped` (validates the regex from Preconditions §6 itself); added `match=r"^capture_trace requires role=SandboxRole\.PROBE$"` (exact) on all `pytest.raises(ValueError)` calls.
+9. **Notes for the implementer** — added "`capture_trace` amendment dance" paragraph explaining Path A vs Path B; added "Method-name Precondition link-back" paragraph; added "Grep false-positive risk" paragraph pointing at Preconditions §6; added "SandboxSpec.model_copy(update=...) subtlety" paragraph noting that Pydantic v2's `model_copy(update=...)` bypasses `extra="forbid"` and silently adds new fields to the model instance — verify the receiving backend dispatcher validates the spec structurally, not just fields-it-knows-about.
+
+**Verdict:** HARDENED — no structural block on the story itself. Story is executable once (a) Phase 5's `sandbox/` module lands, (b) the `capture_trace` Path A / Path B decision is made (Preconditions §3), and (c) S5-01's fence file's row-#6 comment covers whichever Path is chosen.
 
 ## Context
 
@@ -52,35 +81,39 @@ Amend `SandboxClient.spawn(...)` with exactly one additive keyword parameter —
 
 ### A. Signature surface
 
-- [ ] `inspect.signature(SandboxClient.spawn)` returns a `Parameter` named `role` with default `SandboxRole.GATE` and annotation `SandboxRole`. The parameter is keyword-only (declared after a `*` in the signature) so a positional misuse is a `TypeError`.
-- [ ] No other parameters on `spawn(...)` change name, default, kind, or annotation. A unit test snapshots the full `inspect.signature(spawn).parameters` map post-amendment against the pre-amendment shape *plus* the one new `role` parameter; any other diff fails CI.
+- [ ] `inspect.signature(SandboxClient.spawn)` (or `.execute` per Preconditions §2) returns a `Parameter` named `role` with default `SandboxRole.GATE` and annotation `SandboxRole`. The parameter is keyword-only (declared after a `*` in the signature).
+- [ ] **Positional misuse fails at runtime, not only at import.** `client.spawn(spec, SandboxRole.GATE)` (positional `role`) raises `TypeError` naming the parameter as keyword-only. (Signature-shape and runtime-refusal are separate mutation-resistance tests: a `**kwargs` rewrite could pass the signature check while accepting positional `role`.)
+- [ ] No other parameters on `spawn(...)` change name, default, kind, or annotation. A unit test snapshots `inspect.signature(spawn).parameters` post-amendment and diffs it against the pre-amendment shape *plus* the one/two additive parameter(s) authorized by Preconditions §3; the diff is asserted field-by-field on each `Parameter` (name, kind, default, annotation), not by set difference. Any other diff fails CI.
 - [ ] `mypy --strict src/codegenie/sandbox/` is clean.
 
 ### B. Default-path byte-identity (the load-bearing claim)
 
-- [ ] **`client.spawn(...)` without `role=...` produces a `SandboxRun` byte-equal to a synthetic pre-amendment baseline** captured as `tests/golden/sandbox/spawn_default_run.json` (recorded once during this story; the test asserts byte-equality going forward). Fields snapshotted: `backend`, `gate_isolation_class`, `duration_ms is None or >= 0`, `audit_events[*].kind`, `audit_events[*].role`, exit status. (Time-dependent fields like `started_at` are normalized to a sentinel before comparison.)
-- [ ] `client.spawn(role=SandboxRole.GATE)` produces a result byte-equal to `client.spawn()` (default arg). A property-style test asserts the equivalence across a 5-spec parameter sweep (different `command`, `workspace`, `env`, `time_budget_seconds`, `network` values).
-- [ ] **Every Phase 5 production callsite in the codebase is grep-verified to NOT pass `role=` explicitly.** A unit test scans `src/codegenie/` (excluding `src/codegenie/sandbox/`) and `plugins/vulnerability-remediation--node--npm/` for the string `spawn(` and asserts no occurrence is followed by a `role=` kwarg. (Phase 7 plugins under `plugins/distroless-migration--*/` are exempt — those are the only legitimate `role=Role.PROBE` callers, landed in S7-02 + S10-04 + S10-05.)
-- [ ] **Phase 5's existing test suite is green with zero new test skips.** `pytest tests/unit/sandbox/ tests/integration/test_sandbox_*.py` exits 0 on the post-story branch.
+- [ ] **`client.spawn(...)` without `role=...` produces a `SandboxRun` byte-equal to a synthetic pre-amendment baseline** captured as `tests/golden/sandbox/spawn_default_run.json` (recorded once during this story; the test asserts byte-equality going forward). The **exact** list of sentinel-normalized fields (all others are compared byte-identical) is: `started_at`, `finished_at`, `duration_ms`, `run_id`, `sandbox_spec_hash` (if it embeds a nonce), and any `audit_events[*].timestamp` / `audit_events[*].event_id`. All other fields — `backend`, `gate_isolation_class`, `audit_events[*].kind`, `audit_events[*].role`, `exit_status`, and any `stdout_digest` / `stderr_digest` — must be byte-identical to the baseline. The normalization function is named `_normalize_run_for_byte_identity` and its allow-list of normalized field paths is a `Final[tuple[str, ...]]` at module scope so a stealth addition to the normalization list fails a companion `test_normalized_fields_enumerated` assertion.
+- [ ] `client.spawn(role=SandboxRole.GATE)` and `client.spawn()` (default arg) produce byte-equal results (`_normalize_run_for_byte_identity(a) == _normalize_run_for_byte_identity(b)`) across a **hand-crafted 5-spec matrix** — five explicit `SandboxSpec` variations (differing `command`, `workspace`, `env`, `time_budget_seconds`, `network`), enumerated in the test file. This is a fixed-input equivalence check, not `hypothesis` property-based testing; the story does not need real property-based testing here (the amendment is default-arg-equivalence, which is exhaustively characterizable with a handful of specs).
+- [ ] **Every Phase 5 production callsite in the codebase is grep-verified to NOT pass `role=` explicitly.** A unit test scans `src/codegenie/` (excluding `src/codegenie/sandbox/`) and `plugins/vulnerability-remediation--node--npm/` using the object-scoped regex from Preconditions §6 (`re.compile(r"(?:sandbox|SandboxClient|sandbox_client|self\.sandbox)\.(?:spawn|execute)\(")`), and asserts no matched call is followed within its argument list by a `role=` kwarg. (Phase 7 plugins under `plugins/distroless-migration--*/` are exempt — those are the only legitimate `role=Role.PROBE` callers, landed in S7-02 + S10-04 + S10-05.) A companion `test_grep_scope_is_object_scoped` seeds a synthetic false-positive (`Process.spawn(role=1)`) and asserts the scanner ignores it; and seeds a synthetic true-positive (`self.sandbox.spawn(role=Role.GATE)` in a non-exempt path) and asserts the scanner catches it.
+- [ ] **Phase 5's existing test suite is green with zero new test skips.** `pytest tests/unit/sandbox/ tests/integration/test_sandbox_*.py` exits 0 on the post-story branch. (Test paths are contingent on Phase 5's actual layout — if Phase 5 nested the tests differently, use the actual paths; the invariant is "every pre-existing Phase-5 test still passes without being disabled.")
 
 ### C. `Role.PROBE` topology behavior
 
-- [ ] `client.spawn(role=SandboxRole.PROBE, ..., capture_trace=True)` returns a `SandboxRun` whose `audit_events` contain at least one event with `role == "probe"`.
-- [ ] When `role == SandboxRole.PROBE` and `capture_trace=True`, the underlying backend dispatcher is invoked with eBPF-host-capture-enabled in its `SandboxSpec` (verified with a stub `SandboxClient` test double — the *real* integration boot is S6-03's job).
+- [ ] `client.spawn(role=SandboxRole.PROBE, ..., capture_trace=True)` returns a `SandboxRun` whose `audit_events` contain at least one event `e` with `e.role is SandboxRole.PROBE` (identity check on the enum member, not string `==`; identity guards against a stealth `str` bleed where `e.role` is the raw string `"probe"` instead of the enum).
+- [ ] **Dispatch propagation (positive):** when `role == SandboxRole.PROBE` and `capture_trace=True`, a stub backend dispatcher records that the `SandboxSpec` it received had `spec.capture_trace is True` and `spec.role is SandboxRole.PROBE`. (Test double: `class RecordingBackend: def dispatch(self, spec): self.last_spec = spec`.)
+- [ ] **Dispatch propagation (orthogonality — negative):** when `role == SandboxRole.GATE` and `capture_trace` is omitted (default `False`), the same stub records `spec.capture_trace is False`. No leak of `capture_trace=True` on the default path.
 - [ ] When `role == SandboxRole.PROBE` and `capture_trace=False` (or unset), the call still succeeds; eBPF capture is gated on `capture_trace`, not on `role` alone. ADR-0002 §Decision binds the *combination*; the parameters are orthogonal at the API.
-- [ ] When `role == SandboxRole.GATE` and `capture_trace=True` is passed, the call raises `ValueError("capture_trace requires role=SandboxRole.PROBE")` — `capture_trace` is a `Role.PROBE`-only capability per ADR-0002 §Decision (the trace capture is meaningful only for the probe topology).
+- [ ] When `role == SandboxRole.GATE` and `capture_trace=True` is passed, the call raises `ValueError` whose `str(exc)` **exact-matches** `"capture_trace requires role=SandboxRole.PROBE"`. Pinned with `match=r"^capture_trace requires role=SandboxRole\.PROBE$"` (anchored regex — a substring-only match would let a message like `"capture_trace requires role=SandboxRole.PROBE and network=isolated"` silently pass).
 
 ### D. Audit-log `role` field (ADR-0003 §Consequences row 3)
 
 - [ ] Every `spawn(...)` call emits an audit-log event whose Pydantic schema includes a `role: SandboxRole` field. The field is **additive** to the existing schema; existing fields are unchanged.
+- [ ] **Role is the *only* new field on the audit event.** A test captures the pre-amendment `SpawnDispatchedEvent.model_fields` field-set (recorded as a `Final[frozenset[str]]` in the test file) and asserts `set(post.model_fields) - PRE_FIELDS == {"role"}` — no accidental extra field slipped in during the amendment.
 - [ ] `extra="forbid"` is preserved: an audit event with a typo (`{"role_": "gate"}`) fails Pydantic validation; a payload with no `role` field at all also fails (the field is required post-amendment).
-- [ ] The audit-log JSON round-trips: `dumps({"kind": "spawn.dispatched", "role": Role.PROBE.value, ...})` parses back to a model whose `role` is `SandboxRole.PROBE`.
-- [ ] Sanity: every audit event in the Phase 5 regression suite under `tests/golden/sandbox/audit/*.json` is updated additively (one new `role: "gate"` field per record) and the golden-diff fence accepts the change as a single coordinated edit. (No other field changes.)
+- [ ] The audit-log JSON round-trips **with enum identity**: `SpawnDispatchedEvent.model_validate_json(dumps({"kind": "spawn.dispatched", "role": SandboxRole.PROBE.value, ...})).role is SandboxRole.PROBE` (identity, not `==`; a `str` bleed would silently pass equality).
+- [ ] **Coordinated golden refresh.** Every audit event in the Phase 5 regression suite under `tests/golden/sandbox/audit/*.json` is updated additively (one new `role: "gate"` field per record) and the golden-diff fence accepts the change as a single coordinated edit. **A companion test seeds a synthetic golden file missing the `role` field and asserts the fence flags it** (proves the refresh discipline, not just that the refresh happened this once). No other field changes.
 
 ### E. Byte-edit allowlist fence
 
-- [ ] S5-01's `tests/fence/test_phase7_no_byte_edits_to_locked_files.py` passes after this story's edits. The fence verifies that `src/codegenie/sandbox/client.py` carries exactly: S6-01's enum block + S6-02's parameter + S6-02's dispatch wire-up. Any *other* byte-edit to `client.py` (formatting, docstring rewrites, unrelated refactors) is rejected.
-- [ ] A deliberately-planted second `spawn(...)` parameter (e.g., `extra_flag: bool = False`) fails the fence; the error message names `client.py` and the unauthorized additive diff.
+- [ ] S5-01's `tests/fence/test_phase7_no_byte_edits_to_locked_files.py` passes after this story's edits. The fence verifies that `src/codegenie/sandbox/client.py` carries exactly: S6-01's enum block + S6-02's parameter addition(s) (`role`, and `capture_trace` if Path B under Preconditions §3) + S6-02's dispatch wire-up + the additive `role` field on the audit-event model. Any *other* byte-edit to `client.py` (formatting, docstring rewrites, unrelated refactors) is rejected.
+- [ ] A deliberately-planted third additive parameter on `spawn(...)` (e.g., `extra_flag: bool = False` — distinct from the authorized `role` and `capture_trace`) fails the fence; the error message names `client.py` and the unauthorized additive diff. **Under Path A (Preconditions §3), a planted `capture_trace` addition is the failing case here** (Path A says `capture_trace` is pre-existing, so adding it is an unauthorized edit).
+- [ ] A deliberately-planted unrelated method-body refactor inside `spawn(...)` (e.g., renaming an internal local from `spec_with_role` to `enriched_spec`) fails the fence — proves the fence catches structural drift on the method body, not just signature diffs.
 
 ### F. Type-check + style + import-linter
 
@@ -88,6 +121,10 @@ Amend `SandboxClient.spawn(...)` with exactly one additive keyword parameter —
 - [ ] `ruff check src/codegenie/sandbox/` + `ruff format --check src/codegenie/sandbox/` clean.
 - [ ] `make lint-imports` green (no LLM SDK reachable from the sandbox module).
 - [ ] `make check` green end-to-end.
+
+### G. Concurrency safety
+
+- [ ] Two concurrent `spawn(...)` calls with **different** roles — one `role=SandboxRole.GATE` and one `role=SandboxRole.PROBE` — emit audit events with correct, un-swapped role tags. Test runs the two calls via `asyncio.gather(...)` against the recording stub backend and asserts each captured event's `role` matches the role its own caller passed. Guards against a stealth shared-mutable-state introduction (e.g., a module-level `_current_role` variable) that would swap the tags under contention. Cheap; single test.
 
 ## Implementation outline
 
@@ -125,12 +162,23 @@ Amend `SandboxClient.spawn(...)` with exactly one additive keyword parameter —
 
 from __future__ import annotations
 
+import asyncio
 import inspect
+import re
+from typing import Final
 
 import pytest
+from pydantic import ValidationError
 
 from codegenie.sandbox import Role
-from codegenie.sandbox.client import SandboxClient, SandboxRole
+from codegenie.sandbox.client import SandboxClient, SandboxRole, SpawnDispatchedEvent
+
+# Pre-amendment audit-event field-set. Frozen so a stealth extra field slipping
+# in with `role` fails test_audit_event_role_is_only_new_field.
+_PRE_AMENDMENT_EVENT_FIELDS: Final[frozenset[str]] = frozenset({
+    # ... enumerate every Phase-5 field on the audit event; grep
+    # `src/codegenie/sandbox/` for the shipped model to fill in.
+})
 
 
 class TestSignature:
@@ -148,54 +196,151 @@ class TestSignature:
         params = inspect.signature(SandboxClient.spawn).parameters
         assert params["role"].annotation is SandboxRole
 
+    def test_positional_role_raises_type_error(self, stub_client, gate_spec) -> None:
+        # Signature-shape test above proves declaration; this test proves
+        # runtime enforcement. A `**kwargs` rewrite could pass the shape check
+        # while silently accepting positional role.
+        with pytest.raises(TypeError, match=r"role"):
+            stub_client.spawn(gate_spec, SandboxRole.GATE)  # type: ignore[misc]
+
+    def test_no_other_signature_changes(self) -> None:
+        # Field-by-field diff against pre-amendment shape + authorized additive params.
+        # PRE_SHAPE captured from a git worktree of pre-amendment main.
+        params = inspect.signature(SandboxClient.spawn).parameters
+        additive = {"role", "capture_trace"}  # narrow to {"role"} under Path A
+        for name, p in params.items():
+            if name in additive:
+                continue
+            pre = PRE_SHAPE[name]  # from a fixture-captured baseline
+            assert p.name == pre.name
+            assert p.kind == pre.kind
+            assert p.default == pre.default
+            assert p.annotation == pre.annotation
+
 
 class TestDefaultPathByteIdentity:
     @pytest.fixture
     def stub_client(self) -> SandboxClient:
-        # ... construct a Phase-5-canonical SandboxClient stub
+        # Construct a Phase-5-canonical SandboxClient stub. Exact shape
+        # depends on Phase 5's shipped constructor (Preconditions §1).
         ...
 
     def test_default_arg_run_byte_equals_role_gate_run(self, stub_client: SandboxClient, gate_spec) -> None:
         default = stub_client.spawn(gate_spec)
         explicit = stub_client.spawn(gate_spec, role=Role.GATE)
-        assert _normalize(default) == _normalize(explicit)
+        assert _normalize_run_for_byte_identity(default) == _normalize_run_for_byte_identity(explicit)
+
+    @pytest.mark.parametrize("spec", HAND_CRAFTED_5_SPEC_MATRIX)
+    def test_default_arg_byte_equivalence_across_spec_matrix(self, stub_client, spec) -> None:
+        # Hand-crafted 5 SandboxSpec variations (differing command, workspace,
+        # env, time_budget_seconds, network). NOT hypothesis — fixed inputs.
+        default = stub_client.spawn(spec)
+        explicit = stub_client.spawn(spec, role=Role.GATE)
+        assert _normalize_run_for_byte_identity(default) == _normalize_run_for_byte_identity(explicit)
+
+    def test_normalized_fields_enumerated(self) -> None:
+        # Guards against a stealth addition to the sentinel-normalized list —
+        # if someone silently normalizes a new field, this test surfaces it.
+        from tests.unit.sandbox.test_spawn_role_parameter import (
+            _NORMALIZED_FIELD_PATHS,
+        )
+        assert _NORMALIZED_FIELD_PATHS == (
+            "started_at",
+            "finished_at",
+            "duration_ms",
+            "run_id",
+            "sandbox_spec_hash",
+            "audit_events[*].timestamp",
+            "audit_events[*].event_id",
+        )
 
     def test_no_phase5_production_callsite_passes_role(self) -> None:
-        # Grep-verify: src/codegenie/ (excluding sandbox/) + Phase 3 plugin must NOT
-        # pass role= explicitly. Phase 7 plugins under plugins/distroless-migration--*/
-        # are exempt.
+        # Object-scoped regex per Preconditions §6.
+        pattern = re.compile(
+            r"(?:sandbox|SandboxClient|sandbox_client|self\.sandbox)\.(?:spawn|execute)\("
+        )
+        # ... walk src/codegenie/ (excluding sandbox/) and
+        # plugins/vulnerability-remediation--node--npm/; for each match,
+        # assert the argument list does NOT contain role=.
         ...
+
+    def test_grep_scope_is_object_scoped(self) -> None:
+        # Meta-test the regex itself. Prevents a naive `spawn(` scan from
+        # false-positive on Process.spawn and false-negative on obj.spawn.
+        pattern = re.compile(
+            r"(?:sandbox|SandboxClient|sandbox_client|self\.sandbox)\.(?:spawn|execute)\("
+        )
+        assert not pattern.search("Process.spawn(role=1)")
+        assert not pattern.search("multiprocessing.Process.spawn_context()")
+        assert pattern.search("self.sandbox.spawn(spec, role=Role.GATE)")
 
 
 class TestProbePath:
     def test_capture_trace_with_gate_raises(self, stub_client, gate_spec) -> None:
-        with pytest.raises(ValueError, match="capture_trace requires role=SandboxRole.PROBE"):
+        with pytest.raises(
+            ValueError,
+            match=r"^capture_trace requires role=SandboxRole\.PROBE$",  # anchored, exact
+        ):
             stub_client.spawn(gate_spec, role=Role.GATE, capture_trace=True)
 
-    def test_probe_role_audit_event_carries_role_field(self, stub_client, probe_spec) -> None:
+    def test_probe_role_audit_event_carries_role_enum(self, stub_client, probe_spec) -> None:
         run = stub_client.spawn(probe_spec, role=Role.PROBE)
-        assert any(e.role == "probe" for e in run.audit_events)
+        # Identity, not equality — guards against a str bleed into audit events.
+        assert any(e.role is SandboxRole.PROBE for e in run.audit_events)
 
     def test_probe_role_without_capture_trace_succeeds(self, stub_client, probe_spec) -> None:
         # role and capture_trace are orthogonal at the API.
         run = stub_client.spawn(probe_spec, role=Role.PROBE, capture_trace=False)
         assert run.exit_status.success or run.exit_status.failed_for_known_reason
 
+    def test_capture_trace_dispatch_propagation(self, recording_backend_client, probe_spec) -> None:
+        # Positive: role=PROBE + capture_trace=True → dispatcher spec carries both.
+        recording_backend_client.spawn(probe_spec, role=Role.PROBE, capture_trace=True)
+        last_spec = recording_backend_client.backend.last_spec
+        assert last_spec.role is SandboxRole.PROBE
+        assert last_spec.capture_trace is True
+
+    def test_capture_trace_not_leaked_when_role_gate(self, recording_backend_client, gate_spec) -> None:
+        # Negative orthogonality: default GATE path never leaks capture_trace=True.
+        recording_backend_client.spawn(gate_spec)  # default role, default capture_trace
+        last_spec = recording_backend_client.backend.last_spec
+        assert last_spec.role is SandboxRole.GATE
+        assert last_spec.capture_trace is False
+
 
 class TestAuditEventSchema:
     def test_audit_event_includes_role_field(self) -> None:
-        from codegenie.sandbox.client import SpawnDispatchedEvent
         assert "role" in SpawnDispatchedEvent.model_fields
 
+    def test_audit_event_role_is_only_new_field(self) -> None:
+        # No accidental extra field snuck in with role.
+        new_fields = set(SpawnDispatchedEvent.model_fields) - _PRE_AMENDMENT_EVENT_FIELDS
+        assert new_fields == {"role"}
+
     def test_audit_event_extra_forbid_preserved(self) -> None:
-        from codegenie.sandbox.client import SpawnDispatchedEvent
         with pytest.raises(ValidationError):
-            SpawnDispatchedEvent(kind="spawn.dispatched", role="gate", typo=1)
+            SpawnDispatchedEvent(kind="spawn.dispatched", role="gate", typo=1)  # type: ignore[call-arg]
 
     def test_audit_event_role_is_required(self) -> None:
-        from codegenie.sandbox.client import SpawnDispatchedEvent
         with pytest.raises(ValidationError):
-            SpawnDispatchedEvent(kind="spawn.dispatched")  # no role
+            SpawnDispatchedEvent(kind="spawn.dispatched")  # type: ignore[call-arg]  # no role
+
+    def test_round_trip_identity_not_equality(self) -> None:
+        import json
+        payload = json.dumps({"kind": "spawn.dispatched", "role": SandboxRole.PROBE.value})
+        event = SpawnDispatchedEvent.model_validate_json(payload)
+        # Identity, not equality — guards against a str bleed.
+        assert event.role is SandboxRole.PROBE
+
+
+class TestConcurrencySafety:
+    async def test_concurrent_spawn_role_tags_correct(self, recording_backend_client, gate_spec, probe_spec) -> None:
+        # No shared-mutable-state introduction can silently swap the tags.
+        gate_call = recording_backend_client.spawn(gate_spec, role=Role.GATE)
+        probe_call = recording_backend_client.spawn(probe_spec, role=Role.PROBE, capture_trace=True)
+        gate_run, probe_run = await asyncio.gather(gate_call, probe_call)
+        assert all(e.role is SandboxRole.GATE for e in gate_run.audit_events)
+        assert any(e.role is SandboxRole.PROBE for e in probe_run.audit_events)
 ```
 
 Run — the imports / signature checks fail because `spawn(...)` doesn't yet accept `role`. Red.
@@ -226,7 +371,8 @@ Verify no behavioral drift in default-path tests; verify the byte-edit allowlist
 
 ## Notes for the implementer
 
-- **Method name reconciliation (Rule 7 — Surface conflicts, don't average them):** Phase 5's `final-design.md` shows the method as `SandboxClient.execute(spec) -> SandboxRun`; Phase 7's ADR-0003 + arch design speak `SandboxClient.spawn(...)`. Read `src/codegenie/sandbox/client.py` to determine the actual name in the shipped code, and **use that name**. If Phase 5 ships `execute`, then ADR-0003's text "`spawn`" is the architectural intent and the implementation extends `execute(...)` additively with the same `role` parameter — surface the resolution in the story's attempt log under `_attempts/S6-02.md`. Do **not** silently rename.
+- **Method-name Precondition link-back (Rule 7 — Surface conflicts, don't average them):** the `spawn` vs `execute` reconciliation is elevated to a blocking Precondition (§2), not a Note. Before writing code, resolve the name by reading the shipped `src/codegenie/sandbox/client.py`. If Phase 5 ships `execute`, extend `execute(...)` additively with the same `role` parameter — log the resolution in `_attempts/S6-02.md`. Do **not** silently rename.
+- **`capture_trace` amendment dance (Preconditions §3).** The story adds two additive parameters: `role` AND `capture_trace`. ADR-0003 §Decision says "gains exactly one new parameter." Two paths: **Path A** — `capture_trace` was pre-existing on Phase 5's `SandboxClient` / `SandboxSpec`; grep confirms; no ADR amendment needed. **Path B** — `capture_trace` is new here; file `ADRs/0003-amendment-capture-trace.md` (Nygard shape) **before** landing the code edit and widen S5-01's fence file's `# row 6` inline comment. Both paths preserve the arch design (line 813 shows the consumer calling with `capture_trace=True`); the choice is which artifact carries the audit trail. Do not silently widen ADR-0003.
 - **Default-arg byte-identity is the load-bearing claim.** The single largest risk in this story is a stealth behavioral change on the default path. AC-B's golden file (`tests/golden/sandbox/spawn_default_run.json`) is the canonical check; the property-style sweep across 5 spec variations is the secondary check. If you cannot reproduce byte-identity on a clean Phase 5 fixture, **stop and ask** — do not lower the bar.
 - **Why `capture_trace` is orthogonal to `role`:** ADR-0002 §Decision binds `Role.PROBE + capture_trace=True` as the canonical shell-trace probe shape. But `Role.PROBE` alone (without trace capture) is reserved as the audit-log distinction even when no trace is needed — a future Phase 8 Planner may schedule a probe-tagged microVM for a different purpose that doesn't need eBPF. Keep the parameters orthogonal at the API; raise only on the impossible combination (`capture_trace + Role.GATE`).
 - **`SpawnDispatchedEvent` (or whatever Phase 5 names its audit-event Pydantic model) gains a `role` field additively.** Phase 5's `extra="forbid"` discipline (Phase 5 ADR-0001 / final-design §6) prevents silent field smuggling; the additive `role` field is the *one* explicit Phase 7 extension. Update Phase 5's golden audit JSON files in lockstep.
@@ -234,3 +380,5 @@ Verify no behavioral drift in default-path tests; verify the byte-edit allowlist
 - **The fallback ADR-0003 §Reversibility names** (route `Role.PROBE` through `Role.GATE` semantics if Phase 5 rejects the amendment) is **not in scope for this story.** This story assumes Phase 5 ratifies. If the fallback is invoked, AC-C bullet 2 changes — log that in the attempt log and reopen.
 - **No `cost_band`, no `applies_when` on `spawn(...)` either.** ADR-0003's minimum-surface principle extends to the parameter list: one new parameter (`role`), one related orthogonal flag (`capture_trace`), no other additions.
 - **Read [Phase 5 final-design §Components §1](../../05-sandbox-trust-gates/final-design.md)** before touching the method body — it documents which backends register and how the spec flows. The amendment must compose with `DockerInDockerClient`, `FirecrackerClient`, and whatever Lima-based backend Phase 5 ends up shipping for macOS.
+- **Grep false-positive risk (Preconditions §6).** Naive `spawn(` scans hit `asyncio.subprocess.Process.spawn`, `multiprocessing.Process.spawn_context`, `subprocess.Popen(...).spawn_...` — false positives that would spuriously fail AC-B's grep test. Use the object-scoped regex from Preconditions §6 (or an AST-based check) and pin the regex itself with the meta-test `test_grep_scope_is_object_scoped`. If Phase 5 uses a different attribute name for the injected `SandboxClient` (e.g., `self._sandbox` with the leading underscore), extend the regex — do not accept false negatives.
+- **`SandboxSpec.model_copy(update=...)` subtlety.** Pydantic v2's `model_copy(update={"role": role, "capture_trace": capture_trace})` **bypasses `extra="forbid"` at copy time** — it silently adds the new keys to the model instance even if the model class does not declare them. If the receiving backend dispatcher validates the spec structurally (via `model_dump()` → re-parse) it will catch the drift; if it inspects `spec.role` and `spec.capture_trace` by attribute access it will succeed silently. Either (a) extend `SandboxSpec`'s class definition to declare `role: SandboxRole = SandboxRole.GATE` and `capture_trace: bool = False` as first-class fields (respecting Phase 5's `extra="forbid"` invariant), or (b) file a matching amendment in the same PR that adds these fields to `SandboxSpec`. Do not rely on `model_copy(update=...)` alone as the schema-extension mechanism.

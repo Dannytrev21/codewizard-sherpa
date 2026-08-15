@@ -446,6 +446,106 @@ async def test_semgrep_zero_rules_loaded_yields_low_confidence_skip(monkeypatch,
     assert "semgrep-raw.json" not in {p.name for p in output.raw_artifacts}
 
 
+def test_classify_semgrep_outcome_findings_present_is_never_a_vacuous_skip() -> None:
+    """A scan that produced findings demonstrably loaded rules — it must never
+    be reported as a vacuous ``config_absent`` skip, and its findings must never
+    be discarded.
+
+    This is the exact stdout shape real semgrep (1.157.0) emits **without**
+    ``--time``: ``time.rules`` is an empty list even though the scan ran a real
+    ruleset and matched. Classifying that as ``ScannerSkipped`` throws away a
+    genuine ERROR-severity finding and tells the operator the scanner never ran
+    — the worst failure mode in a security probe (honest-confidence, Rule 12).
+
+    Mutation: reverting the guard to a bare ``if rules_run == 0`` makes this red.
+    """
+    stdout = json.dumps(
+        {
+            "results": [
+                {
+                    "check_id": "sample-node-no-eval",
+                    "path": "src/unsafe-demo.js",
+                    "start": {"line": 4},
+                    "extra": {"severity": "ERROR", "message": "Avoid eval in runtime paths."},
+                }
+            ],
+            "paths": {"scanned": ["src/unsafe-demo.js"]},
+            "time": {"rules": []},
+        }
+    ).encode()
+    outcome, findings, _, _ = _classify_semgrep_outcome(
+        _ProcessExited(exit_code=0, stdout=stdout, stderr_tail="")
+    )
+    assert isinstance(outcome, ScannerRan), (
+        "a scan with findings was reported as a skip — findings would be silently dropped"
+    )
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert findings[0].check_id == "sample-node-no-eval"
+
+
+@pytest.mark.asyncio
+async def test_semgrep_argv_requests_time_so_rules_loaded_is_populated(
+    monkeypatch, repo, ctx
+) -> None:
+    """``time.rules`` — the sole input to the vacuous-scan check — is only
+    populated by semgrep when ``--time`` is requested. Without the flag
+    ``_rules_loaded`` returns 0 for *every* scan, so every scan is misclassified
+    as ``config_absent``. Mutation: dropping ``--time`` makes the whole
+    rules-loaded signal constantly zero and this test red.
+    """
+    captured: dict[str, Any] = {}
+
+    async def _spy(probe_name, argv, *, cwd, timeout_s, **kwargs):
+        captured["argv"] = list(argv)
+        return ProcessResult(
+            returncode=0,
+            stdout=b'{"results": [], "paths": {"scanned": []}, "time": {"rules": [{"id": "r"}]}}',
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(sg_mod, "run_external_cli", _spy)
+    await SemgrepProbe().run(repo, ctx)
+
+    assert "--time" in captured["argv"]
+
+
+@pytest.mark.asyncio
+async def test_semgrep_probe_keeps_findings_when_rules_block_is_empty(
+    monkeypatch, repo, ctx
+) -> None:
+    """Probe-level companion: the user-visible symptom of the bug was an empty
+    ``findings_detail`` in ``repo-context.yaml`` alongside ``skipped/config_absent``
+    on a repo that really does have a matching rule. Pin the slice, not just the
+    classifier."""
+    stdout = json.dumps(
+        {
+            "results": [
+                {
+                    "check_id": "sample-node-no-eval",
+                    "path": "src/unsafe-demo.js",
+                    "start": {"line": 4},
+                    "extra": {"severity": "ERROR", "message": "Avoid eval in runtime paths."},
+                }
+            ],
+            "paths": {"scanned": ["src/unsafe-demo.js"]},
+            "time": {"rules": []},
+        }
+    ).encode()
+
+    async def _spy(*_a, **_kw):
+        return ProcessResult(returncode=0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(sg_mod, "run_external_cli", _spy)
+    output = await SemgrepProbe().run(repo, ctx)
+    slice_ = SemgrepSlice.model_validate(output.schema_slice["semgrep"])
+
+    assert isinstance(slice_.outcome, ScannerRan)
+    assert len(slice_.findings_detail) == 1
+    assert slice_.findings_detail[0].severity == "error"
+    assert output.confidence == "high"
+
+
 def test_classify_semgrep_outcome_exit_two_is_failed() -> None:
     outcome, _, _, _ = _classify_semgrep_outcome(
         _ProcessExited(exit_code=2, stdout=b"", stderr_tail="err")

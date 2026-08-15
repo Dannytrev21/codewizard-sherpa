@@ -1,7 +1,7 @@
 # Story S2-04 — `assemble_provenance(...)` free function + `match`/`assert_never` composition
 
 **Step:** Step 2 — Registry kernel, `_ADAPTER_DISPATCH_ORDER`, `assemble_provenance` free function
-**Status:** Done
+**Status:** Done (HARDENED retroactively 2026-07-26)
 **Completed:** 2026-05-19
 **Attempts:** 1
 **Evidence:**
@@ -357,3 +357,26 @@ Add a separate file `tests/unit/primitives/vuln_provenance/test_assemble_match_e
 - **Rule 12 (fail loud) is THE invariant.** `RuntimeError` from an adapter MUST propagate. The only exception class this function catches is `ProvenanceError` (and its subclasses). If a future PR adds `except Exception:` here, the property tests (S2-05's `test_runtime_errors_propagate`) will fail loud.
 - **Adapter construction happens INSIDE the loop, not before it.** Per ADR-0007 + S2-02: factories construct lazily; if an adapter is never reached (layer mismatch, earlier adapter resolves), its `__init__` never runs. Don't pre-instantiate all adapters in the registry — that re-introduces BP-3 ("worst time to do work" at decoration time, just deferred to assembly time).
 - **`image_ref` is `ImageRef | None`** — not all assembly calls have an image. For app-only attributions without a container, callers pass `None`; adapters that need an image return `Unknown(reason="image_ref_missing")` (their contract — S3-02 / S4-02 will pin this). `assemble_provenance` itself doesn't validate `image_ref`'s presence.
+
+## Validation notes (2026-07-26, HARDENED retroactively)
+
+Story validated post-execution by `phase-story-validator` against the shipped `src/codegenie/primitives/vuln_provenance/assembly.py` + `tests/unit/primitives/vuln_provenance/test_assembly.py` + `tests/unit/primitives/vuln_provenance/test_assemble_match_exhaustive.py`. Four critic lenses (coverage, test-quality, consistency, design-patterns) evaluated inline given the small composition surface. Full report: `_validation/S2-04-assemble-provenance-function.md`.
+
+**Verdict — STRONG** (all fifteen ACs anchored to shipped-and-green tests; no new AC added; no impl edits made — the shipped code is already more robust than the Implementation-outline snippet).
+
+**Accepted shipped-vs-outline deviation (CN-1) — documented, not rewritten:**
+
+- The **Implementation outline** (lines 74–126) shows local variables typed `AppKind | None` / `BaseKind | None` and plain-capture match arms (`case (app, None):`, `case (None, base):`). The **shipped** `assemble_provenance` types locals as `Provenance | None` and uses **class-pattern narrowing** arms (`case (AppDirect() | AppTransitive() | AppVendored() as app, None):` and the mirror `(None, BaseImage() | RuntimeBundled() as base)`) with `cast("AppKind", app)` / `cast("BaseKind", base)` in the `Both(...)` construction. This is a **design refinement, not a regression** — the class-pattern arms + `Both`'s Pydantic discriminated-union validator (`app_record: AppKind`, `base_record: BaseKind`) turn a misbehaving adapter that smuggles a wrong-layer variant into a loud `ValidationError` at composition time (Rule 12), whereas the outline's plain-capture arms would silently trust the adapter's layer contract. Per Rule 3, the outline is not surgically rewritten to match — the ACs and the shipped code are the contract, and the outline text stays illustrative.
+
+**Design-pattern finding — carried as note, NOT a new AC (Rule 2 + Rule 3):**
+
+- **Class-pattern arms as pattern-matching-as-validation (DP-1).** Sibling story S3-01 and later Phase 8+ provenance stories should copy the `case (AppDirect() | AppTransitive() | AppVendored() as app, None):` idiom instead of trusting `Layer`-tag correlation. The shipped code is the positive precedent.
+
+**Coverage / test-quality findings — deferred to S2-05 or the first RUNTIME-adapter story (Rule 2):**
+
+- **Mixed-scenario matrix (C-1, C-2, TQ-1, TQ-2).** No AC or test pins the "APP raises `ProvenanceError` AND BASE_IMAGE returns real `BaseImage`" case (shipped code returns the base, discards the `adapter_error_seen=True` flag — correct "real answer wins over partial failure" reading of AC-7). Same for "APP returns real `Unknown` AND BASE_IMAGE returns real `BaseImage`". Story explicitly defers cross-layer property tests to **S2-05** (`Out of scope` list); the Hypothesis property test should sweep the full raises/`Unknown`/real × APP/BASE_IMAGE matrix and pin the flag-discard semantics.
+- **RUNTIME reserved-slot behavior (C-3, DP-3).** No AC pins what happens if a `RUNTIME` adapter is registered (a Phase 8+ event). Shipped code walks `(Layer.RUNTIME,)` but has no `elif` branch to stash the result — a real `RuntimeBundled` would `break` uncaptured. Phase 7 ships no `RUNTIME` adapter (explicit in `Out of scope` + arch §5 + ADR-0006 §Consequences); when the first RUNTIME adapter (JRE-bundled) lands, that story must add both the branch and its AC.
+
+**Coverage tally after review:** AC-1 through AC-15 all trace 1:1 to shipped tests in `test_assembly.py` (11 test functions cover AC-1 through AC-8 + AC-10 through AC-14; AC-6 anchors two tests intentionally; AC-9 anchors two tests in `test_assemble_match_exhaustive.py`; AC-15 is a static-gate AC proven by `make check`).
+
+**No changes to:** Goal, Scope reminder, References, Implementation outline (CN-1 deviation documented above, not rewritten inline per Rule 3), TDD plan (illustrative snippets predating S1-01/S1-02/S1-03 finalization; shipped tests are the source of truth), Files to touch, Out of scope. Shipped implementation and tests remain authoritative.
